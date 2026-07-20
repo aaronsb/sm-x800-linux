@@ -1,0 +1,37 @@
+dpu: count real DSC blocks in dpu_encoder_use_dsc_merge()
+
+Backport of the first hunk of upstream b6090ffb30f3 ("drm/msm/dpu: Fall
+back to a single DSC encoder (1:1:1) on small SoCs").
+
+This next-20241220 snapshot caught the DSC topology rework mid-flight:
+dpu_encoder_prep_dsc() is already the final num_dsc-aware version, but
+dpu_encoder_use_dsc_merge() still hardcodes num_dsc = 1, so with one
+interface (1 > 1) it always returns false and DSC_MODE_MULTIPLEX is
+never set.
+
+With our 2:2:1 topology patch that means both DSC encoders get
+DSC_MODE_SPLIT_PANEL but no MULTIPLEX: dpu_hw_dsc_1_2 then programs
+num_active_slice_per_enc = slice_count (2) into each encoder while each
+is fed only one slice's worth of pixels (1400px), and the pingpongs are
+never told to merge the two half-streams onto the single DSI. Observed
+on the SM-X800's 2800x1752 2-slice panel as the console tiled into a
+2x2 grid of squashed copies.
+
+Count the DSC blocks actually assigned to the virtual encoder, exactly
+as upstream does after the rework.
+
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -622,8 +622,9 @@ bool dpu_encoder_use_dsc_merge(struct drm_encoder *drm_enc)
+ 		if (dpu_enc->phys_encs[i])
+ 			intf_count++;
+ 
+-	if (dpu_enc->dsc)
+-		num_dsc = 1;
++	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++)
++		if (dpu_enc->hw_dsc[i])
++			num_dsc++;
+ 
+ 	return (num_dsc > 0) && (num_dsc > intf_count);
+ }
+ 
