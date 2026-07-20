@@ -7,7 +7,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=6.13_rc3
-pkgrel=28
+pkgrel=29
 pkgdesc="Mainline kernel fork for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -37,6 +37,7 @@ source="
 	sm8450-samsung-gts8pwifi.dts
 	fts1ba90a.c
 	stm32-pogo.c
+	max77705-otg.c
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -66,6 +67,12 @@ prepare() {
 	cp "$srcdir"/stm32-pogo.c drivers/input/keyboard/stm32-pogo.c
 	if ! grep -q "stm32-pogo.o" drivers/input/keyboard/Makefile; then
 		echo 'obj-y += stm32-pogo.o' >> drivers/input/keyboard/Makefile
+	fi
+
+	# MAX77705 OTG VBUS boost (USB host-mode power), same pattern.
+	cp "$srcdir"/max77705-otg.c drivers/regulator/max77705-otg.c
+	if ! grep -q "max77705-otg.o" drivers/regulator/Makefile; then
+		echo 'obj-y += max77705-otg.o' >> drivers/regulator/Makefile
 	fi
 
 	# Generate .config: tree defconfig + sm8450 fragment, then merge the
@@ -103,8 +110,9 @@ package() {
 
 sha512sums="
 75fbb81e0d2b1a0a6df41a6f6d0cf923074ebd1288354fa22647648bdfcd93413efaea55dd05d07132b5ef0cca62d5f137d7454d5455ef7044ac81d8b04ff385  linux-postmarketos-qcom-sm8450-bf1d29fced6e156dd6090a9b6600a8c44259c114.tar.gz
-302a44076792af0d9fb28361cb887247e2eb7d94e50ae43d84b4a33b38e4e4be217470faa18ffd1e121a5831e829b364011f6e121e0dc58e37990ef2f6499247  pmos.config
-0b2c66ed6e410d6c54665a5c61e05b0f78d85973eb3241e5cd67acb86ff4aa5ecce31e79d1ac13f75c94fc899b41398dae9d61661d17a5cbd04f3af2517bd791  sm8450-samsung-gts8pwifi.dts
+4a8b2d9e58342a77aa4479f3526e048c2c22734dd0f9e1863cbc83e7d0224b61ff1c989a5972e6e73e076000ce63b66a841f0697b8eb62f1b9a5a91b42e76760  pmos.config
+0dfd32b0824860f2a0350505746094de2f4f2d9d011681bf7fa43a97d45c3b0886d5e7d81167d5f8b7ebb049b7220aa553c210600eb57e3cde6ac9aab6eb0f28  sm8450-samsung-gts8pwifi.dts
 b1ba6dfd005f084f98eb8d2fe1e8dd82377712f39d2422997b70eaffa9c6b54846c04b43839fc2d462734ef510390bc8e7f7a8f00ffc43ba632011839b1fc5c1  fts1ba90a.c
 be657f3f7ed60bdff1067fade2383bb15bb6493ea5c5398c039549b0a32acae57ac7a93ffd8f4ab28239ed4a8aa78f6dfd8f4169f6d4951d2cda0b1b14ec3152  stm32-pogo.c
+eafe3ac70d1330972f5f9e3f6fc828c3dff00beba6526da55884b0ce9593a0cf991a9ae1a21fd7aef3a24981d5dc4d5d7fc593e93e1103250b0cae2b9ecc2f77  max77705-otg.c
 "

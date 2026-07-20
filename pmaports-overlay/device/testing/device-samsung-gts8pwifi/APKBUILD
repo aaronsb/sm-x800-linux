@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=9
+pkgrel=10
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -18,7 +18,7 @@ depends="
 "
 subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service panel-blank.sh"
+source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -44,6 +44,11 @@ package() {
 	# zeroing the framebuffer. See the script header.
 	install -Dm755 "$srcdir"/panel-blank.sh \
 		"$pkgdir"/usr/bin/panel-blank
+
+	# Manual USB VBUS sourcing (MAX77705 OTG boost) — powers bus-powered
+	# USB peripherals in host mode. See the script header.
+	install -Dm755 "$srcdir"/vbus-otg.sh \
+		"$pkgdir"/usr/bin/vbus-otg
 }
 
 systemd() {

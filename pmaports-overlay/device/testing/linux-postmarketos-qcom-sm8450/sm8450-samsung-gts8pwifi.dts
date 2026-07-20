@@ -180,6 +180,20 @@
 	};
 
 	/*
+	 * Manual switch for tablet-sourced USB VBUS (the MAX77705 OTG boost,
+	 * see charger@69). regulator-output is the mainline convention for a
+	 * userspace-switched rail: it surfaces
+	 *     /sys/devices/platform/vbus-otg/state
+	 * (helper: `vbus-otg on|off`). Default off; the driver refuses to
+	 * enable while a charger input is present. Automatic switching is
+	 * Type-C/TCPM territory — a later increment.
+	 */
+	vbus-otg {
+		compatible = "regulator-output";
+		vout-supply = <&max77705_otg_vbus>;
+	};
+
+	/*
 	 * Volume UP + pogo attach detection.
 	 *
 	 * Volume up is the odd one out on this device: power and volume-DOWN
@@ -901,6 +915,22 @@
 
 &i2c5 {
 	status = "okay";
+
+	/*
+	 * Minimal OTG-boost-only driver at the charger client address (see
+	 * max77705-otg.c). Verified live before the driver existed: writing
+	 * the CHG_CNFG_00 mode nibble 0x05 -> 0x0F sourced VBUS and a
+	 * bus-powered HID keyboard enumerated. The full MFD (charging
+	 * policy, fuel gauge, MUIC, PD) is deliberately NOT described.
+	 */
+	charger@69 {
+		compatible = "samsung,max77705-otg";
+		reg = <0x69>;
+
+		max77705_otg_vbus: otg-vbus {
+			regulator-name = "usb_otg_vbus";
+		};
+	};
 };
 
 &qupv3_id_1 {
