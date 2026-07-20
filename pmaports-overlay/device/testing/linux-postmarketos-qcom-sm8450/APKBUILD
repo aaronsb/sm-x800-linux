@@ -7,7 +7,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=6.13_rc3
-pkgrel=30
+pkgrel=31
 pkgdesc="Mainline kernel fork for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -40,6 +40,7 @@ source="
 	stm32-pogo.c
 	max77705-otg.c
 	panel-samsung-s6tuum1.c
+	dpu-dsc-topology-wide-mode.patch
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -126,4 +127,5 @@ b1ba6dfd005f084f98eb8d2fe1e8dd82377712f39d2422997b70eaffa9c6b54846c04b43839fc2d4
 be657f3f7ed60bdff1067fade2383bb15bb6493ea5c5398c039549b0a32acae57ac7a93ffd8f4ab28239ed4a8aa78f6dfd8f4169f6d4951d2cda0b1b14ec3152  stm32-pogo.c
 eafe3ac70d1330972f5f9e3f6fc828c3dff00beba6526da55884b0ce9593a0cf991a9ae1a21fd7aef3a24981d5dc4d5d7fc593e93e1103250b0cae2b9ecc2f77  max77705-otg.c
 6b7a4a555d2a116f46617a6967a13f2bccfe60c9866fa11b0b3248d8707ecb1b7b0c0bb9dcdabc9bb3d369cb50570d04852f90671932fb8d2d156c6a3f1e6773  panel-samsung-s6tuum1.c
+c6888977944be4c8ecd8bc9670aafe60883939f6d44c362b16946b2783bbc6f72ac607b8c3e2f6ce53a1dc09a34cdb13f14178a7e33571e23bd5853bb2b4cf89  dpu-dsc-topology-wide-mode.patch
 "

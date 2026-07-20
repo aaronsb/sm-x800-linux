@@ -1,0 +1,27 @@
+dpu: pick 2:2:1 DSC topology when one LM cannot carry the mode
+
+This tree snapshot (next-20241220) hardcodes a 1:1:1 topology for every
+DSC panel in dpu_encoder_get_topology() — a mid-rework state whose
+comment still describes the old 2:2:1 behavior. A single layer mixer
+tops out below 2800px, so on the SM-X800's 2800x1752 DSC panel every
+modeset fails dpu_crtc_atomic_check() with E2BIG and the display never
+enables (observed live: dpu_rm_reserve "num_lm: 1 num_dsc: 1" followed
+by "atomic driver check ... failed: -7").
+
+Reuse the same width criterion the non-DSC path uses. The panel's two
+1400px DSC slices match the 2 LM / 2 DSC / merge arrangement, which is
+what pre-rework kernels always used for DSC.
+
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -690,8 +690,8 @@ static struct msm_display_topology dpu_encoder_get_topology(
+ 		 * this is power optimal and can drive up to (including) 4k
+ 		 * screens
+ 		 */
+-		topology.num_dsc = 1;
+-		topology.num_lm = 1;
++		topology.num_dsc = (mode->hdisplay > MAX_HDISPLAY_SPLIT) ? 2 : 1;
++		topology.num_lm = topology.num_dsc;
+ 		topology.num_intf = 1;
+ 	}
+
