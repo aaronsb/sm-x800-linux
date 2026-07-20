@@ -88,10 +88,14 @@ history (`git log --grep pogo`).
 
 **Conclusion:** the MCU is healthy, its firmware is correct, and the fault is host-side.
 The keyboard runs a connection state machine (`Disconnected_sequence_proc`) and cycles at
-~5 Hz because the host never completes the handshake. Finishing it requires porting
-`stm32_pogo_i2c.c`, not more probing — userspace cannot bootstrap 0x2a because the
-keyboard only exposes it after reaching the connected state (12,158 probes in 20s, zero
-ACKs).
+~5 Hz because the host never completes the handshake — userspace cannot bootstrap 0x2a
+because the keyboard only exposes it after reaching the connected state (12,158 probes in
+20s, zero ACKs).
+
+**PORTED (kernel r23):** the handshake now lives in the mainline `stm32-pogo.c` driver in
+the kernel package (see the file's header comment for the protocol). If the keyboard is
+dead, start from `dmesg | grep pogo` — the driver logs conn edges, the handshake, and the
+model/version it reads — not from re-probing the bus.
 
 **DEAD LEAD — do not chase.** The firmware string `SLPI I2C CLK Rlease!!!` looked like
 evidence that the Sensor Low Power Island was the keyboard's real conversation partner.
