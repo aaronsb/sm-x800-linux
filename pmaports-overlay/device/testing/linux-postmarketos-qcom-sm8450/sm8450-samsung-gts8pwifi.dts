@@ -1021,6 +1021,20 @@
  * Volume UP is a separate gpio-keys line on pm8350 gpio6 (stock DTB); not
  * wired up yet since volume-down alone unlocks the debug shell.
  */
+/*
+ * Software route into Samsung download (Odin) mode: ABL checks the PON
+ * SOFT_RB_SPARE restart-reason at boot, and the downstream kernel's
+ * `reboot download` writes 0x15 there (sec_qc_rbcmd_command.c,
+ * PON_RESTART_REASON_DOWNLOAD). Mainline's qcom-pon driver provides the
+ * same write via the reboot-mode framework with the same bit shift, so
+ * this one property makes `reboot <arg>=download` (RESTART2 syscall)
+ * land the device in download mode — no volume-key dance. Userspace
+ * helper: reboot-download (busybox reboot cannot pass the argument).
+ */
+&pmk8350_pon {
+	mode-download = <0x15>;
+};
+
 &pon_pwrkey {
 	status = "okay";
 };
