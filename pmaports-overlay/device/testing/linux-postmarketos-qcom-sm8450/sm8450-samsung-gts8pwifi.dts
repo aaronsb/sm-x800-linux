@@ -217,12 +217,15 @@
 	 *     vol_up { gpios = <0x540 0x06 0x01>; linux,code = <0x73>; }
 	 * where phandle 0x540 is qcom,pm8350-gpio @0x8800 and 0x01 = ACTIVE_LOW.
 	 *
-	 * INDEX CAVEAT: qcom spmi-gpio numbering is a classic off-by-one trap.
-	 * We mirror stock exactly — cell value 6 paired with pinctrl pins
-	 * "gpio6" — because that pairing is what ships and works on the real
-	 * device with the same pinctrl-spmi-gpio driver. If volume-up turns out
-	 * dead on-device, try cell 5 and cell 7 before suspecting anything else;
-	 * the pin is confirmed correct, only the index convention is in doubt.
+	 * STATUS: dead, and NOT an index problem. Measured on-device (r38,
+	 * 2026-07-20): with gpio-keys unbound, gpiomon watched every line of
+	 * pm8350/pm8350c/pmk8350 through repeated vol-up presses — zero edges
+	 * anywhere. Line 5 (= this cell 6) idles high like a pulled-up button
+	 * but never drops on press. Stock DTB has exactly one vol-up wiring
+	 * (this one), so the next step is schematic-level: check the pull-up
+	 * power-source rail, or poke the pm8350 gpio6 status register over
+	 * SPMI debugfs while pressing. Do NOT bother permuting cell numbers;
+	 * that experiment is done.
 	 */
 	gpio-keys {
 		compatible = "gpio-keys";
@@ -1181,4 +1184,22 @@
 &pon_resin {
 	linux,code = <KEY_VOLUMEDOWN>;
 	status = "okay";
+};
+
+/*
+ * GPU: Adreno 730. sm8450.dtsi carries the full gpu/gmu/smmu description;
+ * per-board all that's needed is the zap shader. Samsung ships NO zap in
+ * vendor/ — the signed image lives in the apnhlos partition as split
+ * a730_zap.mdt + .b00-.b02 (found by mounting apnhlos on-device; staged
+ * into /lib/firmware/qcom/sm8450/gts8pwifi/). qcom_mdt_load handles the
+ * split format natively. SQE + GMU firmware come from linux-firmware
+ * (a730_sqe.fw.zst / gmu_gen70000.bin.zst — FW_LOADER_COMPRESS_ZSTD is
+ * enabled and proven by ath11k).
+ */
+&gpu {
+	status = "okay";
+
+	zap-shader {
+		firmware-name = "qcom/sm8450/gts8pwifi/a730_zap.mdt";
+	};
 };

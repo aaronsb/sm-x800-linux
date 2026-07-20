@@ -1,0 +1,23 @@
+# GPU firmware must be in the FIRST-STAGE initramfs.
+#
+# DRM_MSM is built in, and on a7xx the adreno driver loads its SQE microcode
+# at component-bind time — t≈1.0s, long before the rootfs is mounted. A
+# firmware miss there is FATAL for the whole boot's GPU: adreno gives up, msm
+# registers display-only (debugfs 'gpu' node reads ENODEV), and nothing
+# retries later. Observed exactly that on r39: "Direct firmware load for
+# qcom/a730_sqe.fw failed with error -2" at 0.99s, /dev/dri/renderD128
+# present but dead.
+#
+# SQE + GMU come from linux-firmware-qcom (zstd-compressed; the kernel has
+# FW_LOADER_COMPRESS_ZSTD). The zap shader is Samsung-signed and ships in the
+# device's apnhlos partition — it is staged into /lib/firmware by hand (see
+# tools/README), NOT by any package, so those entries carry !optional: a
+# rootfs build without the staged zap must not fail, but the resulting
+# initramfs will boot a GPU-less (display-only) msm. Check for the zap
+# after any rootfs rebuild.
+/lib/firmware/qcom/a730_sqe.fw.zst
+/lib/firmware/qcom/gmu_gen70000.bin.zst
+/lib/firmware/qcom/sm8450/gts8pwifi/a730_zap.mdt!optional
+/lib/firmware/qcom/sm8450/gts8pwifi/a730_zap.b00!optional
+/lib/firmware/qcom/sm8450/gts8pwifi/a730_zap.b01!optional
+/lib/firmware/qcom/sm8450/gts8pwifi/a730_zap.b02!optional

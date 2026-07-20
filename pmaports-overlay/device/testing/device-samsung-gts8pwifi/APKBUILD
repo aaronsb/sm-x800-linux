@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=11
+pkgrel=12
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -15,10 +15,11 @@ depends="
 	android-tools
 	mdev-conf
 	reboot-mode
+	linux-firmware-qcom
 "
 subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh usb-host-wake.start"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh usb-host-wake.start"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -32,6 +33,11 @@ package() {
 	# initramfs can never find root by UUID. See the file for details.
 	install -Dm644 "$srcdir"/mkinitfs-mdev.files \
 		"$pkgdir"/usr/share/mkinitfs/files/50-gts8pwifi-mdev.files
+
+	# GPU firmware must ride in the first-stage initramfs: a7xx adreno
+	# loads SQE at bind time, before the rootfs exists. See the file.
+	install -Dm644 "$srcdir"/mkinitfs-gpu-fw.files \
+		"$pkgdir"/usr/share/mkinitfs/files/60-gts8pwifi-gpu-fw.files
 
 	# Bring-up debug: with no working input, the panel is the only way to
 	# learn what IP we got. Print iface/mac/ip/gateway to the console on
@@ -68,6 +74,7 @@ systemd() {
 sha512sums="
 9d7b12654e6d46a6a374a56484ae61146b655138b60b8a3f5b702db72907a45c3cefd2748fc3e7cd035d293684c8155abb5ce724a5e9738ab97536fb311a5344  deviceinfo
 2cda404e2fab787e502d32f14a9039b8c42b452d91618320418e2fef99fe03c1215c8ac0b567d294452ce2e1aff0dc188d2ff6278a3ecbcd3cd645f9f99aff32  mkinitfs-mdev.files
+a2301018497417bdb5a9cbd5591010e5887745225801db43cba6eb81e1ca8fae562f52e7a680c898c9c158de22a1c3ec0253f13f76edb1dfe6f9457ffd383f83  mkinitfs-gpu-fw.files
 9c2ab35913e2bb03f1daf3e48d97f064b3dae2d4cbe7cc775b86a4f0ef2b582ecbce709c5ff60d10bca7e4ffa4217c4e9d29755bd505df4c9a14a9f34d4bfd93  netinfo-console.sh
 e5cfbbc0ad2fdc4e9fbc326099c75baea068e82ea0221f6f15ebab2393e2e6808faca20b5aafa811a05b497e75011c1708184902e6d981c7d8eff27da4ab44d8  netinfo-console.service
 0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
