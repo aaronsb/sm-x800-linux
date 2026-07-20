@@ -7,9 +7,11 @@
 #   make deps        # one-time: uniLoader clone + chroot toolchain
 #   make boot        # kernel -> uniLoader -> boot.img -> flashable tar
 #   make flash       # odin4 the boot image (device must be in download mode)
+#   make flash-help  # which flash flavor do I want?
 #
 # NOTE: every `make flash*` target needs the device in a FRESHLY ENTERED
-# download mode. A stale session fails with "FAIL! (Auth)". See docs/05 §5.
+# download mode. A stale session fails with "FAIL! (Auth)", and a failed
+# transfer wedges the session until the device is rebooted. See docs/05 §5.
 
 SHELL       := /bin/bash
 PMB         := ./pmb
@@ -32,7 +34,7 @@ OS_VERSION  := 12.0.0
 OS_PATCH    := 2025-04
 
 .PHONY: help deps kernel uniloader bootimg boot flash flash-full flash-rootfs \
-        sparse flash-all flash-stay restore-android sync-aports uuids \
+        sparse flash-all flash-stay flash-help restore-android sync-aports uuids \
         rootfs sync-overlay lint clean distclean device-status dtb-dump
 
 help: ## Show available targets
@@ -138,10 +140,32 @@ device-status: ## Show whether the device is visible in download mode
 	@lsusb | grep -i 04e8 || echo "no Samsung device on USB"
 	@odin4 -l 2>/dev/null || true
 
-flash: ## Flash boot.img only (the usual iteration loop)
+flash-help: ## Which flash flavor do I want?
+	@echo "  FLASH FLAVORS — pick by what you changed:"
+	@echo ""
+	@echo "    changed the DTS or kernel only ......... make flash        (boot, ~28 MB, fast)"
+	@echo "    changed the rootfs / a device package .. make flash-rootfs (userdata, ~600 MB)"
+	@echo "    changed both, or want a clean slate .... make flash-all    (ONE odin session)"
+	@echo "    iterating and want to stay in DL mode .. make flash-stay   (flash-all + --redownload)"
+	@echo "    something is badly wrong ............... make restore-android"
+	@echo ""
+	@echo "  WHY flash-all EXISTS: odin does not reset between partitions on its own."
+	@echo "  The reboot we used to hit came from invoking odin4 TWICE. One invocation"
+	@echo "  with both -a and -u writes both partitions in a single session."
+	@echo ""
+	@echo "  RULE: userdata must hold the COMBINED image (pmb install WITHOUT --split),"
+	@echo "  because stage-1 needs a pmOS_boot AND a pmOS_root and uniLoader owns the"
+	@echo "  real boot partition. See docs/05 section 8b."
+	@echo ""
+	@echo "  Every flash needs a FRESHLY entered download mode. A stale session fails"
+	@echo "  'FAIL! (Auth)', and a failed transfer wedges the session until reboot."
+	@echo "  Check with 'make device-status' — the USB device NUMBER should change"
+	@echo "  after a re-entry; if it did not, the session is stale."
+
+flash: ## [boot only] DTS/kernel changes — the usual fast iteration loop
 	odin4 -a root-build/pmos_uniloader_boot.tar
 
-flash-full: ## Flash boot + STOCK vendor_boot + vbmeta
+flash-full: ## [boot + stock vendor_boot + vbmeta] rarely needed
 	odin4 -a root-build/pmos_uniloader_ap.tar
 
 sparse: ## Build the sparse userdata tar (odin rejects raw ext4 at ~3%)
@@ -153,19 +177,19 @@ sparse: ## Build the sparse userdata tar (odin rejects raw ext4 at ~3%)
 	img2simg $$RAW $(BUILD)/sparse/userdata.img; \
 	cd $(BUILD)/sparse && tar -H ustar -cf ../../pmos_userdata_sparse.tar userdata.img
 
-flash-rootfs: sparse ## Flash the rootfs to userdata (MUST be a sparse image)
+flash-rootfs: sparse ## [userdata only] rootfs / device-package changes
 	odin4 -u root-build/pmos_userdata_sparse.tar
 
-flash-all: sparse ## Flash boot AND userdata in ONE odin session (no reboot between)
+flash-all: sparse ## [boot + userdata] ONE odin session, no reboot between
 	@echo ">> single session: -a boot + -u userdata, no intermediate reboot"
 	odin4 -a root-build/pmos_uniloader_boot.tar \
 	      -u root-build/pmos_userdata_sparse.tar
 
-flash-stay: sparse ## Like flash-all, but come back up in download mode for the next round
+flash-stay: sparse ## [boot + userdata] as flash-all, then RETURN to download mode
 	odin4 -a root-build/pmos_uniloader_boot.tar \
 	      -u root-build/pmos_userdata_sparse.tar --redownload
 
-restore-android: ## Put stock/KernelSU Android back (recovery escape hatch)
+restore-android: ## [escape hatch] put stock Android back
 	odin4 -a root-build/android_restore.tar -u root-build/vbmeta_disabled.tar
 
 ## ---------------------------------------------------------------------------

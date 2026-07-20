@@ -92,7 +92,7 @@
 		 * goes BLACK mid-boot, even though the kernel is still running
 		 * happily. Observed exactly that: boot log painted, then black.
 		 */
-		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=53ac3237-e5db-428f-bf32-ac351ea6851b pmos_root_uuid=63fa8386-a986-4757-95fa-bd02bb692f67 pmos_rootfsopts=defaults";
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=a52ecfd9-ba7c-4c8e-a80f-d6341ef93081 pmos_root_uuid=ae56a720-d465-46c7-9e43-ecbd33124aa9 pmos_rootfsopts=defaults";
 
 		framebuffer: framebuffer@b8000000 {
 			compatible = "simple-framebuffer";
@@ -354,7 +354,13 @@
 		 * vdd-l3-l4-l5-l7-l13, l8 via vdd-l2-l8).
 		 */
 		vreg_l7c_3p3: ldo7 {
-			regulator-min-microvolt = <3300000>;
+			/*
+			 * Measured on-device: vreg_bob runs at 3.032 V, and this
+			 * LDO is parented to it (vdd-l3-l4-l5-l7-l13-supply).
+			 * A fixed 3.3 V request cannot be satisfied from a
+			 * 3.03 V input, so allow a range instead of pinning it.
+			 */
+			regulator-min-microvolt = <3000000>;
 			regulator-max-microvolt = <3300000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
@@ -713,17 +719,60 @@
  * (the only "touchkey" hit is a haptics boost-table label), and setting it
  * would drag stmfts into its ledvdd regulator path for no reason.
  */
+/*
+ * GPI DMA engine for QUP wrapper 1. i2c8 declares
+ *     dmas = <&gpi_dma1 0 0 QCOM_GPI_I2C>, <&gpi_dma1 1 0 QCOM_GPI_I2C>;
+ * and sm8450.dtsi ships gpi_dma1 status="disabled", so geni_i2c could never
+ * get a channel and never probed. See the &i2c8 comment for how that cascaded
+ * into "failed to mount subpartitions".
+ */
+&gpi_dma1 {
+	status = "okay";
+};
+
 &qupv3_id_1 {
 	status = "okay";
 };
 
 &i2c8 {
+	/*
+	 * i2c8 NEEDS ITS GPI DMA CONTROLLER ENABLED (see &gpi_dma1 below).
+	 *
+	 * Enabling this bus is what broke boot, and the path was indirect:
+	 * geni_i2c could not probe, sat in deferred probe, and a device stuck
+	 * in deferred probe blocks interconnect sync_state:
+	 *     platform a80000.i2c: deferred probe pending:
+	 *         geni_i2c: Failed to setup GPI DMA mode
+	 *     qnoc-sm8450 interconnect-1:       sync_state() pending due to a80000.i2c
+	 *     qnoc-sm8450 1700000.interconnect: sync_state() pending due to a80000.i2c
+	 *     ...and two more providers
+	 * sync_state finalises the NoC bandwidth votes for the whole SoC,
+	 * including the path to storage, so UFS came up too late and the
+	 * initramfs gave up hunting subpartitions after its 10 s window. The
+	 * symptom ("failed to mount subpartitions") named storage; the cause
+	 * was a touchscreen bus waiting on a DMA engine.
+	 *
+	 * DEAD END, DO NOT REPEAT: deleting dmas/dma-names to force PIO makes
+	 * it WORSE. The driver then fails outright rather than deferring:
+	 *     geni_i2c a80000.i2c: error -ENODEV: Failed to get tx DMA ch
+	 *     geni_i2c a80000.i2c: error -ENODEV: Failed to setup GPI DMA mode
+	 * Note the working i2c18 KEEPS its dmas property, so the phandle has to
+	 * be there. Give the bus a real controller instead.
+	 */
 	clock-frequency = <400000>;
 	status = "okay";
 
 	touchscreen@49 {
 		compatible = "st,stmfts";
 		reg = <0x49>;
+		/*
+		 * BISECT HISTORY: with this node enabled AND vreg_l7c pinned at
+		 * a fixed 3.3 V, boot broke -- the initramfs stopped finding
+		 * subpartitions within its 10 s window. Disabling this node and
+		 * widening l7c to 3.0-3.3 V restored boot, but that changed two
+		 * things at once. This build re-enables the node with the
+		 * widened rail still in place, which isolates the probe.
+		 */
 
 		/*
 		 * Stock declares no interrupts property at all, only
