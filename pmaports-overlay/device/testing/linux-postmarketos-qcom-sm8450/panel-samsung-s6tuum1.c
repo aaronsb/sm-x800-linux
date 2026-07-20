@@ -119,6 +119,18 @@ static int s6tuum1_on(struct s6tuum1 *priv)
 	return ctx.accum_err;
 }
 
+/*
+ * TAKEOVER EXPERIMENT (r34): across r30-r33 the panel emitted exactly 7 TE
+ * pulses and then went permanently silent, regardless of init variations
+ * (PPS delivery, LP vs HS commands). Best reading: those pulses are the
+ * BOOTLOADER's still-running display, killed by our reset pulse — and our
+ * re-init never revives the panel. This build does not touch the panel at
+ * all: no reset, no init commands. ABL left it initialized, scanning and
+ * DSC-configured (same PPS); if frames display, the entire DPU/DSI/DSC
+ * pipeline is proven and only the cold-init path is at fault.
+ */
+static bool takeover = true;
+
 static int s6tuum1_prepare(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
@@ -127,6 +139,9 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 	ret = regulator_enable(priv->vdd);
 	if (ret < 0)
 		return ret;
+
+	if (takeover)
+		return 0;
 
 	/* stock supply entry: 11 ms post-on */
 	usleep_range(11000, 12000);
@@ -146,6 +161,9 @@ static int s6tuum1_enable(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
+
+	if (takeover)
+		return 0;	/* ABL already has the display on */
 
 	mipi_dsi_dcs_set_display_on_multi(&ctx);
 	mipi_dsi_msleep(&ctx, 17);	/* stock display_on wait */
