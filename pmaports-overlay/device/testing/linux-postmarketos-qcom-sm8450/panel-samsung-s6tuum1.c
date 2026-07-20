@@ -8,9 +8,10 @@
  * the downstream techpack driver — see device-facts/display-s6tuum1.md
  * for the full derivation.
  *
- * Modeled on panel-samsung-s6e3ha8.c (same tree). The PPS is built by
- * drm_dsc_pps_payload_pack() from drm_dsc_config rather than replaying
- * the stock 0x9E byte stream; decoded fields match the stock PPS.
+ * Modeled on panel-samsung-s6e3ha8.c (same tree). The PPS is replayed
+ * verbatim as a DCS write to 0x9E — this DDIC ignores the standard MIPI
+ * PPS packet type (see the comment at the write); the DPU side's
+ * drm_dsc_config matches the replayed bytes.
  *
  * Only the 120 Hz timing is implemented (DDIC reg 0x60 = 0x20; stock also
  * has a 60 Hz variant with 0x60 = 0x00 for VRR — later work).
@@ -60,7 +61,6 @@ static void s6tuum1_reset(struct s6tuum1 *priv)
 static int s6tuum1_on(struct s6tuum1 *priv)
 {
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
-	struct drm_dsc_picture_parameter_set pps;
 
 	priv->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
@@ -80,8 +80,26 @@ static int s6tuum1_on(struct s6tuum1 *priv)
 
 	mipi_dsi_compression_mode_multi(&ctx, true);
 
-	drm_dsc_pps_payload_pack(&pps, &priv->dsc);
-	mipi_dsi_picture_parameter_set_multi(&ctx, &pps);
+	/*
+	 * PPS delivery: this DDIC takes the PPS as a DCS long write to
+	 * register 0x9E (stock: "39 ... 59 9e 11 01 00 89 ..."), NOT as the
+	 * standard MIPI PPS packet type — sent that way (r30/r31), the panel
+	 * emitted a few TEs and then dropped TE the moment compressed frames
+	 * arrived, i.e. it never had a PPS. Bytes below are the stock PPS
+	 * verbatim; its RC parameters decode to the same standard pre-SCR
+	 * table the msm DSI host computes for the DPU side, so both ends of
+	 * the link agree.
+	 */
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x9e,
+		0x11, 0x01, 0x00, 0x89, 0x30, 0x80, 0x06, 0xd8, 0x0a, 0xf0,
+		0x00, 0x0c, 0x05, 0x78, 0x05, 0x78, 0x02, 0x00, 0x03, 0xbd,
+		0x00, 0x20, 0x01, 0x9c, 0x00, 0x13, 0x00, 0x0c, 0x08, 0xbb,
+		0x03, 0x45, 0x18, 0x00, 0x10, 0xf0, 0x03, 0x0c, 0x20, 0x00,
+		0x06, 0x0b, 0x0b, 0x33, 0x0e, 0x1c, 0x2a, 0x38, 0x46, 0x54,
+		0x62, 0x69, 0x70, 0x77, 0x79, 0x7b, 0x7d, 0x7e, 0x01, 0x02,
+		0x01, 0x00, 0x09, 0x40, 0x09, 0xbe, 0x19, 0xfc, 0x19, 0xfa,
+		0x19, 0xf8, 0x1a, 0x38, 0x1a, 0x78, 0x1a, 0xb6, 0x2a, 0xf6,
+		0x2b, 0x34, 0x2b, 0x74, 0x3b, 0x74, 0x63, 0xf4);
 
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x9a, 0x00);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x79, 0x02);
