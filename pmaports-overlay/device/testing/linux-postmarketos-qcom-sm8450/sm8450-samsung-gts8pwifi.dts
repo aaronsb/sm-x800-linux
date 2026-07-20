@@ -115,7 +115,14 @@
 		 * PM bugs. If this boot regresses, the failing subsystem is
 		 * whatever still lacks a driver to claim its resources.
 		 */
-		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=a52ecfd9-ba7c-4c8e-a80f-d6341ef93081 pmos_root_uuid=ae56a720-d465-46c7-9e43-ecbd33124aa9 pmos_rootfsopts=defaults";
+		/*
+		 * r41: loglevel=8 ignore_loglevel -> loglevel=4. Bring-up-era
+		 * verbosity put EVERY printk on the panel; in steady state the
+		 * wlan0 chatter alone stomped agetty into endlessly re-printing
+		 * "login:" (photo-verified). Warnings and errors still reach
+		 * the console; everything lands in the persistent journal.
+		 */
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=4 arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=a52ecfd9-ba7c-4c8e-a80f-d6341ef93081 pmos_root_uuid=ae56a720-d465-46c7-9e43-ecbd33124aa9 pmos_rootfsopts=defaults";
 
 		framebuffer: framebuffer@b8000000 {
 			compatible = "simple-framebuffer";

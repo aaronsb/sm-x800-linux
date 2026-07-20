@@ -1,17 +1,13 @@
 [Unit]
-Description=Print network state to the console (gts8pwifi bring-up debug)
-# Start early and keep running; we want to see the "no lease" state too.
-After=systemd-udevd.service
-DefaultDependencies=no
+Description=Generate /etc/issue login banner (gts8pwifi)
+# Banner facts are local (os-release, meminfo); no network dependency —
+# agetty resolves the IP escapes itself every time it prints the prompt.
+Before=getty@tty1.service
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=yes
 ExecStart=/usr/bin/netinfo-console
-Restart=always
-RestartSec=5
-# Write directly to the framebuffer console — there is no other output path.
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

@@ -34,22 +34,22 @@ The firmware packages are LOAD-BEARING (WiFi and BT are dead without them), and 
 NetworkManager WiFi profile is also lost with userdata — re-add with
 `nmcli dev wifi connect <ssid> password <pw>` or the dongle comes back out.
 
-The GPU additionally needs the Samsung-signed zap shader staged BY HAND (it is in
-no repo and no package). It also must end up in the initramfs, or adreno's
-bind-time SQE load fails and the GPU is dead for that whole boot:
+The GPU additionally needs the Samsung-signed zap shader, which no repo and no
+package may ship (cartridge-dump model: we distribute the extractor, the user
+dumps firmware from their own device). One command, device pkg r14+:
 
 ```sh
-mount -o ro /dev/disk/by-partlabel/apnhlos /mnt
-mkdir -p /lib/firmware/qcom/sm8450/gts8pwifi
-cp /mnt/image/a730_zap.mdt /mnt/image/a730_zap.b0? /lib/firmware/qcom/sm8450/gts8pwifi/
-umount /mnt
-mkinitfs   # device pkg r12+ pulls the fw into the initramfs via 60-gts8pwifi-gpu-fw.files
+sudo gts8pwifi-fw-extract   # mounts apnhlos ro, stages the zap, reruns mkinitfs
 ```
 
-(Local copies of the zap splits also live in root-build/stock-extract/. When the
-BUILD chroot's rootfs is regenerated, the same staging must happen there before
-`make boot`, or the packaged initramfs ships without the zap — the file list marks
-them !optional so the build won't fail, it will just quietly produce a GPU-less boot.)
+It must end up in the initramfs (a7xx loads firmware at bind time, before the
+rootfs mounts) — the extractor's mkinitfs run handles that via
+60-gts8pwifi-gpu-fw.files.
+
+(Local copies of the zap splits also live in root-build/stock-extract/. The BUILD
+chroot side is automated: `make boot` depends on `make stage-fw`, which copies the
+splits into the chroot, regenerates its initramfs, and HARD-FAILS if the zap did
+not land — no more silently GPU-less boot images.)
 
 Also note `sudo sh -c "..."` does not inherit a login PATH, so `i2cdetect` and friends
 may report "not found" even when installed. Use a login shell or an absolute path.

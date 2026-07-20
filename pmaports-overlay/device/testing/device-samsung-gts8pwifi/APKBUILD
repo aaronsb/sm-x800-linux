@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=12
+pkgrel=14
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -19,7 +19,7 @@ depends="
 "
 subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh usb-host-wake.start"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -38,6 +38,11 @@ package() {
 	# loads SQE at bind time, before the rootfs exists. See the file.
 	install -Dm644 "$srcdir"/mkinitfs-gpu-fw.files \
 		"$pkgdir"/usr/share/mkinitfs/files/60-gts8pwifi-gpu-fw.files
+
+	# Extractor for device-signed blobs (zap shader): we ship the TOOL,
+	# the user dumps the firmware from their own device. See the script.
+	install -Dm755 "$srcdir"/fw-extract.sh \
+		"$pkgdir"/usr/bin/gts8pwifi-fw-extract
 
 	# Bring-up debug: with no working input, the panel is the only way to
 	# learn what IP we got. Print iface/mac/ip/gateway to the console on
@@ -75,9 +80,10 @@ sha512sums="
 9d7b12654e6d46a6a374a56484ae61146b655138b60b8a3f5b702db72907a45c3cefd2748fc3e7cd035d293684c8155abb5ce724a5e9738ab97536fb311a5344  deviceinfo
 2cda404e2fab787e502d32f14a9039b8c42b452d91618320418e2fef99fe03c1215c8ac0b567d294452ce2e1aff0dc188d2ff6278a3ecbcd3cd645f9f99aff32  mkinitfs-mdev.files
 a2301018497417bdb5a9cbd5591010e5887745225801db43cba6eb81e1ca8fae562f52e7a680c898c9c158de22a1c3ec0253f13f76edb1dfe6f9457ffd383f83  mkinitfs-gpu-fw.files
-9c2ab35913e2bb03f1daf3e48d97f064b3dae2d4cbe7cc775b86a4f0ef2b582ecbce709c5ff60d10bca7e4ffa4217c4e9d29755bd505df4c9a14a9f34d4bfd93  netinfo-console.sh
-e5cfbbc0ad2fdc4e9fbc326099c75baea068e82ea0221f6f15ebab2393e2e6808faca20b5aafa811a05b497e75011c1708184902e6d981c7d8eff27da4ab44d8  netinfo-console.service
+2ef9527def8bb6596a04faad4252cf65791cf14caf9af7270231b319d80df85a359b9b0eddecba84330f13891d322443ae817a590513bf54fc6906a14ef237a7  netinfo-console.sh
+4b2493e0483a19f157c8a4787ef2c272de2c2f61f1c381db0b80c27327a73f5d648a4c77da37ca2d5aff331eb3f2daa66fcd355621176e569546295d15c60fbf  netinfo-console.service
 0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
 7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
 eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start
+8c82787b304863cecbfd690f64795ed7e256807ceb31b708d3c7a36138f031a0400060e63f31a08e5f1a67217e88f5704dcb68ec2bc32b31a98d44b325cad85d  fw-extract.sh
 "

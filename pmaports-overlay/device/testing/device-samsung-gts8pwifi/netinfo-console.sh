@@ -1,54 +1,49 @@
 #!/bin/sh
-# Bring-up debug aid: print network state to the framebuffer console.
+# Generate /etc/issue: the login banner agetty prints above "login:".
 #
-# This device currently has no usable input, so the panel is the only way to
-# learn what address it got. Watch for changes and print a compact block
-# straight to /dev/console whenever anything moves.
+# HISTORY: v1 of this script watched the network and printed straight to
+# /dev/console — the only way to learn the device's IP back when it had no
+# input devices. With keyboard/touch working that design became pure noise:
+# every async write stomped agetty's prompt and made it re-issue "login:"
+# (screenshot-verified mess). v2 never touches the console. It writes
+# /etc/issue ONCE; agetty re-reads the file and resolves the escapes every
+# time it prints a prompt, so the network info is always current with no
+# process running at all:
 #
-# Remove this once ssh/serial access is reliable — it is a bring-up crutch,
-# not something that belongs on a finished system.
+#   \4{wlan0}  current IPv4 of wlan0 (agetty resolves at print time)
+#   \r \m \n \l  kernel release, arch, hostname, tty
+#
+# Slow-changing facts (OS name, memory) are baked at generation time.
+# Press Enter at the prompt to cycle agetty and get a fresh banner.
 
-CONSOLE=/dev/console
-prev=""
+set -e
 
-# quick banner so we can tell the service actually started
+ISSUE=${1:-/etc/issue}
+
+os_name=$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")
+mem_gib=$(awk '/MemTotal/ {printf "%.1f", $2/1048576}' /proc/meminfo)
+
+# ANSI passes straight through agetty to fbcon. Banner: toilet -f pagga
+# "SM-X800", one color per row for a cheap gradient (Terminus has the
+# block glyphs).
+ESC=$(printf '\033')
+C1="$ESC[38;5;51m"	# bright cyan
+C2="$ESC[38;5;45m"	# cyan-blue
+C3="$ESC[38;5;39m"	# blue
+DIM="$ESC[2m"
+BLD="$ESC[1m"
+RST="$ESC[0m"
+
 {
-	echo ""
-	echo "=== netinfo: watching for addresses (bring-up debug) ==="
-} > "$CONSOLE" 2>/dev/null
-
-while :; do
-	cur=$(ip -o addr show scope global 2>/dev/null | awk '{print $2, $4}')
-
-	if [ "$cur" != "$prev" ]; then
-		{
-			echo ""
-			echo "======== NETINFO $(date '+%H:%M:%S') ========"
-			if [ -z "$cur" ]; then
-				echo "  no global addresses yet"
-			fi
-			# one block per interface that is not loopback
-			for ifc in $(ls /sys/class/net 2>/dev/null); do
-				[ "$ifc" = "lo" ] && continue
-				mac=$(cat "/sys/class/net/$ifc/address" 2>/dev/null)
-				oper=$(cat "/sys/class/net/$ifc/operstate" 2>/dev/null)
-				carrier=$(cat "/sys/class/net/$ifc/carrier" 2>/dev/null)
-				addrs=$(ip -o -4 addr show dev "$ifc" 2>/dev/null | awk '{print $4}')
-				gw=$(ip -4 route show default dev "$ifc" 2>/dev/null | awk '{print $3}')
-				echo "  iface : $ifc"
-				echo "    mac     : $mac"
-				echo "    state   : $oper (carrier=${carrier:-?})"
-				if [ -n "$addrs" ]; then
-					for a in $addrs; do echo "    ipv4    : $a"; done
-					[ -n "$gw" ] && echo "    gateway : $gw"
-					echo "    >>> ssh user@${addrs%%/*}"
-				else
-					echo "    ipv4    : (none - no lease)"
-				fi
-			done
-			echo "=========================================="
-		} > "$CONSOLE" 2>/dev/null
-		prev="$cur"
-	fi
-	sleep 3
-done
+	printf '\n'
+	printf '%s\n' "${C1}░█▀▀░█▄█░░░░░█░█░▄▀▄░▄▀▄░▄▀▄${RST}"
+	printf '%s\n' "${C2}░▀▀█░█░█░▄▄▄░▄▀▄░▄▀▄░█/█░█/█${RST}"
+	printf '%s\n' "${C3}░▀▀▀░▀░▀░░░░░▀░▀░░▀░░░▀░░░▀░${RST}"
+	printf '\n'
+	printf '%s\n' "${BLD}Samsung Galaxy Tab S8+ (Wi-Fi)${RST} — mainline Linux"
+	printf '%s\n' "${os_name:-postmarketOS} ${DIM}·${RST} kernel \\r ${DIM}·${RST} \\m"
+	printf '%s\n' "8 cores ${DIM}·${RST} ${mem_gib} GiB RAM ${DIM}·${RST} Adreno 730 ${DIM}·${RST} 2800x1752 OLED @120Hz"
+	printf '\n'
+	printf '%s\n' "wlan0 \\4{wlan0} ${DIM}·${RST} ssh user@\\4{wlan0} ${DIM}·${RST} \\n on \\l"
+	printf '\n'
+} > "$ISSUE"

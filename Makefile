@@ -72,7 +72,26 @@ kernel: sync-aports ## Build the mainline kernel package (kernel + our DTB)
 	$(PMB) checksum $(KPKG) >/dev/null
 	$(PMB) build $(KPKG) --force
 
-uniloader: toolchain ## Embed kernel+DTB+ramdisk into uniLoader
+# The zap shader is Samsung-signed and lives in NO package (proprietary,
+# never committed) — it exists only as local splits in root-build/stock-extract/
+# (originally extracted from the device's apnhlos partition, see tools/README).
+# The a7xx GPU needs it IN THE INITRAMFS (bind-time SQE load), so before every
+# boot-image build: stage it into the rootfs chroot and regenerate the
+# initramfs there. Idempotent and cheap (~8s); failing loudly here beats
+# silently shipping a GPU-less boot image.
+stage-fw: ## Stage non-redistributable GPU firmware into the rootfs chroot initramfs
+	@test -f root-build/stock-extract/a730_zap.mdt || \
+	    { echo "!! a730_zap splits missing from root-build/stock-extract/ — see tools/README §GPU"; exit 1; }
+	sudo mkdir -p pmb-work/chroot_rootfs_$(DEVICE)/lib/firmware/qcom/sm8450/gts8pwifi
+	sudo cp root-build/stock-extract/a730_zap.mdt root-build/stock-extract/a730_zap.b00 \
+	    root-build/stock-extract/a730_zap.b01 root-build/stock-extract/a730_zap.b02 \
+	    pmb-work/chroot_rootfs_$(DEVICE)/lib/firmware/qcom/sm8450/gts8pwifi/
+	$(PMB) chroot -r -- mkinitfs >/dev/null 2>&1
+	@zcat $(ROOTFS_BOOT)/initramfs | cpio -t 2>/dev/null | grep -q a730_zap.mdt \
+	    && echo ">> initramfs carries the zap" \
+	    || { echo "!! zap did NOT land in the initramfs"; exit 1; }
+
+uniloader: toolchain stage-fw ## Embed kernel+DTB+ramdisk into uniLoader
 	@set -e; \
 	APK=$$(ls -t pmb-work/packages/edge/aarch64/$(KPKG)-*.apk | head -1); \
 	echo ">> using $$APK"; \
@@ -105,7 +124,21 @@ bootimg: ## Package uniLoader into a flashable boot.img + tar
 	cd $(BUILD) && tar -H ustar -cf ../pmos_uniloader_boot.tar boot.img; \
 	ls -la ../pmos_uniloader_boot.tar
 
-boot: kernel uniloader bootimg ## Full chain: kernel -> uniLoader -> flashable tar
+# The bring-up scoreboard, numbered like the docs/ phase files. Printed at the
+# end of every successful boot-image build — partly celebration, partly a
+# reminder of what any given flash is putting at risk.
+manifest: ## Print the numbered subsystem bring-up manifest
+	@printf '\n   \033[1mSM-X800 mainline — systems online\033[0m\n'
+	@printf '   01 \033[32m✔\033[0m boot chain      ABL → uniLoader → mainline kernel\n'
+	@printf '   02 \033[32m✔\033[0m storage         UFS root, combined-image layout\n'
+	@printf '   03 \033[32m✔\033[0m input           FTS touchscreen · pogo Book Cover Keyboard\n'
+	@printf '   04 \033[32m✔\033[0m wireless        WCN6855 WiFi (ath11k) · Bluetooth\n'
+	@printf '   05 \033[32m✔\033[0m usb-host        VBUS sourcing (MAX77705 OTG)\n'
+	@printf '   06 \033[32m✔\033[0m display         native KMS: DPU/DSI/DSC · S6TUUM1 panel · DPMS\n'
+	@printf '   07 \033[32m✔\033[0m gpu             Adreno 730 · zap from apnhlos · FD730 GL ES 3.2\n'
+	@printf '   08 \033[33m…\033[0m next            compositor · audio · S Pen · sensors\n\n'
+
+boot: kernel uniloader bootimg manifest ## Full chain: kernel -> uniLoader -> flashable tar
 	@echo ">> root-build/pmos_uniloader_boot.tar ready. 'make flash' in download mode."
 
 rootfs: ## Rebuild the pmOS rootfs, preserve the image, print the new UUIDs
