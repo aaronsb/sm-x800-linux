@@ -19,6 +19,17 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 | `pogo-stm32-dump.sh` | Dump the MCU's application flash, 256 bytes per pulse. |
 | `pogo-status.sh` | Quick pogo state readout: dock, conn edges, gpio levels, rail, pin mux, 0x2a. |
 
+## After any userdata/rootfs flash
+
+Reflashing userdata wipes the on-device diagnostic packages. Re-install them:
+
+```sh
+apk add i2c-tools libgpiod evtest
+```
+
+Also note `sudo sh -c "..."` does not inherit a login PATH, so `i2cdetect` and friends
+may report "not found" even when installed. Use a login shell or an absolute path.
+
 ## Device-specific gotchas
 
 These cost real time; they are not generic Linux knowledge.
@@ -45,6 +56,11 @@ These cost real time; they are not generic Linux knowledge.
   "is it there?"** — that check is what breaks the thing it is checking. Give every
   command its own fresh pulse and let its `0x79` ACK be the proof.
 - **ACK = 0x79, NACK = 0x1F.** (Easy to get backwards; we did.)
+- **A deferred probe can break something far away.** `i2c8` could not get a GPI DMA
+  channel, sat in deferred probe, and blocked `sync_state()` on four interconnect
+  providers — which starved the NoC votes storage depends on and made the initramfs fail
+  to find subpartitions. The error named storage; the cause was a touchscreen bus. Check
+  `/sys/kernel/debug/devices_deferred` when something inexplicable is slow or missing.
 
 ## Pogo keyboard: what is already ruled out
 
