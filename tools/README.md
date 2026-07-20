@@ -40,6 +40,14 @@ may report "not found" even when installed. Use a login shell or an absolute pat
 
 These cost real time; they are not generic Linux knowledge.
 
+- **Never run two pmbootstrap operations concurrently** (e.g. a device-pkg
+  `pmb checksum`/`pmb build` while a background `make kernel` runs). They
+  share the aports work tree and interleaved runs cross-write APKBUILDs —
+  we got the kernel APKBUILD's content written into the device package (and
+  a mangled double checksum block) exactly this way. Recovery: `rm -rf` both
+  aports dirs and let `make kernel` re-sync from the overlay. Also beware
+  `... 2>&1 | tail` masking a failed build's exit code — verify the apk file
+  exists, not the pipe status.
 - **libgpiod on the device is v2.** `gpiofind` does not exist. Use `gpioinfo | grep pogo`
   and `gpioget -c gpiochip3 <line>`.
 - **gpiochip3 = `f100000.pinctrl` = TLMM** (211 lines). gpiochip0/1/2 are

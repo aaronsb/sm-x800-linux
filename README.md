@@ -1,22 +1,22 @@
 # Samsung Galaxy Tab S8+ (SM-X800) — mainline Linux / postmarketOS port
 
 Mainline Linux runs **usably** on the Galaxy Tab S8+ Wi-Fi (`gts8pwifi`, Qualcomm
-SM8450 "Waipio"): kernel 6.13-rc3, all 8 cores, framebuffer console on the panel,
-root on UFS, **WiFi with ssh**, **Bluetooth**, **touchscreen**, and the **Book
-Cover Keyboard** — you can log in at the panel and type on the real keyboard, or
-ssh in over WLAN with no cables at all.
+SM8450 "Waipio"): kernel 6.13-rc3, all 8 cores, a **native KMS display driver**
+(our S6TUUM1 panel driver — DSC, 120 Hz, real power management) on the 2800×1752
+OLED, root on UFS, **WiFi with ssh**, **Bluetooth**, **touchscreen**, and the
+**Book Cover Keyboard** — you can log in at the panel and type on the real
+keyboard, or ssh in over WLAN with no cables at all.
 
 No Galaxy Tab S8 port exists upstream — as far as we can tell this is the first.
 
-> **Status: console daily-driveable.** Boots to `samsung-gts8pwifi login:`; local
-> input (keyboard + touch) and wireless access both work. The big remaining gaps
-> are a native display driver (still simpledrm on the bootloader's framebuffer),
-> GPU, and audio.
+> **Status: console daily-driveable.** Boots to `samsung-gts8pwifi login:` on a
+> fully native display stack; local input (keyboard + touch) and wireless access
+> both work. The big remaining gaps are GPU and audio.
 
 | Component | State |
 |---|---|
 | Boot (uniLoader → mainline kernel) | ✅ working |
-| Display — framebuffer console (simpledrm @ 2800×1752) | ✅ working |
+| Display — native KMS console (msm DPU/DSI/DSC @ 2800×1752) | ✅ working |
 | CPU — all 8 cores | ✅ working |
 | UFS storage — root mounted, auto-resized | ✅ working |
 | Touchscreen (STM FTS1BA90A) | ✅ working — our `fts1ba90a` driver, orientation measured on-device |
@@ -29,7 +29,7 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 | Volume up (pm8350 gpio-keys) | 🟡 dead — cause known (spmi-gpio cell off-by-one, try cell 5), fix not yet flashed |
 | `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
-| Native panel driver (S6TUUM1 DDIC) | 🟡 first light — native KMS in splash-takeover mode, DCS backlight works; DSC 2x2 tiling + TE sync + cold-init outstanding (device-facts/display-s6tuum1.md) |
+| Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Story: device-facts/display-s6tuum1.md |
 | S Pen (Wacom EMR digitizer) | ❌ not started (separate chip, separate bus) |
 | GPU | ❌ not started |
 | Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
@@ -76,11 +76,14 @@ docs/                     Findings, runbooks, and the boot-debug history
   05-mainline-uniloader-boot.md   ★ the working recipe + every bug and fix
   06-upstreaming.md         Conventions, versioning, contributing back
   07-input-and-wireless.md  Touch + keyboard driver ports, WiFi/BT bring-up
+  08-native-display.md      Native KMS: DPU/DSC bring-up and the Anapass TCON
 pmaports-overlay/         Our postmarketOS packages (the actual port)
-  device/testing/linux-postmarketos-qcom-sm8450/   kernel pkg: DTS, config, and two
-                                                   drivers ported from Samsung's GPL
-                                                   downstream — fts1ba90a.c (touch)
-                                                   and stm32-pogo.c (keyboard)
+  device/testing/linux-postmarketos-qcom-sm8450/   kernel pkg: DTS, config, DPU DSC
+                                                   patches, and four drivers written
+                                                   from Samsung's GPL downstream —
+                                                   fts1ba90a.c (touch), stm32-pogo.c
+                                                   (keyboard), max77705-otg.c (VBUS),
+                                                   panel-samsung-s6tuum1.c (display)
   device/testing/device-samsung-gts8pwifi/         device pkg + deviceinfo
   uniloader-port/                                  our uniLoader board port
 device-facts/             Non-proprietary device documentation

@@ -34,7 +34,11 @@ compression-mode packet (type 0x07, payload 0x01):
 - **One power rail**: `panel_ldo_en` — regulator-fixed on **tlmm gpio 34**,
   enable-active-high, boot-on in stock (why the splash survives). Supply
   entry: 1.8 V nominal, post-on sleep 11 ms, pre-off sleep 15 ms.
-- **Reset: tlmm gpio 0**; **TE: tlmm gpio 86**.
+- **Reset: tlmm gpio 0**; **TE: tlmm gpio 86**; **TCON-ready: tlmm gpio 1**
+  (`samsung,tcon-rdy-gpio`). The DDIC is an Anapass TCON
+  (`samsung,anapass-power-seq`): it boots for ~330 ms after reset and must
+  not be sent commands until the ready pin goes high (downstream
+  `wait_tcon_ready`: flat 200 ms sleep + poll up to 300 ms).
 
 ## Command sequences (qcom cmd stream format: type,last,vc,ack,wait,len16,payload)
 
@@ -61,12 +65,17 @@ mdp_vsync). Config: DRM_MSM=y. Keep the splash reserved-memory and the
 clk/pd_ignore_unused bootargs for the first bring-up; retire them once the
 native driver holds the display path.
 
-## Bring-up findings (r30–r34, first light)
+## Bring-up findings (r30–r38: first light → fully working)
 
-**Working (r34, splash-takeover mode):** native KMS on msm/DPU with fbcon at
-2800x1752 — the panel displays our frames, DCS brightness control works live
-(`/sys/class/backlight/ae94000.dsi.0`). Takeover mode = prepare/enable do NOT
-touch the panel (no reset, no init); the ABL-initialized, TE-running,
+**Final state (r38): the native display path is DONE.** Cold init from our
+own reset, DSC at full 2800x1752, TE-synced kickoffs, DPMS power cycling
+(blank/unblank re-runs the whole init), and correct brightness. The r34
+"takeover mode" scaffolding is removed.
+
+**Historical (r34, splash-takeover mode):** native KMS on msm/DPU with fbcon
+at 2800x1752 — the panel displays our frames, DCS brightness control works
+live (`/sys/class/backlight/ae94000.dsi.0`). Takeover mode = prepare/enable
+do NOT touch the panel (no reset, no init); the ABL-initialized, TE-running,
 DSC-configured panel is driven as-is.
 
 **Fixed along the way:**
@@ -74,21 +83,38 @@ DSC-configured panel is driven as-is.
   2800px needs 2 LM. Patched width-aware (dpu-dsc-topology-wide-mode.patch).
 - DRM_MSM needs python3 in makedepends (register header generation).
 
-**Open bugs, fully characterized:**
-1. **2x2 tiling**: console renders as four perfectly legible copies in a 2x2
-   grid — an exact 4x geometry mismatch between DPU dual-DSC encode and panel
-   decode. prep_dsc's per-encoder split looks right at a glance; suspicion is
-   the incomplete upstream DSC rework in this snapshot (dpu_hw_dsc / merge
-   programming). Fix path: cherry-pick the completed rework from upstream
-   (our base IS next-new HEAD; no newer branch snapshot to rebase to).
-2. **TE/rd_ptr never reaches the encoder**: kickoffs run on 96ms timeouts
-   (sluggish refresh, 'prepare for kickoff' spam). TE pulses DO arrive at the
-   hw — they land on an unclaimed irq [12,2] (INTF1 tear block) while the cmd
-   encoder never registers an rd_ptr callback there. Same rework suspicion.
-3. **Cold init kills the panel**: r30-r33 all showed the bootloader's display
-   dying at our reset pulse (exactly 7 TE pulses = ABL's display counted
-   between irq-enable and our reset), and our init never revived it — while
-   command TRANSPORT is proven good (brightness DCS works). Suspects: reset
-   on tlmm gpio0 (verify it really is the panel reset / not TZ-guarded), or a
-   sequencing prerequisite ABL performs. Takeover sidesteps this entirely;
-   cold init only matters for panel power cycling / suspend.
+**All three bugs RESOLVED (r35-r38). What they actually were:**
+
+1. **2x2 tiling** (fixed r35): the snapshot's `dpu_encoder_use_dsc_merge()`
+   hardcoded num_dsc = 1 (mid-rework state), so DSC_MODE_MULTIPLEX was never
+   set: each DSC encoder was programmed for both slices (2800px) while fed
+   one (1400px), and the pingpongs never merged the halves. One backported
+   hunk of upstream b6090ffb30f3 (count the real hw_dsc blocks) fixed it —
+   the rest of the DSC path in the snapshot was already final-form.
+2. **Kickoff timeouts** (fixed r35): same bug, not a separate one. With the
+   stream misframed, pp_done never fired (ctl_start 9240 / pp_done 0);
+   with the merge fix, ctl_start == pp_done every frame and the TE rd_ptr
+   irq registers and fires normally. There never was a TE routing problem.
+3. **Cold init kills the panel** (fixed r37): the DDIC is an **Anapass TCON**
+   (stock `samsung,anapass-power-seq`) that BOOTS after reset (~330 ms
+   measured) and signals readiness on **tlmm gpio 1** (stock
+   `samsung,tcon-rdy-gpio`). Our init fired ~10 ms after reset, straight
+   into a booting TCON — every command silently void, no DSI errors.
+   Downstream sequence: VDD on → LP11 → reset → **wait TCON RDY high**
+   (flat 200 ms + poll ≤300 ms) → HS commands. Mirroring that in prepare()
+   fixed cold init outright; DPMS off/on (full panel power cycle + re-init)
+   verified working live.
+
+**The "panel randomly goes black" postscript (fixed r38):** brightness, not
+display. DBV on this DDIC is **11 bits** (downstream fills 0x51 with
+DBV[7:0] then DBV[10:8]; candela table tops out at 0x7ff = 420 nits).
+Values above 2047 wrap — writing 2048 lands as DBV 0, a perfectly black
+screen on working hardware. Byte order is DCS-standard little-endian
+(`51 d8 0d` = 0x0dd8), so use mipi_dsi_dcs_set_display_brightness (not
+`_large`, which explains r34's "very dim": its swapped bytes decoded to
+DBV ≈ 13). Driver now advertises max_brightness 0x7ff, default 0x5d8.
+
+**Still stock-only (not needed so far):** `samsung,delayed-display-on = <1>`
+(downstream sends 0x29 only after the first frames, "to avoid garbage image
+output from wakeup" — we send it in enable() and have seen no garbage);
+ESD recovery irqs; VRR runtime switching (we init 120 Hz fixed).
