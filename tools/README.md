@@ -21,11 +21,17 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 
 ## After any userdata/rootfs flash
 
-Reflashing userdata wipes the on-device diagnostic packages. Re-install them:
+Reflashing userdata wipes the on-device packages this port leans on. Re-install them:
 
 ```sh
-apk add i2c-tools libgpiod evtest
+apk add i2c-tools libgpiod evtest \
+    linux-firmware-ath11k linux-firmware-qca \
+    iw wpa_supplicant tcpdump bluez reboot-mode
 ```
+
+The firmware packages are LOAD-BEARING (WiFi and BT are dead without them), and the
+NetworkManager WiFi profile is also lost with userdata — re-add with
+`nmcli dev wifi connect <ssid> password <pw>` or the dongle comes back out.
 
 Also note `sudo sh -c "..."` does not inherit a login PATH, so `i2cdetect` and friends
 may report "not found" even when installed. Use a login shell or an absolute path.
