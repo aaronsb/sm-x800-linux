@@ -106,7 +106,16 @@
 		 * goes BLACK mid-boot, even though the kernel is still running
 		 * happily. Observed exactly that: boot log painted, then black.
 		 */
-		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=a52ecfd9-ba7c-4c8e-a80f-d6341ef93081 pmos_root_uuid=ae56a720-d465-46c7-9e43-ecbd33124aa9 pmos_rootfsopts=defaults";
+		/*
+		 * r40: clk_ignore_unused / pd_ignore_unused RETIRED. They were
+		 * required in the simpledrm era (see the note above — nothing
+		 * claimed the display clocks). Now the msm DPU/DSI/panel and
+		 * GPU drivers own their clocks and domains; keeping every
+		 * unclaimed clock/GDSC on forever costs power and masks real
+		 * PM bugs. If this boot regresses, the failing subsystem is
+		 * whatever still lacks a driver to claim its resources.
+		 */
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=a52ecfd9-ba7c-4c8e-a80f-d6341ef93081 pmos_root_uuid=ae56a720-d465-46c7-9e43-ecbd33124aa9 pmos_rootfsopts=defaults";
 
 		framebuffer: framebuffer@b8000000 {
 			compatible = "simple-framebuffer";
