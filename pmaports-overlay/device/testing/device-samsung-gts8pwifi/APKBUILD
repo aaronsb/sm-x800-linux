@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=10
+pkgrel=11
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -70,5 +70,7 @@ sha512sums="
 2cda404e2fab787e502d32f14a9039b8c42b452d91618320418e2fef99fe03c1215c8ac0b567d294452ce2e1aff0dc188d2ff6278a3ecbcd3cd645f9f99aff32  mkinitfs-mdev.files
 9c2ab35913e2bb03f1daf3e48d97f064b3dae2d4cbe7cc775b86a4f0ef2b582ecbce709c5ff60d10bca7e4ffa4217c4e9d29755bd505df4c9a14a9f34d4bfd93  netinfo-console.sh
 e5cfbbc0ad2fdc4e9fbc326099c75baea068e82ea0221f6f15ebab2393e2e6808faca20b5aafa811a05b497e75011c1708184902e6d981c7d8eff27da4ab44d8  netinfo-console.service
-0ea3879b3864281d7239bbde5624bc8653979173fee4b37e136238dbd4e6cc296733aeb2126c11cbcd8a5a972ab7c30d2ab793ce57133c4bb50aec5afacc3056  panel-blank.sh
+0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
+7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
+eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start
 "
