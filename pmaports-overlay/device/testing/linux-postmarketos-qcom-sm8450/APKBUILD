@@ -7,7 +7,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=6.13_rc3
-pkgrel=14
+pkgrel=16
 pkgdesc="Mainline kernel fork for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -85,6 +85,6 @@ package() {
 
 sha512sums="
 75fbb81e0d2b1a0a6df41a6f6d0cf923074ebd1288354fa22647648bdfcd93413efaea55dd05d07132b5ef0cca62d5f137d7454d5455ef7044ac81d8b04ff385  linux-postmarketos-qcom-sm8450-bf1d29fced6e156dd6090a9b6600a8c44259c114.tar.gz
-822dbe624fd3b75695619f1b9f6eb631de6e85f442061936ec74e23e26001fc9f278b02ccdcbae8e1a5566cc34d1e1fb117b3fa3d5c33c2b24dfb47c3f41be5a  pmos.config
-af89afa44a47aefd0daacb26d3dba6c4131f63daf3c5aadc0b201047827ea1f4b2f30f9a701475257baa3fd6439c55c60c39f096f6f5c6872923b43f2ccc916b  sm8450-samsung-gts8pwifi.dts
+3c5597f136f66a98ecd944ee98aff30bb53908ed8f467198495f73169d2953dfff4f3d6dbe8b468f86a2ddb5881a8ea8256db2778a7da41bfc85c751856623b0  pmos.config
+6e43dd74f12bd9a2a6fae224853e610684d90ddb7a22e7d19362fe118183b077ed45b167c2fb8cc75224da7450af636526085fa5efae9fe238d5868453d7e054  sm8450-samsung-gts8pwifi.dts
 "

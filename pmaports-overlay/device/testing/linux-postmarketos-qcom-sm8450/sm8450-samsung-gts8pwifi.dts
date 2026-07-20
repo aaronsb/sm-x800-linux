@@ -22,6 +22,8 @@
 #include "sm8450.dtsi"
 #include "pm8350.dtsi"
 #include "pm8350c.dtsi"
+/* pmk8350 carries the power key + resin (volume down) — see &pon_* below */
+#include "pmk8350.dtsi"
 
 / {
 	model = "Samsung Galaxy Tab S8+ (Wi-Fi)";
@@ -351,18 +353,38 @@
  * nothing here. Note that upstream torvalds has since MERGED these into one
  * node, so DTS snippets copied from mainline devices will not match this tree.
  *
- * The failure this fixes: the core's default
- *     phys = <&usb_1_hsphy>, <&usb_1_qmpphy QMP_USB43DP_USB3_PHY>;
- * references usb_1_qmpphy, which is disabled (we only want USB 2.0). dwc3
- * therefore waits forever for a phy that will never appear:
+ * Two separate things are needed for USB2-only operation:
  *
- *   dwc3 a600000.usb: Configuration mismatch. dr_mode forced to gadget   (x3)
- *   platform a600000.usb: deferred probe pending: dwc3: failed to initialize core
+ * 1. Remove usb_1_qmpphy from the CORE's phys list. Do not rely on leaving it
+ *    status="disabled": _of_phy_get() looks the provider up BEFORE checking
+ *    availability, so a disabled phy whose driver never bound returns
+ *    -EPROBE_DEFER forever rather than the graceful "Requested PHY is
+ *    disabled" -> -ENODEV path. Only dropping the phandle gives a clean NULL
+ *    and lets dwc3 probe. Symptom of getting this wrong:
+ *      platform a600000.usb: deferred probe pending: dwc3: failed to initialize core
  *
- * That blocks BOTH directions — no gadget (no USB networking, no console) and
- * no host (a plugged-in USB keyboard does not enumerate).
+ * 2. qcom,select-utmi-as-pipe-clk on the GLUE node (below). With the
+ *    SuperSpeed phy gone there is no pipe clock, so the qcom glue must be told
+ *    to clock from UTMI instead.
+ *
+ * NOTE: "dwc3 a600000.usb: Configuration mismatch. dr_mode forced to gadget"
+ * is NOT an error. With no extcon and no usb-role-switch, dwc3_get_dr_mode()
+ * degrades OTG->PERIPHERAL and logs that — i.e. it settled on gadget, which is
+ * what we want. Do NOT add usb-role-switch to "fix" it; that is only needed
+ * for dr_mode="otg".
+ *
+ * The split binding is the ONLY one this kernel supports: dwc3_qcom_of_match[]
+ * has just "qcom,dwc3", and dwc3_qcom_of_register_core() hard-fails without a
+ * "snps,dwc3" child. Bjorn Andersson's flatten series landed in v6.16, so
+ * never backport a flattened single-node USB DTS into this tree.
  */
 &usb_1 {
+	/*
+	 * Required for USB2-only: with usb_1_qmpphy out of the picture there is
+	 * no SuperSpeed pipe clock, so the glue must source from UTMI instead.
+	 */
+	qcom,select-utmi-as-pipe-clk;
+
 	status = "okay";
 };
 
@@ -403,5 +425,38 @@
 	vdda18-supply = <&vreg_l1c_1p8>;
 	vdda33-supply = <&vreg_l2b_3p07>;
 
+	status = "okay";
+};
+
+/*
+ * Debug UART. sm8450.dtsi leaves uart7 (qcom,geni-debug-uart @ 0x99c000)
+ * status="disabled", so console=ttyMSM0 in our bootargs was binding to nothing
+ * and only earlycon (which bypasses the DT node) ever produced output. This is
+ * the same UART the stock DTB names in stdout-path.
+ */
+&uart7 {
+	status = "okay";
+};
+
+/*
+ * Buttons. These are the ONLY input devices that work today (no touchscreen
+ * driver, pogo keyboard unported, USB dead), and they are free: mainline
+ * already has the drivers, pmk8350.dtsi already declares the nodes with the
+ * same interrupts the stock DTB uses — they are merely disabled by default.
+ *
+ * This matters more than it looks: the pmOS initramfs polls
+ *   iskey KEY_LEFTCTRL KEY_VOLUMEDOWN -> debug shell
+ * so a working volume-down key gives an interactive boot-time debug shell
+ * with no new driver code at all.
+ *
+ * Volume UP is a separate gpio-keys line on pm8350 gpio6 (stock DTB); not
+ * wired up yet since volume-down alone unlocks the debug shell.
+ */
+&pon_pwrkey {
+	status = "okay";
+};
+
+&pon_resin {
+	linux,code = <KEY_VOLUMEDOWN>;
 	status = "okay";
 };
