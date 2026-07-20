@@ -19,6 +19,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/linux-event-codes.h>
+#include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 
 #include "sm8450.dtsi"
@@ -344,6 +345,25 @@
 			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
+
+		/*
+		 * Touchscreen rails, from the stock DTB's touchscreen@49:
+		 *   tsp_avdd_ldo-supply -> pm8350c L7C, 3.3 V,     regulator-boot-on
+		 *   tsp_io_ldo-supply   -> pm8350c L8C, 1.848 V,   regulator-boot-on
+		 * Parent supplies are already declared above (l7 via
+		 * vdd-l3-l4-l5-l7-l13, l8 via vdd-l2-l8).
+		 */
+		vreg_l7c_3p3: ldo7 {
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_l8c_1p8: ldo8 {
+			regulator-min-microvolt = <1848000>;
+			regulator-max-microvolt = <1848000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
 	};
 };
 
@@ -418,6 +438,20 @@
 		drive-strength = <2>;
 		bias-disable;
 		output-high;
+	};
+
+	/*
+	 * Touchscreen attention/IRQ line. Transcribed from the stock
+	 * fts1ba90a_attn_irq state (the "on_state"); stock also has an
+	 * fts1ba90a_attn_irq_suspend variant that only swaps bias-disable for
+	 * bias-pull-down, which we do not need without runtime PM.
+	 * No drive-strength is set in stock either.
+	 */
+	ts_irq_default: ts-irq-default-state {
+		pins = "gpio46";		/* sec,irq_gpio */
+		function = "gpio";
+		bias-disable;
+		input-enable;
 	};
 };
 
@@ -644,6 +678,91 @@
 
 &qupv3_id_2 {
 	status = "okay";
+};
+
+/*
+ * Touchscreen: STMicro FingerTip FTS1BA90A.
+ *
+ * IT IS ON I2C, NOT SPI. The kernel-src fts_spi/ directory is a red herring —
+ * every SPI SE in the stock DTB is status="disabled", including qupv3_se8_spi
+ * which is the SAME serial engine at 0xa80000 in its other mode.
+ *
+ * Bus identification is solid: stock qupv3_se8_i2c is i2c@a80000 with
+ * interrupts <0 0x161 4>; 0x161 = 353, and mainline sm8450.dtsi i2c8 is
+ * i2c@a80000 with GIC_SPI 353. Same controller. Its wrapper is qupv3_id_1
+ * (geniqup@ac0000), which MUST be enabled too — enabling the leaf alone
+ * silently does nothing (the QUP trap that cost us a boot cycle on i2c18).
+ *
+ * Stock node (stock-fdt.dts:14647) is compatible = "stm,fts_touch", a Samsung
+ * downstream binding. We use mainline's st,stmfts instead: drivers/input/
+ * touchscreen/stmfts.c. That is plausible rather than certain — the FingerTip
+ * command ABI is near-identical between stmfts.c and ST's reference lib in
+ * kernel-src (FIFO read opcodes 0x85/0x86/0x87, 8-byte events, sense-control
+ * 0x92-0x95, event IDs 0x03/0x04/0x05), but the string FTS1BA90A appears
+ * nowhere in kernel-src, so we cannot prove this exact part speaks it. Cheap
+ * to find out: if stmfts probes and reports events, we are done with zero C.
+ *
+ * Property renames from stock to the mainline binding:
+ *   sec,irq_gpio <&tlmm 46>  -> interrupts (mainline needs a real interrupt;
+ *                               downstream synthesised one with gpio_to_irq)
+ *   tsp_avdd_ldo-supply      -> avdd-supply  (pm8350c L7C, 3.3 V)
+ *   tsp_io_ldo-supply        -> vdd-supply   (pm8350c L8C, 1.848 V)
+ *   sec,max_coords <1752 2800> -> touchscreen-size-x/y
+ *
+ * Deliberately NOT set: touch-key-connected. Stock has no touch-key device
+ * (the only "touchkey" hit is a haptics boost-table label), and setting it
+ * would drag stmfts into its ledvdd regulator path for no reason.
+ */
+&qupv3_id_1 {
+	status = "okay";
+};
+
+&i2c8 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	touchscreen@49 {
+		compatible = "st,stmfts";
+		reg = <0x49>;
+
+		/*
+		 * Stock declares no interrupts property at all, only
+		 * sec,irq_gpio = <&tlmm 46 0>. That 0 is a GPIO flag, NOT an
+		 * IRQ trigger type, so it is no evidence of polarity.
+		 * LEVEL_LOW is the FingerTip convention — if the driver probes
+		 * but never receives events, try IRQ_TYPE_EDGE_FALLING here
+		 * before suspecting anything else.
+		 */
+		interrupt-parent = <&tlmm>;
+		interrupts = <46 IRQ_TYPE_LEVEL_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_irq_default>;
+
+		avdd-supply = <&vreg_l7c_3p3>;
+		vdd-supply = <&vreg_l8c_1p8>;
+
+		/*
+		 * Touch reports PORTRAIT 1752x2800 while our framebuffer scans
+		 * out LANDSCAPE 2800x1752, so the axes must be swapped.
+		 *
+		 * Whether an axis also needs INVERTING is not derivable from
+		 * the stock DTB — it carries no invert/flip property, because
+		 * Android handled orientation above the driver. The sibling
+		 * Wacom digitizer on the same glass has wacom,invert =
+		 * <0 1 1>, which in Samsung's convention hints at
+		 * touchscreen-inverted-y, but that is a guess about a field
+		 * order we cannot verify here.
+		 *
+		 * So: start with the swap only. Read raw coordinates with
+		 * evtest and derive the truth in one pass, rather than
+		 * stacking two unverified transforms and guessing which is
+		 * wrong. Add touchscreen-inverted-x/-y once measured.
+		 */
+		touchscreen-size-x = <1752>;
+		touchscreen-size-y = <2800>;
+		touchscreen-swapped-x-y;
+	};
 };
 
 &uart7 {
