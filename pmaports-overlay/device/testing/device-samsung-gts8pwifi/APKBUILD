@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=5
+pkgrel=6
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -13,9 +13,10 @@ depends="
 	postmarketos-base
 	mkbootimg
 	android-tools
+	mdev-conf
 "
 makedepends="devicepkg-dev"
-source="deviceinfo"
+source="deviceinfo mkinitfs-mdev.files"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -23,6 +24,12 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+
+	# Add /lib/mdev/persistent-storage to the first-stage initramfs.
+	# Without it mdev cannot create /dev/disk/by-uuid symlinks and the
+	# initramfs can never find root by UUID. See the file for details.
+	install -Dm644 "$srcdir"/mkinitfs-mdev.files \
+		"$pkgdir"/usr/share/mkinitfs/files/50-gts8pwifi-mdev.files
 }
 
 sha512sums="

@@ -1,0 +1,21 @@
+# Pull the mdev persistent-storage helper into the FIRST-STAGE initramfs.
+#
+# pmOS's own initramfs mdev.conf (installed by 00-initramfs-base.files as
+# /etc/mdev.conf) contains rules like:
+#
+#     sd[a-z].*   0:0 0660 */lib/mdev/persistent-storage
+#
+# ...but nothing in mkinitfs's file lists ever copies /lib/mdev/ in. On a
+# device whose rootfs lives on UFS that is fatal: every block device that
+# appears makes mdev try to exec a helper that is not there
+#
+#     /lib/mdev/persistent-storage: not found
+#
+# so /dev/disk/by-uuid/ and /dev/disk/by-partlabel/ are never populated.
+# find_root_partition() resolves root BY UUID, finds nothing, falls back to
+# scanning for "subpartitions", finds none of those either, and drops to the
+# debug shell with "ERROR: failed to mount subpartitions!" — while the disk
+# was present and healthy the whole time.
+#
+# The file itself comes from the mdev-conf package (see depends in APKBUILD).
+/lib/mdev/persistent-storage

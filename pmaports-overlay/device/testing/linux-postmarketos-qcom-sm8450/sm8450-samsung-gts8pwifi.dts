@@ -54,10 +54,20 @@
 		 * would silently inherit the stock vendor_boot cmdline
 		 * (console=null) and be blind again.
 		 *
-		 * pmos_root_uuid must match the rootfs actually flashed to
-		 * userdata. NOTE: re-running `pmb install` regenerates the
-		 * rootfs with a NEW UUID — if you reflash userdata, update
-		 * this to match or the initramfs will not find root.
+		 * LAYOUT: userdata holds the COMBINED pmOS image (`pmb install`
+		 * WITHOUT --split), i.e. a GPT containing BOTH pmOS_boot and
+		 * pmOS_root as "subpartitions". That is required: the pmOS
+		 * initramfs does mount_subpartitions -> wait_boot_partition ->
+		 * mount_boot_partition, so it needs a pmOS_boot too, and our
+		 * real boot partition is occupied by uniLoader. Flashing only
+		 * the --split -root.img leaves no boot partition and the
+		 * initramfs falls to the debug shell.
+		 *
+		 * Both UUIDs must match the image actually flashed to userdata.
+		 * NOTE: re-running `pmb install` regenerates them — read the
+		 * fresh values out of boot-deploy's cmdline:
+		 *   strings <pmb-work>/chroot_rootfs_<device>/boot/vendor_boot.img
+		 *     | grep pmos_root_uuid
 		 */
 		/*
 		 * clk_ignore_unused / pd_ignore_unused are REQUIRED to keep the
@@ -69,7 +79,7 @@
 		 * goes BLACK mid-boot, even though the kernel is still running
 		 * happily. Observed exactly that: boot log painted, then black.
 		 */
-		bootargs = "earlycon=qcom_geni,0x0099c000 console=ttyMSM0,115200n8 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_root_uuid=a4348702-8917-409c-8b8d-ae162bbcc969 pmos_rootfsopts=defaults";
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=ttyMSM0,115200n8 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=445f80fa-3d7e-453b-be65-295d313daea2 pmos_root_uuid=b11df588-98c4-4914-9d2d-63398d07074f pmos_rootfsopts=defaults";
 
 		framebuffer: framebuffer@b8000000 {
 			compatible = "simple-framebuffer";
@@ -127,6 +137,22 @@
 		      <0x8 0x00000000 0x0 0x3ab00000>,
 		      <0x8 0x40000000 0x1 0x40000000>,
 		      <0x8 0x3b100000 0x0 0x01e00000>;
+	};
+
+	/*
+	 * Pogo/Book-Cover-Keyboard STM32 supply. Stock models this as a plain
+	 * GPIO-switched fixed regulator (not a PMIC rail): gpio70, active high.
+	 * regulator-always-on for now so the MCU is powered during the
+	 * i2cdetect probe — once the pogo driver is ported it will claim this
+	 * as stm32_vddo-supply and always-on can be dropped.
+	 */
+	pogo_vddo: regulator-pogo-vddo {
+		compatible = "regulator-fixed";
+		regulator-name = "pogo_vddo";
+		gpio = <&tlmm 70 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+		regulator-boot-on;
 	};
 
 	vph_pwr: regulator-vph-pwr {
@@ -245,6 +271,47 @@
 
 &tlmm {
 	gpio-reserved-ranges = <36 4>; /* SPI (not linked to anything) */
+
+	/*
+	 * Hold the pogo STM32 out of reset. Stock pinctrl drives nrst
+	 * (gpio97) output-HIGH; with no driver bound here nothing would drive
+	 * it, the MCU would sit in reset, and it would never ACK on I2C —
+	 * a false negative for the i2cdetect probe below.
+	 */
+	pogo_nrst_hog: pogo-nrst-hog {
+		gpio-hog;
+		gpios = <97 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "pogo-stm32-nrst";
+	};
+};
+
+/*
+ * Book Cover Keyboard (EF-DT970 / EF-DT730 "Slim") — PROBE ONLY, no driver yet.
+ *
+ * The keyboard does not talk to the SoC directly: an STM32 MCU inside the
+ * tablet scans the keyboard matrix and exposes a proprietary Samsung/ST
+ * register protocol at I2C 0x2a on QUP se18. It is NOT HID-over-I2C, so no
+ * existing mainline driver can bind — the downstream driver
+ * (kernel-src/drivers/input/sec_input/stm32/, "stm,stm32_pogo", V3 variant)
+ * has to be ported.
+ *
+ * All values below are CONFIRMED from the stock DTB. Mainline i2c18 is
+ * verified to be the same controller: stock reg 0x88c000 == mainline
+ * i2c@88c000, and stock sda/scl gpio68/gpio69 == mainline qup_i2c18_data_clk.
+ * Stock firmware name is "stm32_gts8p.bin", i.e. this exact device.
+ *
+ * Enabling just the bus + power lets us run `i2cdetect -y 18` and look for
+ * 0x2a (or 0x51 if the MCU sits in its bootloader) — a zero-cost go/no-go
+ * before writing any driver code.
+ */
+&i2c18 {
+	/*
+	 * Stock sets no qcom,clk-freq-out, so the controller default applies.
+	 * Start at 100 kHz: slowest and most forgiving for a detection probe.
+	 */
+	clock-frequency = <100000>;
+	status = "okay";
 };
 
 /*
@@ -273,17 +340,49 @@
 	vdda-pll-supply = <&vreg_l6b_1p2>;
 };
 
+/*
+ * USB — gadget only, USB 2.0 only.
+ *
+ * IMPORTANT: sm8450-mainline's sm8450.dtsi uses the SPLIT dwc3 binding —
+ *   usb_1:      usb@a6f8800  "qcom,sm8450-dwc3"  (Qualcomm glue/wrapper)
+ *   usb_1_dwc3: usb@a600000  "snps,dwc3"         (the actual core)
+ * Properties like dr_mode / phys / maximum-speed belong on the CORE node.
+ * Setting them on the wrapper (as sm8450-samsung-r0q.dts does) silently does
+ * nothing here. Note that upstream torvalds has since MERGED these into one
+ * node, so DTS snippets copied from mainline devices will not match this tree.
+ *
+ * The failure this fixes: the core's default
+ *     phys = <&usb_1_hsphy>, <&usb_1_qmpphy QMP_USB43DP_USB3_PHY>;
+ * references usb_1_qmpphy, which is disabled (we only want USB 2.0). dwc3
+ * therefore waits forever for a phy that will never appear:
+ *
+ *   dwc3 a600000.usb: Configuration mismatch. dr_mode forced to gadget   (x3)
+ *   platform a600000.usb: deferred probe pending: dwc3: failed to initialize core
+ *
+ * That blocks BOTH directions — no gadget (no USB networking, no console) and
+ * no host (a plugged-in USB keyboard does not enumerate).
+ */
 &usb_1 {
-	/* Keep USB 2.0 only for now */
-	qcom,select-utmi-as-pipe-clk;
+	status = "okay";
+};
 
+&usb_1_dwc3 {
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
-	/* Remove USB3 phy */
+
+	/* USB 2.0 only — do not reference the disabled SuperSpeed phy. */
 	phys = <&usb_1_hsphy>;
 	phy-names = "usb2-phy";
 
-	status = "okay";
+	/*
+	 * Do NOT /delete-node/ ports here: usb_1_qmpphy's port@1 endpoint has
+	 * remote-endpoint = <&usb_1_dwc3_ss>, and dtc validates phandles even
+	 * for disabled nodes, so removing the label fails the build with
+	 *   ERROR (phandle_references): ... non-existent node or label
+	 *   "usb_1_dwc3_ss"
+	 * Leaving the graph in place is harmless — the kernel ignores the link
+	 * because usb_1_qmpphy is disabled and we no longer list it in phys.
+	 */
 };
 
 &usb_1_hsphy {
