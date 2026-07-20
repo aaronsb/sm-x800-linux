@@ -149,16 +149,23 @@ sync-overlay: ## Copy packages OUT of the live pmaports tree back into the repo
 	cp $(UL_SRC)/configs/gts8pwifi_defconfig \
 	   pmaports-overlay/uniloader-port/configs/
 
-lint: ## Validate the DTS compiles and APKBUILDs parse
-	@echo "== dtc syntax check =="
-	@gcc -E -nostdinc -I reference/dts -undef -D__DTS__ -x assembler-with-cpp \
-	    $(OVERLAY)/$(KPKG)/sm8450-samsung-gts8pwifi.dts 2>/dev/null \
-	    | dtc -I dts -O dtb -o /dev/null 2>&1 \
-	    | grep -v "^$$" || echo "  (dtc: no output — note includes need the kernel tree)"
+lint: ## Validate packaging + DTS bracket balance (full DTS check = `make kernel`)
 	@echo "== APKBUILD shell syntax =="
 	@for f in $(OVERLAY)/*/APKBUILD; do bash -n $$f && echo "  ok: $$f"; done
 	@echo "== deviceinfo shell syntax =="
 	@bash -n $(OVERLAY)/$(DPKG)/deviceinfo && echo "  ok: deviceinfo"
+	@echo "== DTS sanity =="
+	@# The DTS #includes sm8450.dtsi and dt-bindings headers that only exist
+	@# inside the kernel tree, so it CANNOT be compiled standalone. The real
+	@# syntax check is the kernel build (`make kernel`), which compiles the dtb.
+	@# Here we only catch the cheap structural mistakes.
+	@f=$(OVERLAY)/$(KPKG)/sm8450-samsung-gts8pwifi.dts; \
+	 ob=$$(tr -cd '{' < $$f | wc -c); cb=$$(tr -cd '}' < $$f | wc -c); \
+	 if [ "$$ob" = "$$cb" ]; then echo "  ok: braces balanced ($$ob)"; \
+	 else echo "  FAIL: brace mismatch ($$ob open vs $$cb close)"; exit 1; fi; \
+	 grep -q 'compatible = "samsung,gts8pwifi"' $$f \
+	   && echo "  ok: compatible present" || { echo "  FAIL: compatible missing"; exit 1; }
+	@echo "  note: authoritative DTS validation is 'make kernel' (compiles the dtb)"
 
 dtb-dump: ## Decompile the DTB we last built (inspect what the kernel sees)
 	@APK=$$(ls -t pmb-work/packages/edge/aarch64/$(KPKG)-*.apk | head -1); \
