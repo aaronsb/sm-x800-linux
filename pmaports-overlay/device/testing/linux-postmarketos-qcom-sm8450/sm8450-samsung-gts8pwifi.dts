@@ -45,6 +45,20 @@
 	qcom,msm-id = <0x1c9 0x10000>, <0x1e2 0x10000>;
 	qcom,board-id = <0x10008 0x04>;
 
+	/*
+	 * qcom_geni_serial derives its tty line number from these aliases and
+	 * fails probe with "Invalid line -19" without one. That silently broke
+	 * BOTH uarts: uart7 (debug, has been failing since bring-up — earlycon
+	 * worked because it bypasses the tty layer) and uart20, whose failed
+	 * probe also held four interconnect providers' sync_state() hostage
+	 * (the i2c8 lesson again) and kept the wcn6855-bt serdev child from
+	 * ever binding.
+	 */
+	aliases {
+		serial0 = &uart7;
+		serial1 = &uart20;
+	};
+
 	chosen {
 		#address-cells = <2>;
 		#size-cells = <2>;
