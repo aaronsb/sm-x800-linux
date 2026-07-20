@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=7
+pkgrel=8
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -17,7 +17,7 @@ depends="
 "
 subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service"
+source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service panel-blank.sh"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -37,6 +37,12 @@ package() {
 	# every change. Drop this once ssh or serial access is reliable.
 	install -Dm755 "$srcdir"/netinfo-console.sh \
 		"$pkgdir"/usr/bin/netinfo-console
+
+	# Manual OLED burn-in protection. There is no backlight or DSI driver
+	# here (DRM_MSM=n, simpledrm owns the panel), so "screen off" means
+	# zeroing the framebuffer. See the script header.
+	install -Dm755 "$srcdir"/panel-blank.sh \
+		"$pkgdir"/usr/bin/panel-blank
 }
 
 systemd() {
@@ -50,4 +56,8 @@ systemd() {
 
 sha512sums="
 9d7b12654e6d46a6a374a56484ae61146b655138b60b8a3f5b702db72907a45c3cefd2748fc3e7cd035d293684c8155abb5ce724a5e9738ab97536fb311a5344  deviceinfo
+2cda404e2fab787e502d32f14a9039b8c42b452d91618320418e2fef99fe03c1215c8ac0b567d294452ce2e1aff0dc188d2ff6278a3ecbcd3cd645f9f99aff32  mkinitfs-mdev.files
+9c2ab35913e2bb03f1daf3e48d97f064b3dae2d4cbe7cc775b86a4f0ef2b582ecbce709c5ff60d10bca7e4ffa4217c4e9d29755bd505df4c9a14a9f34d4bfd93  netinfo-console.sh
+e5cfbbc0ad2fdc4e9fbc326099c75baea068e82ea0221f6f15ebab2393e2e6808faca20b5aafa811a05b497e75011c1708184902e6d981c7d8eff27da4ab44d8  netinfo-console.service
+0ea3879b3864281d7239bbde5624bc8653979173fee4b37e136238dbd4e6cc296733aeb2126c11cbcd8a5a972ab7c30d2ab793ce57133c4bb50aec5afacc3056  panel-blank.sh
 "

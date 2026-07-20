@@ -22,6 +22,9 @@ ROOTFS_BOOT := pmb-work/chroot_rootfs_$(DEVICE)/boot
 UL_SRC      := reference/uniLoader
 UL_CHROOT   := pmb-work/chroot_native/home/pmos/uniLoader
 BUILD       := root-build/uniloader
+# The combined rootfs image (pmOS_boot + pmOS_root in one GPT) lives at the
+# top of root-build/, NOT under $(BUILD) — see docs/05 section 8b.
+COMBINED    := root-build/combined.img
 STAGE       := .stage
 CROSS       := aarch64-alpine-linux-musl-
 # Stock boot.img values — Samsung enforces anti-rollback (download screen: AR:2)
@@ -29,6 +32,7 @@ OS_VERSION  := 12.0.0
 OS_PATCH    := 2025-04
 
 .PHONY: help deps kernel uniloader bootimg boot flash flash-full flash-rootfs \
+        sparse flash-all flash-stay restore-android sync-aports uuids \
         rootfs sync-overlay lint clean distclean device-status dtb-dump
 
 help: ## Show available targets
@@ -102,10 +106,29 @@ bootimg: ## Package uniLoader into a flashable boot.img + tar
 boot: kernel uniloader bootimg ## Full chain: kernel -> uniLoader -> flashable tar
 	@echo ">> root-build/pmos_uniloader_boot.tar ready. 'make flash' in download mode."
 
-rootfs: ## Rebuild the pmOS rootfs + initramfs (regenerates root UUID!)
-	@echo ">> WARNING: this regenerates the rootfs with a NEW UUID."
-	@echo ">> If you reflash userdata you MUST update pmos_root_uuid in the DTS."
-	$(PMB) install --split --password 147147
+rootfs: ## Rebuild the pmOS rootfs, preserve the image, print the new UUIDs
+	@echo ">> WARNING: this regenerates the rootfs with NEW UUIDs."
+	@echo ">> NO --split: userdata must hold the COMBINED image (GPT with"
+	@echo ">> pmOS_boot AND pmOS_root) because uniLoader owns the real boot"
+	@echo ">> partition. See docs/05 section 8b."
+	$(PMB) install --password 147147
+	@set -e; \
+	SRC=pmb-work/chroot_native/home/pmos/rootfs/$(DEVICE).img; \
+	echo ">> preserving $$SRC -> $(COMBINED)"; \
+	echo ">> (pmb build --force DELETES it, and the kernel build needs its UUIDs)"; \
+	sudo cp $$SRC $(COMBINED); \
+	sudo chown $$(id -u):$$(id -g) $(COMBINED); \
+	$(MAKE) --no-print-directory uuids
+
+uuids: ## Print the rootfs UUIDs that must be baked into the DTS bootargs
+	@set -e; \
+	VB=pmb-work/chroot_rootfs_$(DEVICE)/boot/vendor_boot.img; \
+	echo ">> UUIDs from $$VB — these MUST match /chosen/bootargs in the DTS:"; \
+	sudo strings $$VB | grep -o 'pmos_boot_uuid=[0-9a-f-]*' | head -1; \
+	sudo strings $$VB | grep -o 'pmos_root_uuid=[0-9a-f-]*' | head -1; \
+	echo ">> current DTS says:"; \
+	grep -o 'pmos_boot_uuid=[0-9a-f-]*' $(OVERLAY)/$(KPKG)/sm8450-samsung-gts8pwifi.dts; \
+	grep -o 'pmos_root_uuid=[0-9a-f-]*' $(OVERLAY)/$(KPKG)/sm8450-samsung-gts8pwifi.dts
 
 ## ---------------------------------------------------------------------------
 ## Flash  (device must be in a FRESHLY ENTERED download mode)
@@ -121,13 +144,26 @@ flash: ## Flash boot.img only (the usual iteration loop)
 flash-full: ## Flash boot + STOCK vendor_boot + vbmeta
 	odin4 -a root-build/pmos_uniloader_ap.tar
 
-flash-rootfs: ## Flash the rootfs to userdata (MUST be a sparse image)
+sparse: ## Build the sparse userdata tar (odin rejects raw ext4 at ~3%)
 	@set -e; \
-	RAW=pmb-work/chroot_native/home/pmos/rootfs/$(DEVICE)-root.img; \
+	RAW=$(COMBINED); \
+	test -f $$RAW || { echo "!! $$RAW missing — run 'make rootfs' first"; exit 1; }; \
 	mkdir -p $(BUILD)/sparse; \
+	echo ">> img2simg $$RAW (raw ext4 dies at ~3% with 'Fail request receive 3')"; \
 	img2simg $$RAW $(BUILD)/sparse/userdata.img; \
-	cd $(BUILD)/sparse && tar -H ustar -cf ../../pmos_userdata_sparse.tar userdata.img; \
-	cd -; odin4 -u root-build/pmos_userdata_sparse.tar
+	cd $(BUILD)/sparse && tar -H ustar -cf ../../pmos_userdata_sparse.tar userdata.img
+
+flash-rootfs: sparse ## Flash the rootfs to userdata (MUST be a sparse image)
+	odin4 -u root-build/pmos_userdata_sparse.tar
+
+flash-all: sparse ## Flash boot AND userdata in ONE odin session (no reboot between)
+	@echo ">> single session: -a boot + -u userdata, no intermediate reboot"
+	odin4 -a root-build/pmos_uniloader_boot.tar \
+	      -u root-build/pmos_userdata_sparse.tar
+
+flash-stay: sparse ## Like flash-all, but come back up in download mode for the next round
+	odin4 -a root-build/pmos_uniloader_boot.tar \
+	      -u root-build/pmos_userdata_sparse.tar --redownload
 
 restore-android: ## Put stock/KernelSU Android back (recovery escape hatch)
 	odin4 -a root-build/android_restore.tar -u root-build/vbmeta_disabled.tar
@@ -165,6 +201,17 @@ lint: ## Validate packaging + DTS bracket balance (full DTS check = `make kernel
 	 else echo "  FAIL: brace mismatch ($$ob open vs $$cb close)"; exit 1; fi; \
 	 grep -q 'compatible = "samsung,gts8pwifi"' $$f \
 	   && echo "  ok: compatible present" || { echo "  FAIL: compatible missing"; exit 1; }
+	@# A stray '*/' inside a comment silently ENDS that comment, and the rest
+	@# of the prose then parses as device tree. This has bitten us twice now,
+	@# both times from pasting a shell glob like /sys/.../<star>/file into a
+	@# comment. Catch it here instead of 3 minutes into a kernel build.
+	@f=$(OVERLAY)/$(KPKG)/sm8450-samsung-gts8pwifi.dts; \
+	 awk '/\/\*/{c=1} c&&/\*\//{n=gsub(/\*\//,"&"); if(n>1||/[^ \t].*\*\/.+/){ \
+	   if ($$0 !~ /^[ \t]*\*\/[ \t]*$$/ && $$0 !~ /\*\/[ \t]*$$/) \
+	     {print "  FAIL: stray */ mid-line at line " NR ": " $$0; bad=1}} c=0} \
+	   END{exit bad?1:0}' $$f \
+	   && echo "  ok: no stray */ inside comments" \
+	   || { echo "  (a comment is closed early — that text will parse as DTS)"; exit 1; }
 	@echo "  note: authoritative DTS validation is 'make kernel' (compiles the dtb)"
 
 dtb-dump: ## Decompile the DTB we last built (inspect what the kernel sees)

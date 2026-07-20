@@ -17,6 +17,8 @@
 
 /dts-v1/;
 
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 
 #include "sm8450.dtsi"
@@ -165,6 +167,72 @@
 		regulator-boot-on;
 	};
 
+	/*
+	 * Volume UP + pogo attach detection.
+	 *
+	 * Volume up is the odd one out on this device: power and volume-DOWN
+	 * live in the pmk8350 PON block (&pon_pwrkey / &pon_resin), but stock
+	 * wires volume-UP as a plain gpio-keys line on a pm8350 PMIC GPIO,
+	 * active LOW with a pull-up. Stock DTB:
+	 *     vol_up { gpios = <0x540 0x06 0x01>; linux,code = <0x73>; }
+	 * where phandle 0x540 is qcom,pm8350-gpio @0x8800 and 0x01 = ACTIVE_LOW.
+	 *
+	 * INDEX CAVEAT: qcom spmi-gpio numbering is a classic off-by-one trap.
+	 * We mirror stock exactly — cell value 6 paired with pinctrl pins
+	 * "gpio6" — because that pairing is what ships and works on the real
+	 * device with the same pinctrl-spmi-gpio driver. If volume-up turns out
+	 * dead on-device, try cell 5 and cell 7 before suspecting anything else;
+	 * the pin is confirmed correct, only the index convention is in doubt.
+	 */
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		/*
+		 * gpio-keys is also the consumer that applies the pogo pinctrl
+		 * states. That is mildly abusive — those pins belong to the
+		 * (unported) STM32 driver, not to a key input device — but a
+		 * pinctrl state with no consumer is simply never programmed, and
+		 * during bring-up we need these pins muxed and biased correctly
+		 * to trust anything we read off them. In particular nrst must be
+		 * driven high here, since it is no longer a gpio-hog (see &tlmm).
+		 * Move these to the pogo node when that driver is ported.
+		 */
+		pinctrl-0 = <&vol_up_default>,
+			    <&pogo_conn_default>,
+			    <&pogo_attn_default>,
+			    <&pogo_nrst_default>;
+
+		key-volume-up {
+			label = "Volume Up";
+			gpios = <&pm8350_gpios 6 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_VOLUMEUP>;
+			debounce-interval = <15>;
+			wakeup-source;
+		};
+
+		/*
+		 * DEBUG AID, not final hardware description.
+		 *
+		 * tlmm gpio59 is the pogo connection-detect line (stock
+		 * "stm32,irq_conn", active high, both-edge IRQ). The downstream
+		 * driver samples it at probe (connect_state, 1 = attached) and
+		 * uses it to gate the STM32's VDDO rail entirely.
+		 *
+		 * Exposing it as an EV_SW switch means `evtest` shows attach and
+		 * detach live, which answers the single most important open
+		 * question about the keyboard (see the &i2c18 comment) without
+		 * needing the real driver. Remove this line when the pogo driver
+		 * is ported — it will want to own gpio59 as an interrupt.
+		 */
+		switch-pogo-attach {
+			label = "Pogo Keyboard Attached";
+			gpios = <&tlmm 59 GPIO_ACTIVE_HIGH>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_DOCK>;
+			debounce-interval = <30>;
+		};
+	};
+
 	vph_pwr: regulator-vph-pwr {
 		compatible = "regulator-fixed";
 		regulator-name = "vph_pwr";
@@ -283,28 +351,129 @@
 	gpio-reserved-ranges = <36 4>; /* SPI (not linked to anything) */
 
 	/*
-	 * Hold the pogo STM32 out of reset. Stock pinctrl drives nrst
-	 * (gpio97) output-HIGH; with no driver bound here nothing would drive
-	 * it, the MCU would sit in reset, and it would never ACK on I2C —
-	 * a false negative for the i2cdetect probe below.
+	 * nrst (gpio97) is deliberately NOT a gpio-hog any more.
+	 *
+	 * A hog is claimed by the kernel for the lifetime of the system, which
+	 * means userspace cannot request the line at all — gpioset/libgpiod get
+	 * -EBUSY. That blocked the single most promising bring-up experiment:
+	 * the downstream driver does not merely hold nrst high, it TOGGLES it
+	 * (stm32_pogo_cmd_v3.c: gpio_direction_output(mcu_nrst, pogo_enable),
+	 * and stm32_reset_control() from the flip/hall notifier). If Samsung's
+	 * ABL leaves the STM32 wedged, a reset PULSE is what recovers it, and a
+	 * statically-high hog can never produce one.
+	 *
+	 * Instead the pin is driven high by pinctrl (pogo_nrst_default, config
+	 * output-high — same as stock's nrst_gpio state), which establishes the
+	 * known-good boot state without claiming the GPIO. The line then stays
+	 * free for:
+	 *     gpiofind pogo-stm32-nrst          # or gpioinfo to locate it
+	 *     gpioset <chip> 97=0; sleep 0.05; gpioset <chip> 97=1
+	 * followed by a rescan of i2c-0.
+	 *
+	 * Named here so it is identifiable in gpioinfo output.
 	 */
-	pogo_nrst_hog: pogo-nrst-hog {
-		gpio-hog;
-		gpios = <97 GPIO_ACTIVE_HIGH>;
+	gpio-line-names =
+		"", "", "", "", "", "", "", "", "", "",		/*  0-9  */
+		"", "", "", "", "", "", "", "", "", "",		/* 10-19 */
+		"", "", "", "", "", "", "", "", "", "",		/* 20-29 */
+		"", "", "", "", "", "", "", "", "", "",		/* 30-39 */
+		"", "", "", "", "", "", "", "", "", "",		/* 40-49 */
+		"", "", "", "", "", "", "", "", "",		/* 50-58 */
+		"pogo-conn-detect",				/* 59 */
+		"", "", "", "", "", "", "", "", "", "",		/* 60-69 */
+		"pogo-vddo-en",					/* 70 */
+		"pogo-stm32-attn",				/* 71 */
+		"", "", "", "", "", "", "", "", "",		/* 72-80 */
+		"", "", "", "", "", "", "", "", "", "",		/* 81-90 */
+		"", "", "", "", "", "",				/* 91-96 */
+		"pogo-stm32-nrst",				/* 97 */
+		"",						/* 98 */
+		"pogo-stm32-swclk";				/* 99 */
+
+	/*
+	 * Pogo pinctrl, transcribed from the stock DTB (nodes attn_irq,
+	 * conn_irq, nrst_gpio — all tlmm, all drive-strength 2, bias-disable).
+	 * Without these the pins keep whatever mux/bias the bootloader left,
+	 * which for conn-detect means the level we read may be meaningless.
+	 */
+	pogo_conn_default: pogo-conn-default-state {
+		pins = "gpio59";		/* stm32,irq_conn */
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		input-enable;
+	};
+
+	pogo_attn_default: pogo-attn-default-state {
+		pins = "gpio71";		/* stm32,irq_gpio (attn) */
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		input-enable;
+	};
+
+	pogo_nrst_default: pogo-nrst-default-state {
+		pins = "gpio97";		/* stm32,mcu_nrst */
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
 		output-high;
-		line-name = "pogo-stm32-nrst";
+	};
+};
+
+/*
+ * Volume-up pin on the pm8350. Stock state (key_vol_up_default):
+ *     pins = "gpio6"; function = "normal";
+ *     input-enable; bias-pull-up; power-source = <1>;
+ */
+&pm8350_gpios {
+	vol_up_default: vol-up-default-state {
+		pins = "gpio6";
+		function = "normal";
+		power-source = <1>;
+		bias-pull-up;
+		input-enable;
 	};
 };
 
 /*
  * Book Cover Keyboard (EF-DT970 / EF-DT730 "Slim") — PROBE ONLY, no driver yet.
  *
- * The keyboard does not talk to the SoC directly: an STM32 MCU inside the
- * tablet scans the keyboard matrix and exposes a proprietary Samsung/ST
- * register protocol at I2C 0x2a on QUP se18. It is NOT HID-over-I2C, so no
- * existing mainline driver can bind — the downstream driver
+ * The keyboard does not talk to the SoC directly: an STM32 MCU scans the
+ * keyboard matrix and exposes a proprietary Samsung/ST register protocol at
+ * I2C 0x2a on QUP se18. It is NOT HID-over-I2C, so no existing mainline
+ * driver can bind — the downstream driver
  * (kernel-src/drivers/input/sec_input/stm32/, "stm,stm32_pogo", V3 variant)
  * has to be ported.
+ *
+ * WHERE THE MCU LIVES. The stock DTB names the accessory explicitly
+ * (stm32,model_name = "EF-DT970", "EF-DT730" — the detachable Book Cover
+ * Keyboard), and the driver gates the MCU's entire VDDO rail on conn-detect:
+ * stm32_keyboard_start() enables the regulator, stm32_keyboard_stop() cuts
+ * it, both driven off the gpio59 connect state sampled at probe.
+ *
+ * RULED OUT: "the cover simply was not attached". It WAS physically
+ * attached during the scans that found nothing at 0x2a/0x51 (confirmed on
+ * the device). So the silence is not an absent-accessory artefact — there
+ * is something real to fix. Remaining suspects, in the order worth testing:
+ *
+ *   1. nrst never pulsed. Downstream TOGGLES gpio97 rather than holding it
+ *      (see &tlmm); a wedged MCU needs an actual reset edge. gpio97 is now
+ *      userspace-controllable specifically so this can be tried.
+ *   2. Pin mux. gpio68/69 must be muxed to the QUP function, not plain
+ *      gpio, or the controller registers fine and drives nothing. Verify
+ *      via the tlmm pinmux-pins file under /sys/kernel/debug/pinctrl (or
+ *      just run tools/pogo-diag.sh, which does it). NOTE: do not write a
+ *      glob with a star-slash in it here — that closes this comment.
+ *   3. conn-detect reading wrong. Until this revision no pinctrl state was
+ *      applied to gpio59 at all, so its bias/mux was whatever ABL left —
+ *      any level read off it was untrustworthy. Now exposed as EV_SW/
+ *      SW_DOCK (see gpio-keys above): `evtest` should show it toggle as
+ *      the cover is attached and detached.
+ *   4. The MCU may hold SDA/SCL low or need the VDDO rail power-cycled
+ *      rather than left always-on.
+ *
+ * Diagnostic helper covering all of the above: tools/pogo-diag.sh.
  *
  * All values below are CONFIRMED from the stock DTB. Mainline i2c18 is
  * verified to be the same controller: stock reg 0x88c000 == mainline
