@@ -93,6 +93,14 @@ The keyboard runs a connection state machine (`Disconnected_sequence_proc`) and 
 keyboard only exposes it after reaching the connected state (12,158 probes in 20s, zero
 ACKs).
 
-**Open lead:** the firmware contains `SLPI I2C CLK Rlease!!!`, suggesting the Sensor Low
-Power Island may be the keyboard's real conversation partner rather than the application
-processor. If so, that reframes the port entirely.
+**DEAD LEAD — do not chase.** The firmware string `SLPI I2C CLK Rlease!!!` looked like
+evidence that the Sensor Low Power Island was the keyboard's real conversation partner.
+It is not. That string sits next to `STM32G0 I2C CLK Rlease!!!` in the same blob — the
+pair is a two-peripheral bus-recovery log, and "SLPI" is the MCU's own legacy name for
+its host-facing I2C port, inherited from the Tab S7. `grep -rni slpi` across all 13 files
+in `kernel-src/drivers/input/sec_input/stm32/` returns zero.
+
+**Actual open lead:** `"CON Low -> 1Wire 3.3V defance code!!"` in the same firmware — a
+1-Wire detect path on the connect line. Note that simply driving CON low from the host
+was already tested and did nothing (held 2s and 7s, pulsed 100ms and 3x500ms), so if
+there is something here it needs real 1-Wire signalling, not a level change.
