@@ -782,24 +782,27 @@
 
 		/*
 		 * Touch reports PORTRAIT 1752x2800 while our framebuffer scans
-		 * out LANDSCAPE 2800x1752, so the axes must be swapped.
+		 * out LANDSCAPE 2800x1752, so the axes are swapped.
 		 *
-		 * Whether an axis also needs INVERTING is not derivable from
-		 * the stock DTB — it carries no invert/flip property, because
-		 * Android handled orientation above the driver. The sibling
-		 * Wacom digitizer on the same glass has wacom,invert =
-		 * <0 1 1>, which in Samsung's convention hints at
-		 * touchscreen-inverted-y, but that is a guess about a field
-		 * order we cannot verify here.
+		 * The inversion is MEASURED, not guessed: with swap-only, taps
+		 * on an upper-left -> lower-right diagonal produced
+		 * anti-correlated coordinates (upper-left = x 21..92 with
+		 * y 1611..1691 near the 1751 max, lower-right = x 2047 with
+		 * y 484), i.e. exactly one axis flipped, with the visual top
+		 * edge at the RAW X maximum.
 		 *
-		 * So: start with the swap only. Read raw coordinates with
-		 * evtest and derive the truth in one pass, rather than
-		 * stacking two unverified transforms and guessing which is
-		 * wrong. Add touchscreen-inverted-x/-y once measured.
+		 * Why inverted-X for a vertical flip: drivers/input/
+		 * touchscreen.c applies inversion BEFORE the swap, so the
+		 * flags name RAW (portrait) axes. Raw X (the 1752 axis)
+		 * becomes the on-screen vertical after the swap, and raw X is
+		 * the axis that read backwards. (The Wacom sibling's
+		 * wacom,invert = <0 1 1> "y" hint refers to Samsung's
+		 * post-rotation frame — same physical flip, different name.)
 		 */
 		touchscreen-size-x = <1752>;
 		touchscreen-size-y = <2800>;
 		touchscreen-swapped-x-y;
+		touchscreen-inverted-x;
 	};
 };
 
