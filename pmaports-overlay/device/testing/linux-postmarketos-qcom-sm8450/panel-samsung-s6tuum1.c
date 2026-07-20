@@ -35,6 +35,7 @@ struct s6tuum1 {
 	struct mipi_dsi_device *dsi;
 	struct drm_dsc_config dsc;
 	struct gpio_desc *reset_gpio;
+	struct gpio_desc *tcon_rdy_gpio;
 	struct regulator *vdd;
 };
 
@@ -51,6 +52,37 @@ static void s6tuum1_reset(struct s6tuum1 *priv)
 	usleep_range(5000, 6000);
 	gpiod_set_value_cansleep(priv->reset_gpio, 1);
 	usleep_range(10000, 11000);
+}
+
+/*
+ * This DDIC is an Anapass TCON (stock: samsung,anapass-power-seq). It
+ * BOOTS after reset — on the order of 200 ms — and signals readiness on
+ * a dedicated pin (stock: samsung,tcon-rdy-gpio, tlmm 1). Commands sent
+ * before then land in a booting TCON and are silently lost, which is
+ * exactly what r36 looked like: sleep-out/PPS/init all void, panel dark,
+ * no DSI errors. Downstream (wait_tcon_ready) sleeps a flat 200 ms and
+ * then polls up to 300 ms more; mirror that.
+ */
+static void s6tuum1_wait_tcon_ready(struct s6tuum1 *priv)
+{
+	struct device *dev = &priv->dsi->dev;
+	int i;
+
+	if (!priv->tcon_rdy_gpio) {
+		/* downstream fallback: flat 60 ms */
+		usleep_range(60000, 61000);
+		return;
+	}
+
+	msleep(200);
+	for (i = 0; i < 300; i++) {
+		if (gpiod_get_value_cansleep(priv->tcon_rdy_gpio))
+			break;
+		usleep_range(1000, 1100);
+	}
+
+	dev_info(dev, "tcon_rdy=%d after %d ms\n",
+		 gpiod_get_value_cansleep(priv->tcon_rdy_gpio), 200 + i);
 }
 
 /*
@@ -129,8 +161,6 @@ static int s6tuum1_on(struct s6tuum1 *priv)
  * DSC-configured (same PPS); if frames display, the entire DPU/DSI/DSC
  * pipeline is proven and only the cold-init path is at fault.
  */
-static bool takeover = true;
-
 static int s6tuum1_prepare(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
@@ -140,12 +170,10 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 	if (ret < 0)
 		return ret;
 
-	if (takeover)
-		return 0;
-
 	/* stock supply entry: 11 ms post-on */
 	usleep_range(11000, 12000);
 	s6tuum1_reset(priv);
+	s6tuum1_wait_tcon_ready(priv);
 
 	ret = s6tuum1_on(priv);
 	if (ret < 0) {
@@ -161,9 +189,6 @@ static int s6tuum1_enable(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
-
-	if (takeover)
-		return 0;	/* ABL already has the display on */
 
 	mipi_dsi_dcs_set_display_on_multi(&ctx);
 	mipi_dsi_msleep(&ctx, 17);	/* stock display_on wait */
@@ -227,7 +252,11 @@ static int s6tuum1_bl_update_status(struct backlight_device *bl)
 {
 	struct mipi_dsi_device *dsi = bl_get_data(bl);
 
-	return mipi_dsi_dcs_set_display_brightness_large(dsi,
+	/*
+	 * LSB first: stock gamma_mode2 sends "51 d8 0d" for 0x0dd8, i.e.
+	 * the DCS-standard little-endian order, not the _large variant.
+	 */
+	return mipi_dsi_dcs_set_display_brightness(dsi,
 					backlight_get_brightness(bl));
 }
 
@@ -241,9 +270,14 @@ s6tuum1_create_backlight(struct mipi_dsi_device *dsi)
 	struct device *dev = &dsi->dev;
 	const struct backlight_properties props = {
 		.type = BACKLIGHT_RAW,
-		/* stock gamma_mode2 normal brightness cmd: 0x51 0x0dd8 */
-		.brightness = 0x0dd8,
-		.max_brightness = 0x0fff,
+		/*
+		 * DBV is 11 bits on this DDIC: downstream fills 0x51 with
+		 * DBV[7:0] + DBV[10:8] and the candela table tops out at
+		 * 0x7ff (420 nits). Values above 2047 wrap — 2048 reads
+		 * back as DBV 0, i.e. a black screen.
+		 */
+		.brightness = 0x5d8,
+		.max_brightness = 0x7ff,
 	};
 
 	return devm_backlight_device_register(dev, dev_name(dev), dev, dsi,
@@ -269,6 +303,12 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 	if (IS_ERR(priv->reset_gpio))
 		return dev_err_probe(dev, PTR_ERR(priv->reset_gpio),
 				     "failed to get reset gpio\n");
+
+	priv->tcon_rdy_gpio = devm_gpiod_get_optional(dev, "tcon-rdy",
+						      GPIOD_IN);
+	if (IS_ERR(priv->tcon_rdy_gpio))
+		return dev_err_probe(dev, PTR_ERR(priv->tcon_rdy_gpio),
+				     "failed to get tcon-rdy gpio\n");
 
 	priv->dsi = dsi;
 	mipi_dsi_set_drvdata(dsi, priv);

@@ -1071,6 +1071,8 @@
 
 		vdd-supply = <&panel_ldo>;
 		reset-gpios = <&tlmm 0 GPIO_ACTIVE_HIGH>;
+		/* Anapass TCON boot-done pin (stock samsung,tcon-rdy-gpio) */
+		tcon-rdy-gpios = <&tlmm 1 GPIO_ACTIVE_HIGH>;
 
 		pinctrl-names = "default";
 		pinctrl-0 = <&disp_te_default>;
