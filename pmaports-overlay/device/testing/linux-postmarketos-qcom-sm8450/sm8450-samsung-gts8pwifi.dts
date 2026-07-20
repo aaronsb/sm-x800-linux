@@ -776,8 +776,10 @@
 	 * HOST mode, for use with an EXTERNALLY POWERED USB-C dongle/hub.
 	 *
 	 * Plain host mode failed earlier because the tablet must supply 5V VBUS
-	 * and nothing switches it (no Type-C/pmic_glink described), so a
-	 * bus-powered keyboard never powered up. A SELF-POWERED hub sidesteps
+	 * and nothing switches it. NOTE: VBUS on this device is NOT pmic_glink —
+	 * it is the MAX77705 companion PMIC's OTG boost (charger @ i2c5 0x69,
+	 * CHG_CNFG_00 mode field; see the &i2c5 comment). Until that regulator
+	 * is driven, a SELF-POWERED hub sidesteps
 	 * that entirely: it powers its own downstream ports and presents its
 	 * D+ pull-up to us, so enumeration can proceed without us sourcing VBUS.
 	 * That makes USB ethernet (r8152/ax88179/cdc_ether, all built as
@@ -877,6 +879,27 @@
  * into "failed to mount subpartitions".
  */
 &gpi_dma1 {
+	status = "okay";
+};
+
+/*
+ * i2c5 hosts the MAX77705 Samsung companion PMIC (stock qupv3_se5_i2c):
+ * top/sys @0x66 (the DT reg), MUIC @0x25, charger @0x69, fuel gauge @0x36.
+ * This is the chip that owns Type-C, VBUS sourcing (OTG boost) and charging.
+ * Bus enabled first for register-level verification from userspace; the
+ * OTG-boost regulator driver comes next (docs/07 open threads). Same QUP
+ * plumbing rules as i2c8: wrapper (qupv3_id_0) and GPI DMA (gpi_dma0) must
+ * both be enabled or the leaf silently never probes.
+ */
+&gpi_dma0 {
+	status = "okay";
+};
+
+&qupv3_id_0 {
+	status = "okay";
+};
+
+&i2c5 {
 	status = "okay";
 };
 
