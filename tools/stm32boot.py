@@ -216,6 +216,11 @@ def main():
             addr = int(sys.argv[3], 0) if len(sys.argv) > 3 else APP_FLASH_BASE
             bl.go(addr)
             print(f"  GO 0x{addr:08x} ACKed -- MCU jumped to application")
+        elif what == "readraw":
+            addr = int(sys.argv[3], 0)
+            ln = int(sys.argv[4], 0)
+            data = bl.read_memory(addr, ln)
+            os.write(1, data)
         elif what == "read":
             addr = int(sys.argv[3], 0) if len(sys.argv) > 3 else APP_FLASH_BASE
             ln = int(sys.argv[4], 0) if len(sys.argv) > 4 else 256
