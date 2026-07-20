@@ -7,7 +7,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=6.13_rc3
-pkgrel=22
+pkgrel=23
 pkgdesc="Mainline kernel fork for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -36,6 +36,7 @@ source="
 	pmos.config
 	sm8450-samsung-gts8pwifi.dts
 	fts1ba90a.c
+	stm32-pogo.c
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -58,6 +59,13 @@ prepare() {
 	cp "$srcdir"/fts1ba90a.c drivers/input/touchscreen/fts1ba90a.c
 	if ! grep -q "fts1ba90a.o" drivers/input/touchscreen/Makefile; then
 		echo 'obj-y += fts1ba90a.o' >> drivers/input/touchscreen/Makefile
+	fi
+
+	# Pogo Book Cover Keyboard: same obj-y staging pattern. The keyboard
+	# dir is in the build through CONFIG_INPUT_KEYBOARD=y (gpio-keys).
+	cp "$srcdir"/stm32-pogo.c drivers/input/keyboard/stm32-pogo.c
+	if ! grep -q "stm32-pogo.o" drivers/input/keyboard/Makefile; then
+		echo 'obj-y += stm32-pogo.o' >> drivers/input/keyboard/Makefile
 	fi
 
 	# Generate .config: tree defconfig + sm8450 fragment, then merge the
@@ -96,6 +104,7 @@ package() {
 sha512sums="
 75fbb81e0d2b1a0a6df41a6f6d0cf923074ebd1288354fa22647648bdfcd93413efaea55dd05d07132b5ef0cca62d5f137d7454d5455ef7044ac81d8b04ff385  linux-postmarketos-qcom-sm8450-bf1d29fced6e156dd6090a9b6600a8c44259c114.tar.gz
 302a44076792af0d9fb28361cb887247e2eb7d94e50ae43d84b4a33b38e4e4be217470faa18ffd1e121a5831e829b364011f6e121e0dc58e37990ef2f6499247  pmos.config
-4e1eb55caddf2abee50cfb588d939f7b7c45c97973214ac2c4839e7ac5ef85f9e434337073c0f302c1da3327ae3af7daa7b7c8cf6283f95d7015827f52df846e  sm8450-samsung-gts8pwifi.dts
+51e80735ee155596d3f35d1478044f3e62c8e2f4dd7dcf8a95dceb685f71fa034f51e0e3aaf63874466658d0554cdce573e0f12c205bb0dfe2b250314a4939ae  sm8450-samsung-gts8pwifi.dts
 b1ba6dfd005f084f98eb8d2fe1e8dd82377712f39d2422997b70eaffa9c6b54846c04b43839fc2d462734ef510390bc8e7f7a8f00ffc43ba632011839b1fc5c1  fts1ba90a.c
+21b8cee9898b47c0e21389305b8f02172edba9028f9447f03aae5af68b7f48ac0976f3377959b9a3923888d2a9e00e36eef55081372fb7cc29d6eff08764ee39  stm32-pogo.c
 "
