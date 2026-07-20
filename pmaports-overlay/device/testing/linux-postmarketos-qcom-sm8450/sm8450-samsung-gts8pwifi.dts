@@ -700,24 +700,21 @@
  * silently does nothing (the QUP trap that cost us a boot cycle on i2c18).
  *
  * Stock node (stock-fdt.dts:14647) is compatible = "stm,fts_touch", a Samsung
- * downstream binding. We use mainline's st,stmfts instead: drivers/input/
- * touchscreen/stmfts.c. That is plausible rather than certain — the FingerTip
- * command ABI is near-identical between stmfts.c and ST's reference lib in
- * kernel-src (FIFO read opcodes 0x85/0x86/0x87, 8-byte events, sense-control
- * 0x92-0x95, event IDs 0x03/0x04/0x05), but the string FTS1BA90A appears
- * nowhere in kernel-src, so we cannot prove this exact part speaks it. Cheap
- * to find out: if stmfts probes and reports events, we are done with zero C.
+ * downstream binding. We drive it with our own fts1ba90a.c port (staged into
+ * drivers/input/touchscreen/ by the kernel APKBUILD), compatible
+ * "st,fts1ba90a". Mainline's st,stmfts was tried first and is RULED OUT:
+ * FTS1BA90A speaks 16-byte events with opcodes 0x60/0x61 (read events) /
+ * 0x10/0x11 (sense on/off), stmfts expects 8-byte events and 0x85/0x86/
+ * 0x92/0x93 — it failed to probe with -110 (no interrupt after sense-on,
+ * because the command meant something else to this firmware).
  *
- * Property renames from stock to the mainline binding:
+ * Property renames from stock to our binding:
  *   sec,irq_gpio <&tlmm 46>  -> interrupts (mainline needs a real interrupt;
  *                               downstream synthesised one with gpio_to_irq)
  *   tsp_avdd_ldo-supply      -> avdd-supply  (pm8350c L7C, 3.3 V)
  *   tsp_io_ldo-supply        -> vdd-supply   (pm8350c L8C, 1.848 V)
  *   sec,max_coords <1752 2800> -> touchscreen-size-x/y
  *
- * Deliberately NOT set: touch-key-connected. Stock has no touch-key device
- * (the only "touchkey" hit is a haptics boost-table label), and setting it
- * would drag stmfts into its ledvdd regulator path for no reason.
  */
 /*
  * GPI DMA engine for QUP wrapper 1. i2c8 declares
@@ -763,16 +760,8 @@
 	status = "okay";
 
 	touchscreen@49 {
-		compatible = "st,stmfts";
+		compatible = "st,fts1ba90a";
 		reg = <0x49>;
-		/*
-		 * BISECT HISTORY: with this node enabled AND vreg_l7c pinned at
-		 * a fixed 3.3 V, boot broke -- the initramfs stopped finding
-		 * subpartitions within its 10 s window. Disabling this node and
-		 * widening l7c to 3.0-3.3 V restored boot, but that changed two
-		 * things at once. This build re-enables the node with the
-		 * widened rail still in place, which isolates the probe.
-		 */
 
 		/*
 		 * Stock declares no interrupts property at all, only

@@ -7,7 +7,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=6.13_rc3
-pkgrel=20
+pkgrel=21
 pkgdesc="Mainline kernel fork for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -35,6 +35,7 @@ source="
 	$pkgname-$_commit.tar.gz::https://github.com/sm8450-mainline/linux/archive/$_commit.tar.gz
 	pmos.config
 	sm8450-samsung-gts8pwifi.dts
+	fts1ba90a.c
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -48,6 +49,15 @@ prepare() {
 			arch/arm64/boot/dts/qcom/Makefile; then
 		echo 'dtb-$(CONFIG_ARCH_QCOM) += sm8450-samsung-gts8pwifi.dtb' \
 			>> arch/arm64/boot/dts/qcom/Makefile
+	fi
+
+	# Touchscreen: our fts1ba90a port (see the file's header comment for
+	# why mainline stmfts cannot drive this part). Built unconditionally
+	# via obj-y so no Kconfig surgery is needed; the touchscreen dir is
+	# already in the build through CONFIG_INPUT_TOUCHSCREEN=y.
+	cp "$srcdir"/fts1ba90a.c drivers/input/touchscreen/fts1ba90a.c
+	if ! grep -q "fts1ba90a.o" drivers/input/touchscreen/Makefile; then
+		echo 'obj-y += fts1ba90a.o' >> drivers/input/touchscreen/Makefile
 	fi
 
 	# Generate .config: tree defconfig + sm8450 fragment, then merge the
@@ -85,6 +95,7 @@ package() {
 
 sha512sums="
 75fbb81e0d2b1a0a6df41a6f6d0cf923074ebd1288354fa22647648bdfcd93413efaea55dd05d07132b5ef0cca62d5f137d7454d5455ef7044ac81d8b04ff385  linux-postmarketos-qcom-sm8450-bf1d29fced6e156dd6090a9b6600a8c44259c114.tar.gz
-3c5597f136f66a98ecd944ee98aff30bb53908ed8f467198495f73169d2953dfff4f3d6dbe8b468f86a2ddb5881a8ea8256db2778a7da41bfc85c751856623b0  pmos.config
-59076fd2df0a7ee1f8183b7ffd760947e2b60bf319324c305c7e77d390b5a5ba705ff2a30dfbdcbc2099a39ff1bd07b7a68bf367a59d95dce915d1fc90e5f9c4  sm8450-samsung-gts8pwifi.dts
+302a44076792af0d9fb28361cb887247e2eb7d94e50ae43d84b4a33b38e4e4be217470faa18ffd1e121a5831e829b364011f6e121e0dc58e37990ef2f6499247  pmos.config
+b795f7fc09a1a229647c309966ae630208b48de3eca9e3983c6436506a45b8ddc706ea84b39d5bc930be6da9f3256443f5cda374e1a72fc7c2dcadd4de67a7b9  sm8450-samsung-gts8pwifi.dts
+b1ba6dfd005f084f98eb8d2fe1e8dd82377712f39d2422997b70eaffa9c6b54846c04b43839fc2d462734ef510390bc8e7f7a8f00ffc43ba632011839b1fc5c1  fts1ba90a.c
 "
