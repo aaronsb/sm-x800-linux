@@ -1,15 +1,17 @@
 # Samsung Galaxy Tab S8+ (SM-X800) — mainline Linux / postmarketOS port
 
-Mainline Linux **boots to a login prompt** on the Galaxy Tab S8+ Wi-Fi
-(`gts8pwifi`, Qualcomm SM8450 "Waipio"): kernel 6.13-rc3, all 8 cores, framebuffer
-console on the panel, root on UFS, and **remote shell access over USB ethernet**.
+Mainline Linux runs **usably** on the Galaxy Tab S8+ Wi-Fi (`gts8pwifi`, Qualcomm
+SM8450 "Waipio"): kernel 6.13-rc3, all 8 cores, framebuffer console on the panel,
+root on UFS, **WiFi with ssh**, **Bluetooth**, **touchscreen**, and the **Book
+Cover Keyboard** — you can log in at the panel and type on the real keyboard, or
+ssh in over WLAN with no cables at all.
 
 No Galaxy Tab S8 port exists upstream — as far as we can tell this is the first.
 
-> **Status: bring-up, remotely usable.** It boots to `samsung-gts8pwifi login:` and
-> you can ssh in. Local input is still the weak point — no touchscreen and no
-> keyboard yet, so the panel is effectively an output-only console. Not a daily
-> driver, but no longer a blind one.
+> **Status: console daily-driveable.** Boots to `samsung-gts8pwifi login:`; local
+> input (keyboard + touch) and wireless access both work. The big remaining gaps
+> are a native display driver (still simpledrm on the bootloader's framebuffer),
+> GPU, and audio.
 
 | Component | State |
 |---|---|
@@ -17,26 +19,33 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 | Display — framebuffer console (simpledrm @ 2800×1752) | ✅ working |
 | CPU — all 8 cores | ✅ working |
 | UFS storage — root mounted, auto-resized | ✅ working |
+| Touchscreen (STM FTS1BA90A) | ✅ working — our `fts1ba90a` driver, orientation measured on-device |
+| Book Cover Keyboard (pogo STM32 @ i2c 0x2a) | ✅ working — our `stm32-pogo` driver (keyboard, caps LED; touchpad supported but untested, the Slim cover has none) |
+| WiFi (WCN6855, ath11k on PCIe0) | ✅ working — NetworkManager autoconnects at boot; primary ssh path |
+| Bluetooth (WCN6855 on uart20) | ✅ controller up, firmware loads (`hci0`); pairing not yet exercised |
 | USB host (xhci) | ✅ working |
-| USB ethernet + DHCP + **ssh** | ✅ working (Realtek RTL8153 dongle) |
+| USB ethernet + DHCP + ssh | ✅ working (Realtek RTL8153 dongle) — now the fallback, not the lifeline |
 | Power key, volume down (PMIC PON) | ✅ working |
-| Volume up (pm8350 gpio-keys) | 🟡 wired, test pending |
+| Volume up (pm8350 gpio-keys) | 🟡 dead — cause known (spmi-gpio cell off-by-one, try cell 5), fix not yet flashed |
+| `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
-| Book Cover Keyboard (pogo STM32 @ i2c 0x2a) | 🟡 bus + power up, MCU silent — under investigation |
-| Touchscreen (STM FTS1BA90A) | ❌ no mainline driver |
 | Native panel driver (S6TUUM1 DDIC) | ❌ not started |
-| WiFi / audio / GPU | ❌ not started |
+| S Pen (Wacom EMR digitizer) | ❌ not started (separate chip, separate bus) |
+| GPU | ❌ not started |
+| Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
+| Sensors (incl. auto-rotate) | ❌ architecturally blocked — SLPI-owned I3C with no mainline path |
 
 ### Getting a shell
 
-There is no working local keyboard yet, so the practical path in is USB ethernet:
-plug a **self-powered** USB-C dongle with an ethernet port into the tablet. The
-device DHCPs on boot and a bring-up service prints the interface, MAC, address and
-gateway straight to the panel whenever they change — read the IP off the screen and
-ssh to it.
+**Local:** attach the Book Cover Keyboard and log in at the panel like any laptop.
 
-Holding **volume-down from initial power-on** drops into the postmarketOS initramfs
-debug shell, which renders an on-screen keyboard (osk-sdl) on the framebuffer.
+**Wireless:** the device autoconnects to its saved WiFi network at boot
+(NetworkManager profile) and a bring-up service prints interface/MAC/IP/gateway to
+the panel whenever they change — read the address off the screen and ssh to it.
+
+**Fallback:** a self-powered USB-C ethernet dongle still works the same way, and
+holding **volume-down from initial power-on** drops into the postmarketOS initramfs
+debug shell (on-screen keyboard via osk-sdl).
 
 ## Why this is unusual
 
@@ -66,8 +75,12 @@ docs/                     Findings, runbooks, and the boot-debug history
   04-mainline-prep.md       Pivot to mainline; visibility keys from the stock DTB
   05-mainline-uniloader-boot.md   ★ the working recipe + every bug and fix
   06-upstreaming.md         Conventions, versioning, contributing back
+  07-input-and-wireless.md  Touch + keyboard driver ports, WiFi/BT bring-up
 pmaports-overlay/         Our postmarketOS packages (the actual port)
-  device/testing/linux-postmarketos-qcom-sm8450/   kernel pkg + our DTS + config
+  device/testing/linux-postmarketos-qcom-sm8450/   kernel pkg: DTS, config, and two
+                                                   drivers ported from Samsung's GPL
+                                                   downstream — fts1ba90a.c (touch)
+                                                   and stm32-pogo.c (keyboard)
   device/testing/device-samsung-gts8pwifi/         device pkg + deviceinfo
   uniloader-port/                                  our uniLoader board port
 device-facts/             Non-proprietary device documentation
@@ -113,6 +126,9 @@ These cost us many cycles — see `docs/05` §5:
   through boot attempts fails with `FAIL! (Auth)`. Worse, the *"an error has occurred
   while updating the device software"* screen enumerates as `04e8:685d` and `odin4 -l`
   finds it, but it will not accept a flash — "fake download mode".
+  With the keyboard working, the cleanest entry is now: `sudo shutdown now` at the
+  device, unplug power, hold both volume keys, plug the cable. (`reboot-mode
+  download` from Linux does not work yet — see the status table.)
 - **userdata must be a sparse image** (`img2simg`). A raw ext4 image fails at ~3%
   with `Fail request receive 3`.
 - **userdata must hold the *combined* image**, i.e. `pmb install` *without*
