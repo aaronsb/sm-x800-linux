@@ -1,11 +1,22 @@
 # Phase 3 — MAINLINE LINUX BOOTS (uniLoader path)
 
-**Status: 2026-07-19 — mainline Linux 6.13-rc3 boots on the SM-X800 with a readable
-console on the panel and a postmarketOS debug shell. 8 cores up. The blindness that
-killed the downstream effort (docs/03) is BROKEN.**
+**Status: 2026-07-19 — mainline Linux 6.13-rc3 boots the SM-X800 all the way to a
+postmarketOS login prompt (`samsung-gts8pwifi login:`). 8 cores, readable console on
+the panel, UFS storage, root mounted, systemd stage 2, getty.**
 
-Remaining: rootfs does not mount yet (UFS was not enabled — fix built, see §7), and
-there is no input device yet (see §8).
+The port works. What remains is peripheral bring-up — above all **input**: there is
+no working keyboard, touchscreen, or USB, so the login prompt cannot be typed at.
+See §8 and §10.
+
+Boot chain that works:
+```
+ABL -> "press power to confirm unverified firmware boot" (MUST press Power)
+    -> uniLoader (own simplefb console; prints its banner)
+    -> mainline kernel + OUR untouched DTB
+    -> initramfs: UFS enumerates -> mdev makes /dev/disk/by-uuid
+    -> subpartitions inside userdata (pmOS_boot + pmOS_root) -> root mounted
+    -> jump_init_2nd -> systemd -> getty -> LOGIN PROMPT
+```
 
 ---
 
@@ -195,6 +206,12 @@ DTB exposes no UFS reset line for this tablet).
 
 ## 8. Known gaps / next up
 
+- **USB enumerates nothing, in EITHER direction.** Key finding: **host mode cannot
+  work** until Type-C / `pmic_glink` is described in the DTS — in host mode the tablet
+  must supply 5V VBUS to the peripheral and nothing switches it, so a bus-powered
+  keyboard never gets power regardless of dwc3. Gadget mode (PC supplies VBUS) is the
+  achievable path; currently `&usb_1_dwc3 { dr_mode = "peripheral"; phys =
+  <&usb_1_hsphy>; }` with the SS phy left out, and still nothing enumerates.
 - **Input: nothing at all.** Log shows `couldn't open /dev/input/: No such file or
   directory` repeatedly. Touchscreen (STM `stm_ts`) has no mainline driver; the
   magnetic Book Cover Keyboard is unported. So the debug shell is currently
@@ -207,6 +224,39 @@ DTB exposes no UFS reset line for this tablet).
   `qcom-sm8450-lpass-lpi-pinctrl`, `1dfa000.crypto` sync_state.
 - `DRM_MSM=n` currently (deliberate, so simpledrm owns the panel). Real display stack
   and the S6TUUM1 panel driver are much later work.
+
+## 8b. Partition layout — userdata must hold the COMBINED image
+
+This is not optional and cost a lot of debugging. The pmOS stage-1 init does:
+
+```sh
+mount_subpartitions      # find a partition containing exactly 2 subpartitions
+wait_boot_partition      # needs pmOS_boot
+mount_boot_partition /boot
+extract_initramfs_extra /boot/initramfs-extra
+jump_init_2nd
+```
+
+So pmOS needs **both** a `pmOS_boot` and a `pmOS_root`. Our real boot partition is
+occupied by uniLoader, so both must live *inside* userdata. That means:
+
+- Use `pmb install` **WITHOUT `--split`** → produces one `<device>.img` containing a
+  GPT with pmOS_boot + pmOS_root. Flash that (sparse!) to userdata.
+- Flashing only the `--split` `-root.img` leaves no pmOS_boot; even once root is found
+  the initramfs stalls at `wait_boot_partition` and drops to the debug shell.
+
+**UUIDs:** every `pmb install` regenerates them, and ours are baked into the DTS
+bootargs (uniLoader sets no cmdline). After any install, read the fresh values from
+boot-deploy and update the DTS or the initramfs will not find root:
+
+```sh
+strings <pmb-work>/chroot_rootfs_<device>/boot/vendor_boot.img | grep pmos_root_uuid
+```
+
+**Build-order trap:** `pmb build --force` zaps chroots and DELETES the rootfs image in
+`chroot_native/home/pmos/rootfs/`. Since the kernel needs UUIDs that only exist after
+`pmb install`, the order must be: install → copy the .img out to safety → read UUIDs →
+patch DTS → build kernel → build uniLoader. Preserve the initramfs too.
 
 ## 9. Package/versions at time of writing
 

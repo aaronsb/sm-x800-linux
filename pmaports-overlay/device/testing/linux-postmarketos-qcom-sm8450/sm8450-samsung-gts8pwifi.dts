@@ -367,6 +367,19 @@
 };
 
 &usb_1_dwc3 {
+	/*
+	 * PERIPHERAL (gadget) mode.
+	 *
+	 * Host mode was tried so a USB keyboard could be used for input, and it
+	 * cannot work here: in host mode the tablet has to supply 5V VBUS to the
+	 * peripheral, and VBUS is switched by the Type-C/PMIC (pmic_glink),
+	 * which this DTS does not describe. A bus-powered keyboard therefore
+	 * never gets power and never enumerates, no matter what dwc3 does.
+	 *
+	 * In peripheral mode the HOST supplies VBUS, so no Type-C support is
+	 * needed — which also makes this the path to USB networking / SSH.
+	 * Revisit "host"/"otg" only after pmic_glink + Type-C are described.
+	 */
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
 
