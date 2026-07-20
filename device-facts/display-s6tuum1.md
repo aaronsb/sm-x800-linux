@@ -60,3 +60,35 @@ HDK), panel node with vdd-supply/reset-gpios, TE pinctrl (gpio 86,
 mdp_vsync). Config: DRM_MSM=y. Keep the splash reserved-memory and the
 clk/pd_ignore_unused bootargs for the first bring-up; retire them once the
 native driver holds the display path.
+
+## Bring-up findings (r30–r34, first light)
+
+**Working (r34, splash-takeover mode):** native KMS on msm/DPU with fbcon at
+2800x1752 — the panel displays our frames, DCS brightness control works live
+(`/sys/class/backlight/ae94000.dsi.0`). Takeover mode = prepare/enable do NOT
+touch the panel (no reset, no init); the ABL-initialized, TE-running,
+DSC-configured panel is driven as-is.
+
+**Fixed along the way:**
+- DSC topology: this tree hardcodes 1:1:1 for DSC panels (mid-rework);
+  2800px needs 2 LM. Patched width-aware (dpu-dsc-topology-wide-mode.patch).
+- DRM_MSM needs python3 in makedepends (register header generation).
+
+**Open bugs, fully characterized:**
+1. **2x2 tiling**: console renders as four perfectly legible copies in a 2x2
+   grid — an exact 4x geometry mismatch between DPU dual-DSC encode and panel
+   decode. prep_dsc's per-encoder split looks right at a glance; suspicion is
+   the incomplete upstream DSC rework in this snapshot (dpu_hw_dsc / merge
+   programming). Fix path: cherry-pick the completed rework from upstream
+   (our base IS next-new HEAD; no newer branch snapshot to rebase to).
+2. **TE/rd_ptr never reaches the encoder**: kickoffs run on 96ms timeouts
+   (sluggish refresh, 'prepare for kickoff' spam). TE pulses DO arrive at the
+   hw — they land on an unclaimed irq [12,2] (INTF1 tear block) while the cmd
+   encoder never registers an rd_ptr callback there. Same rework suspicion.
+3. **Cold init kills the panel**: r30-r33 all showed the bootloader's display
+   dying at our reset pulse (exactly 7 TE pulses = ABL's display counted
+   between irq-enable and our reset), and our init never revived it — while
+   command TRANSPORT is proven good (brightness DCS works). Suspects: reset
+   on tlmm gpio0 (verify it really is the panel reset / not TZ-guarded), or a
+   sequencing prerequisite ABL performs. Takeover sidesteps this entirely;
+   cold init only matters for panel power cycling / suspend.
