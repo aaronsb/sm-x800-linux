@@ -1,0 +1,39 @@
+# Reference: <https://postmarketos.org/deviceinfo>
+# Please use double quotes only. You can source this file in shell
+# scripts.
+
+deviceinfo_format_version="0"
+deviceinfo_name="Samsung Galaxy Tab S8+"
+deviceinfo_manufacturer="Samsung"
+deviceinfo_codename="samsung-gts8pwifi"
+deviceinfo_year="2022"
+deviceinfo_arch="aarch64"
+
+# Device related
+deviceinfo_chassis="tablet"
+deviceinfo_external_storage="true"
+deviceinfo_screen_width="1752"
+deviceinfo_screen_height="2800"
+
+# Bootloader related
+# SM8450 / Samsung download mode (Odin). Header v4. boot-deploy's v4 path builds
+# boot.img (kernel) + vendor_boot.img (dtb + pmOS vendor_ramdisk + cmdline). We
+# feed it the real stock DTB (pulled from /sys/firmware/fdt) as deviceinfo_dtb;
+# the device package installs it to /usr/share/dtb/stock-fdt.dtb. See docs/03.
+deviceinfo_flash_method="heimdall-bootimg"
+deviceinfo_generate_bootimg="true"
+deviceinfo_header_version="4"
+deviceinfo_bootimg_qcdt="false"
+deviceinfo_flash_pagesize="4096"
+deviceinfo_dtb="stock-fdt"
+deviceinfo_kernel_cmdline="console=tty0 loglevel=8 ignore_loglevel"
+deviceinfo_bootimg_append_seandroidenforce="true"
+deviceinfo_flash_heimdall_partition_kernel="boot"
+deviceinfo_flash_heimdall_partition_rootfs="userdata"
+
+# First boot: preserve the Android system on super as a fallback. rootfs goes
+# to userdata (already wiped). If pmOS fails, reflash stock_boot.tar -> Android
+# returns (super/dtbo/vendor_boot never touched).
+
+deviceinfo_rootfs_image_sector_size="4096"
+deviceinfo_create_initfs_extra="true"

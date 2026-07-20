@@ -1,0 +1,30 @@
+# Reference: <https://postmarketos.org/devicepkg>
+maintainer="Aaron <aaronsb@gmail.com>"
+pkgname=device-samsung-gts8pwifi
+pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
+pkgver=0.1
+pkgrel=5
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	linux-postmarketos-qcom-sm8450
+	postmarketos-base
+	mkbootimg
+	android-tools
+"
+makedepends="devicepkg-dev"
+source="deviceinfo"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+sha512sums="
+9d7b12654e6d46a6a374a56484ae61146b655138b60b8a3f5b702db72907a45c3cefd2748fc3e7cd035d293684c8155abb5ce724a5e9738ab97536fb311a5344  deviceinfo
+"

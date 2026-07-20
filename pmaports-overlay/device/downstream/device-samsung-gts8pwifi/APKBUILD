@@ -1,0 +1,37 @@
+# Reference: <https://postmarketos.org/devicepkg>
+maintainer="Aaron <aaronsb@gmail.com>"
+pkgname=device-samsung-gts8pwifi
+pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi)"
+pkgver=0.1
+pkgrel=2
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	linux-samsung-gts8pwifi
+	android-tools
+	mkbootimg
+	postmarketos-base
+	msm-fb-refresher
+"
+makedepends="devicepkg-dev"
+source="deviceinfo kernel-cmdline.conf initfs-hook.sh stock-fdt.dtb"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+	# Ship the real stock DTB (pulled from /sys/firmware/fdt) so boot-deploy's
+	# v4 path can put it in vendor_boot. deviceinfo_dtb="stock-fdt".
+	install -Dm644 "$srcdir/stock-fdt.dtb" "$pkgdir/usr/share/dtb/stock-fdt.dtb"
+}
+
+sha512sums="
+86167329b90752abb1877dca2f4c7c5ea5080bedb6fce83b0c075812ab3a25d0bed591647b167352814ccc5fd376370058234bfb1326acdd3d0e486b437346d4  deviceinfo
+cb0731b5e71b427024bb47cd70aa48d3be409a89aa476f3fd4dea8e5b42ef87371a65bbe836bca7da04c0384178ad293b44da8a88557ad04fc57857bef502050  kernel-cmdline.conf
+d2cd004129d66c9ca9ff5a5dbffcd6d2a6884b7dbff3b88e630a2bc3da3907fc28aa9f2e679d521b4b5f2e3cb04d79dc9f286231eb5a50ed4db7ec6b04eb1817  initfs-hook.sh
+84f579120e79ab6fb11c135beecdd194ffda8124814abc7c7c7147c8339a2014ec88b94832d854c74a271415ba8de12d3fe17d6164cc6bba31cd5dff6e17e716  stock-fdt.dtb
+"

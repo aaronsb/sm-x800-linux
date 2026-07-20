@@ -1,0 +1,2 @@
+#!/bin/bash
+exec python3 /home/aaron/Projects/hardware/sm-x800-linux/tools/pmbootstrap/pmbootstrap.py "$@"

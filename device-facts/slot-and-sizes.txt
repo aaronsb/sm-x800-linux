@@ -1,0 +1,5 @@
+slot_suffix: 
+boot partition size (sda25):
+ 259        9      98304 sda25
+ 259       12   10878976 sda28
+ 259       18       8192 sda34

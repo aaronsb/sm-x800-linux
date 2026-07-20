@@ -1,0 +1,295 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Samsung Galaxy Tab S8+ Wi-Fi (SM-X800), codename "gts8pwifi".
+ *
+ * SM8450 (Waipio). First-boot bring-up skeleton derived from
+ * sm8450-samsung-r0q.dts (Galaxy S22). The bootloader (Samsung ABL)
+ * leaves the panel scanning out of the "splash_region" at 0xb8000000,
+ * so a matching simple-framebuffer node gives us a VISIBLE fbcon console
+ * on the panel before any real DRM driver exists. This is the whole
+ * point of the mainline pivot (see docs/04-mainline-prep.md).
+ *
+ * Framebuffer geometry pulled from the stock DTB:
+ *   splash reserved-memory  = <0x0 0xb8000000 0x0 0x2b00000> (45 MiB)
+ *   panel active (touch max) = 1752 x 2800 (0x6d8 x 0xaf0), portrait scanout
+ *   DDIC S6TUUM1_AMSA24VU01_WQXGA, lcd_id 800005 (native driver = later)
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+
+#include "sm8450.dtsi"
+#include "pm8350.dtsi"
+#include "pm8350c.dtsi"
+
+/ {
+	model = "Samsung Galaxy Tab S8+ (Wi-Fi)";
+	compatible = "samsung,gts8pwifi", "qcom,sm8450";
+	chassis-type = "tablet";
+
+	/*
+	 * Samsung's Qualcomm bootloader (ABL) runs DTB selection: it only
+	 * boots a DTB whose qcom,msm-id (SoC id+rev) and qcom,board-id match
+	 * the running hardware. Mainline DTs omit these, so ABL found no match
+	 * and jumped to the kernel with no device tree -> early death, no
+	 * simplefb, fall back to download mode. These values are copied
+	 * verbatim from the stock DTB (device-facts/dt/stock-fdt.dtb). The
+	 * kernel ignores them; they exist purely for the bootloader.
+	 */
+	qcom,msm-id = <0x1c9 0x10000>, <0x1e2 0x10000>;
+	qcom,board-id = <0x10008 0x04>;
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/*
+		 * We boot via uniLoader (the Samsung ABL mangles mainline DTs
+		 * with its own DTBO fragments, so a direct ABL boot cannot
+		 * work here — see docs/05). uniLoader only injects
+		 * linux,initrd-start/end into /chosen; it does NOT set
+		 * bootargs. So the kernel command line has to live here, or we
+		 * would silently inherit the stock vendor_boot cmdline
+		 * (console=null) and be blind again.
+		 *
+		 * pmos_root_uuid must match the rootfs actually flashed to
+		 * userdata. NOTE: re-running `pmb install` regenerates the
+		 * rootfs with a NEW UUID — if you reflash userdata, update
+		 * this to match or the initramfs will not find root.
+		 */
+		/*
+		 * clk_ignore_unused / pd_ignore_unused are REQUIRED to keep the
+		 * panel alive. The bootloader leaves the display clocks and
+		 * power domains running so the cont_splash framebuffer keeps
+		 * scanning out. Late in boot the kernel disables everything it
+		 * believes is unused — there is no real display driver here to
+		 * claim them — which gates the display clocks and the panel
+		 * goes BLACK mid-boot, even though the kernel is still running
+		 * happily. Observed exactly that: boot log painted, then black.
+		 */
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=ttyMSM0,115200n8 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_root_uuid=a4348702-8917-409c-8b8d-ae162bbcc969 pmos_rootfsopts=defaults";
+
+		framebuffer: framebuffer@b8000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
+			/*
+			 * LANDSCAPE scanout: 2800 wide x 1752 tall. Confirmed
+			 * on-device — using 1752x2800 rendered diagonally
+			 * sheared text. Stock panel physical size is
+			 * 267mm x 167mm (ratio 1.60 == 2800/1752), so the long
+			 * axis is the scanline. The touchscreen's
+			 * sec,max_coords <0x6d8 0xaf0> is a portrait touch
+			 * coordinate space and does NOT describe scanout.
+			 */
+			width = <2800>;
+			height = <1752>;
+			stride = <(2800 * 4)>;
+			format = "a8r8g8b8";
+
+			/*
+			 * simpledrm acquires and HOLDS these across boot (see
+			 * simpledrm_device_release_clocks / _detach_genpd in
+			 * the kernel). Without them nothing keeps the display
+			 * block alive: the bootloader's scanout gets torn down
+			 * and the framebuffer degenerates into ordinary RAM,
+			 * which renders on-panel as accumulating garbage.
+			 * Clock/GDSC references taken from the mdss node in
+			 * mainline sm8450.dtsi.
+			 */
+			clocks = <&dispcc DISP_CC_MDSS_AHB_CLK>,
+				 <&gcc GCC_DISP_HF_AXI_CLK>,
+				 <&gcc GCC_DISP_SF_AXI_CLK>,
+				 <&dispcc DISP_CC_MDSS_MDP_CLK>,
+				 <&dispcc DISP_CC_MDSS_VSYNC_CLK>;
+			power-domains = <&dispcc MDSS_GDSC>;
+		};
+	};
+
+	/*
+	 * sm8450.dtsi ships a placeholder memory@a0000000 with reg size 0,
+	 * on the assumption that the bootloader patches in the real banks.
+	 * uniLoader does NOT do that (it only injects linux,initrd-start/end
+	 * into /chosen), so the kernel would be handed ZERO bytes of RAM and
+	 * panic instantly, before any console exists — a completely silent
+	 * hang right after uniLoader prints "Booting kernel...".
+	 *
+	 * Banks copied verbatim from the stock DTB (device-facts/dt/stock-fdt.dtb),
+	 * total 8 GiB.
+	 */
+	/delete-node/ memory@a0000000;
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x6a000000>,
+		      <0x0 0xf1c00000 0x0 0x0e400000>,
+		      <0x8 0x00000000 0x0 0x3ab00000>,
+		      <0x8 0x40000000 0x1 0x40000000>,
+		      <0x8 0x3b100000 0x0 0x01e00000>;
+	};
+
+	vph_pwr: regulator-vph-pwr {
+		compatible = "regulator-fixed";
+		regulator-name = "vph_pwr";
+		regulator-min-microvolt = <3700000>;
+		regulator-max-microvolt = <3700000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	reserved-memory {
+		/*
+		 * The bootloader will only keep display hardware enabled
+		 * if this memory region is named exactly 'splash_region'
+		 */
+		splash-region@b8000000 {
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
+			no-map;
+		};
+	};
+};
+
+&apps_rsc {
+	regulators-0 {
+		compatible = "qcom,pm8350-rpmh-regulators";
+		qcom,pmic-id = "b";
+
+		vdd-s1-supply = <&vph_pwr>;
+		vdd-s2-supply = <&vph_pwr>;
+		vdd-s3-supply = <&vph_pwr>;
+		vdd-s4-supply = <&vph_pwr>;
+		vdd-s5-supply = <&vph_pwr>;
+		vdd-s6-supply = <&vph_pwr>;
+		vdd-s7-supply = <&vph_pwr>;
+		vdd-s8-supply = <&vph_pwr>;
+		vdd-s9-supply = <&vph_pwr>;
+		vdd-s10-supply = <&vph_pwr>;
+		vdd-s11-supply = <&vph_pwr>;
+		vdd-s12-supply = <&vph_pwr>;
+
+		vdd-l2-l7-supply = <&vreg_bob>;
+		vdd-l3-l5-supply = <&vreg_bob>;
+		vdd-l6-l9-l11-supply = <&vreg_bob>;
+
+		vreg_l2b_3p07: ldo2 {
+			regulator-min-microvolt = <3072000>;
+			regulator-max-microvolt = <3072000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_l5b_0p88: ldo5 {
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <888000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* UFS rails (l6b/l7b/l9b) — see &ufs_mem_hc below */
+		vreg_l6b_1p2: ldo6 {
+			regulator-name = "vreg_l6b_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_l7b_2p5: ldo7 {
+			regulator-name = "vreg_l7b_2p5";
+			regulator-min-microvolt = <2504000>;
+			regulator-max-microvolt = <2504000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_l9b_1p2: ldo9 {
+			regulator-name = "vreg_l9b_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
+	regulators-1 {
+		compatible = "qcom,pm8350c-rpmh-regulators";
+		qcom,pmic-id = "c";
+
+		vdd-s1-supply = <&vph_pwr>;
+		vdd-s2-supply = <&vph_pwr>;
+		vdd-s3-supply = <&vph_pwr>;
+		vdd-s4-supply = <&vph_pwr>;
+		vdd-s5-supply = <&vph_pwr>;
+		vdd-s6-supply = <&vph_pwr>;
+		vdd-s7-supply = <&vph_pwr>;
+		vdd-s8-supply = <&vph_pwr>;
+		vdd-s9-supply = <&vph_pwr>;
+		vdd-s10-supply = <&vph_pwr>;
+
+		vdd-l1-l12-supply = <&vreg_bob>;
+		vdd-l2-l8-supply = <&vreg_bob>;
+		vdd-l3-l4-l5-l7-l13-supply = <&vreg_bob>;
+		vdd-l6-l9-l11-supply = <&vreg_bob>;
+
+		vdd-bob-supply = <&vph_pwr>;
+
+		vreg_bob: bob {
+			regulator-min-microvolt = <3008000>;
+			regulator-max-microvolt = <3960000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_AUTO>;
+		};
+
+		vreg_l1c_1p8: ldo1 {
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+};
+
+&tlmm {
+	gpio-reserved-ranges = <36 4>; /* SPI (not linked to anything) */
+};
+
+/*
+ * UFS — the internal storage. Without this there are NO block devices at all,
+ * so the pmOS initramfs cannot find the rootfs and drops to the debug shell
+ * with "ERROR: failed to mount subpartitions!". Neither r0q.dts nor our
+ * original skeleton enabled it. Supplies follow sm8450-hdk.dts.
+ *
+ * reset-gpios is deliberately omitted: the HDK's <&tlmm 210> is board
+ * specific and the stock DTB exposes no UFS reset line for this tablet.
+ */
+&ufs_mem_hc {
+	status = "okay";
+
+	vcc-supply = <&vreg_l7b_2p5>;
+	vcc-max-microamp = <1100000>;
+	vccq-supply = <&vreg_l9b_1p2>;
+	vccq-max-microamp = <1200000>;
+	vdd-hba-supply = <&vreg_l9b_1p2>;
+};
+
+&ufs_mem_phy {
+	status = "okay";
+
+	vdda-phy-supply = <&vreg_l5b_0p88>;
+	vdda-pll-supply = <&vreg_l6b_1p2>;
+};
+
+&usb_1 {
+	/* Keep USB 2.0 only for now */
+	qcom,select-utmi-as-pipe-clk;
+
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
+	/* Remove USB3 phy */
+	phys = <&usb_1_hsphy>;
+	phy-names = "usb2-phy";
+
+	status = "okay";
+};
+
+&usb_1_hsphy {
+	vdda-pll-supply = <&vreg_l5b_0p88>;
+	vdda18-supply = <&vreg_l1c_1p8>;
+	vdda33-supply = <&vreg_l2b_3p07>;
+
+	status = "okay";
+};

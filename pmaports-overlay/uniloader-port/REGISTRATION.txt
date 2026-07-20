@@ -1,0 +1,2 @@
+reference/uniLoader/board/Makefile:34:lib-$(CONFIG_SAMSUNG_GTS8PWIFI) += samsung/board-gts8pwifi.o
+reference/uniLoader/board/Kconfig:246:	config SAMSUNG_GTS8PWIFI

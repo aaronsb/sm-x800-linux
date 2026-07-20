@@ -1,0 +1,58 @@
+# Reference: <https://postmarketos.org/deviceinfo>
+# Please use double quotes only. You can source this file in shell
+# scripts.
+
+deviceinfo_format_version="0"
+deviceinfo_name="Samsung Galaxy Tab S8+ (Wi-Fi)"
+deviceinfo_manufacturer="Samsung"
+deviceinfo_codename="samsung-gts8pwifi"
+deviceinfo_year="2022"
+deviceinfo_arch="aarch64"
+
+# Device related
+deviceinfo_chassis="tablet"
+deviceinfo_external_storage="true"
+deviceinfo_screen_width="1752"
+deviceinfo_screen_height="2800"
+
+# Bootloader related
+# SM8450 (Waipio) mainline. Samsung download mode (Odin), boot header v4.
+# boot-deploy's v4 path builds boot.img (kernel) + vendor_boot.img
+# (mainline DTB + pmOS ramdisk + cmdline). The DTB is our own mainline
+# sm8450-samsung-gts8pwifi.dtb, built by linux-postmarketos-qcom-sm8450.
+deviceinfo_flash_method="heimdall-bootimg"
+deviceinfo_generate_bootimg="true"
+deviceinfo_header_version="4"
+deviceinfo_bootimg_qcdt="false"
+deviceinfo_flash_pagesize="4096"
+deviceinfo_dtb="qcom/sm8450-samsung-gts8pwifi"
+
+# Load addresses MUST match what the Samsung bootloader expects. Values read
+# from the STOCK vendor_boot.img header (unpack_bootimg):
+#   kernel 0x00008000  ramdisk 0x02000000  tags 0x01e00000  dtb 0x01f00000
+# i.e. base 0x00000000. mkbootimg's DEFAULT base is 0x10000000, which put every
+# address 0x10000000 too high (kernel 0x10008000, tags 0x10000100, ...) so the
+# bootloader loaded the kernel/tags/dtb where it never executes them -> silent
+# boot failure with no console output.
+#
+# NOTE: boot-deploy only passes --base/--*_offset to mkbootimg on the legacy
+# (header <=v2) path. For header v3/v4 it omits them entirely and mkbootimg
+# falls back to its defaults, so the deviceinfo_flash_offset_* keys are IGNORED
+# here. The only way to set them for v4 is bootimg_custom_args, which
+# boot-deploy passes straight through to mkbootimg.
+deviceinfo_bootimg_custom_args="--base 0x00000000 --kernel_offset 0x00008000 --ramdisk_offset 0x02000000 --tags_offset 0x01e00000 --dtb_offset 0x01f00000"
+deviceinfo_bootimg_append_seandroidenforce="true"
+deviceinfo_flash_heimdall_partition_kernel="boot"
+deviceinfo_flash_heimdall_partition_rootfs="userdata"
+
+# VISIBLE boot: earlycon on the geni UART (0x0099c000, from the stock
+# /chosen stdout-path) + fbcon on the simple-framebuffer (panel). tty0 so
+# the log and login prompt render on the panel. PMOS_NO_OUTPUT_REDIRECT
+# keeps pmOS from hiding the console behind its splash.
+deviceinfo_kernel_cmdline="earlycon=qcom_geni,0x0099c000 console=ttyMSM0,115200n8 console=tty0 loglevel=8 PMOS_NO_OUTPUT_REDIRECT"
+
+# First boot: rootfs goes to userdata (already wiped). If pmOS fails,
+# reflash android_restore.tar -> Android returns (super/dtbo/vendor_boot
+# never touched by us beyond boot/vendor_boot).
+deviceinfo_rootfs_image_sector_size="4096"
+deviceinfo_create_initfs_extra="true"

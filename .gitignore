@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# Build trees / regenerable working dirs
+# ---------------------------------------------------------------------------
+# pmbootstrap chroots, pmaports clone, package cache (~6 GB)
+pmb-work/
+# downstream Samsung kernel checkout (~1.7 GB)
+kernel-src/
+# upstream clones: uniLoader, mainline DTS, pmaports (~120 MB)
+reference/
+firmware/
+
+# ---------------------------------------------------------------------------
+# Flashable artifacts — regenerable with `make`
+# ---------------------------------------------------------------------------
+root-build/
+*.tar
+*.img
+*.img.gz
+
+# ---------------------------------------------------------------------------
+# Samsung proprietary firmware — DO NOT REDISTRIBUTE
+#
+# Stock partition dumps and Samsung's device tree blobs are Samsung's
+# copyrighted firmware. They stay local. Everything this port actually needs is
+# derived into our own sources under pmaports-overlay/ and documented in docs/.
+# ---------------------------------------------------------------------------
+device-facts/partitions-backup/
+device-facts/dt/
+*.dtb
+*.dtbo
+
+# ---------------------------------------------------------------------------
+# Device-identifying data — privacy
+#
+# getprop contains ro.serialno / ro.boot.em.did for a specific physical unit;
+# last_kmsg is a raw bootloader log from that unit.
+# ---------------------------------------------------------------------------
+device-facts/getprop-full.txt
+device-facts/last_kmsg.txt
+device-facts/partitions-by-name-full.txt
+
+# ---------------------------------------------------------------------------
+# Editor / OS noise
+# ---------------------------------------------------------------------------
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# upstream pmbootstrap clone (not ours to vendor)
+tools/pmbootstrap/

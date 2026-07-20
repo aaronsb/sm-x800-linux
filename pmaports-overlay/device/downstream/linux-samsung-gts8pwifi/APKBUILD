@@ -1,0 +1,93 @@
+# Reference: <https://postmarketos.org/vendorkernel>
+# Kernel config based on: arch/arm64/configs/gts8uwifi-waipio_defconfig
+# (same SM8450/waipio SoC; gts8p-specific bits come from the device's stock
+# DTB in dtbo/vendor_boot, which we do not touch. The akm-04 tree ships no
+# gts8p DTS -- this is how the KernelSU kernel booted on this unit.)
+
+maintainer="Aaron <aaronsb@gmail.com>"
+pkgname=linux-samsung-gts8pwifi
+pkgver=5.10.226
+pkgrel=0
+pkgdesc="Samsung Galaxy Tab S8 family downstream kernel (akm-04 sm8450 gts8x)"
+arch="aarch64"
+_carch="arm64"
+_flavor="samsung-gts8pwifi"
+url="https://github.com/akm-04/Samsung_Kernel_sm8450_common_gts8x"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps pmb:cross-native"
+makedepends="
+	bash
+	bc
+	bison
+	clang
+	devicepkg-dev
+	findutils
+	flex
+	gmp-dev
+	linux-headers
+	lld
+	llvm
+	openssl-dev
+	perl
+	python3
+	rsync
+	xz
+"
+
+# Source
+_repository="Samsung_Kernel_sm8450_common_gts8x"
+_commit="ea029a8adfc7912bdf02ecbbfd9a1d1b5f7578d6"
+_config="config-$_flavor.$arch"
+source="
+	$pkgname-$_commit.tar.gz::https://github.com/akm-04/$_repository/archive/$_commit.tar.gz
+	$_config
+"
+builddir="$srcdir/$_repository-$_commit"
+_outdir="out"
+
+# Build the whole kernel with LLVM/lld. Must be global (not just in build())
+# so downstreamkernel_prepare's `make oldconfig` also uses ld.lld -- the 5.10
+# Kconfig.include linker check otherwise looks for the (absent) GNU cross-ld
+# aarch64-alpine-linux-musl-ld and fails prepare.
+export LLVM=1
+export LLVM_IAS=1
+
+prepare() {
+	default_prepare
+
+	# Samsung ships tools/cc-wrapper as a prebuilt glibc x86-64 ELF (a
+	# "forbidden warning" QA gate). The Makefile sets CC := tools/cc-wrapper
+	# clang (SEC_KUNIT unset -> else branch), so it runs on every compile --
+	# but its glibc loader is absent in the musl Alpine chroot ("not found").
+	# Replace it with a transparent passthrough (we don't want the QA gate).
+	cat > tools/cc-wrapper <<-'EOF'
+		#!/bin/sh
+		exec "$@"
+	EOF
+	chmod +x tools/cc-wrapper
+
+	REPLACE_GCCH=0 . downstreamkernel_prepare
+}
+
+build() {
+	unset LDFLAGS
+	# First-boot bring-up: build only the raw Image.
+	# - TECHPACK=n drops the Qualcomm techpack modules (camera/display/audio/
+	#   video/dataipa/mmrm) whose Makefiles assume the full Android
+	#   kernel_platform layout (sibling vendor/qcom/opensource/* repos absent
+	#   from the standalone kernel tarball). None are needed to boot to a shell.
+	# - Image only (no modules/dtbs): the pmOS packager ships just vmlinuz, and
+	#   we rely on the device's stock gts8p DTB (dtbo/vendor_boot untouched).
+	make O="$_outdir" ARCH="$_carch" TECHPACK=n \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS" \
+		Image
+}
+
+package() {
+	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" "$_flavor" "$_outdir"
+}
+
+sha512sums="
+520abedabbcca854380e9d7931503de119de97168d0a11bbbeda8c67c698e4ddc8bc1c82e241a8ace9f7574cda68b53098df80b1ca4c27e00c9d7881affbdac7  linux-samsung-gts8pwifi-ea029a8adfc7912bdf02ecbbfd9a1d1b5f7578d6.tar.gz
+ea9c18e09102cd8639477196c5a03723f5c83ccba556a51cb441fb73f5f4d2a342e58974ebed732b35c4b7e11d6941f74abfd4ce2341e23e6c65b27341b033d1  config-samsung-gts8pwifi.aarch64
+"
