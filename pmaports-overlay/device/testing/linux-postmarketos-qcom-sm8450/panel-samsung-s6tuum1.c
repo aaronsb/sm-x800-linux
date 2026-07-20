@@ -62,8 +62,13 @@ static int s6tuum1_on(struct s6tuum1 *priv)
 {
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
 
-	priv->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
-
+	/*
+	 * Commands go in HS mode: stock sets on/off-command-state =
+	 * "dsi_hs_mode" and samsung,mdss-dsi-sot-hs-mode. Do NOT set
+	 * MIPI_DSI_MODE_LPM here — with LP commands (r30..r32) the short
+	 * writes landed (panel emitted TE briefly) but init never fully took
+	 * and TE died before the first frame.
+	 */
 	mipi_dsi_dcs_exit_sleep_mode_multi(&ctx);
 	mipi_dsi_msleep(&ctx, 120);
 
@@ -203,14 +208,9 @@ static const struct drm_panel_funcs s6tuum1_panel_funcs = {
 static int s6tuum1_bl_update_status(struct backlight_device *bl)
 {
 	struct mipi_dsi_device *dsi = bl_get_data(bl);
-	int ret;
 
-	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
-	ret = mipi_dsi_dcs_set_display_brightness_large(dsi,
+	return mipi_dsi_dcs_set_display_brightness_large(dsi,
 					backlight_get_brightness(bl));
-	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
-
-	return ret;
 }
 
 static const struct backlight_ops s6tuum1_bl_ops = {
