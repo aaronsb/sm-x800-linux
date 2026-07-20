@@ -29,7 +29,7 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 | Volume up (pm8350 gpio-keys) | 🟡 dead — cause known (spmi-gpio cell off-by-one, try cell 5), fix not yet flashed |
 | `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
-| Native panel driver (S6TUUM1 DDIC) | ❌ not started |
+| Native panel driver (S6TUUM1 DDIC) | 🟡 first light — native KMS in splash-takeover mode, DCS backlight works; DSC 2x2 tiling + TE sync + cold-init outstanding (device-facts/display-s6tuum1.md) |
 | S Pen (Wacom EMR digitizer) | ❌ not started (separate chip, separate bus) |
 | GPU | ❌ not started |
 | Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
