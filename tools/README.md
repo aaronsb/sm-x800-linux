@@ -25,13 +25,31 @@ Reflashing userdata wipes the on-device packages this port leans on. Re-install 
 
 ```sh
 apk add i2c-tools libgpiod evtest \
-    linux-firmware-ath11k linux-firmware-qca \
-    iw wpa_supplicant tcpdump bluez reboot-mode
+    linux-firmware-ath11k linux-firmware-qca linux-firmware-qcom \
+    iw wpa_supplicant tcpdump bluez reboot-mode \
+    mesa-dri-gallium kmscube
 ```
 
 The firmware packages are LOAD-BEARING (WiFi and BT are dead without them), and the
 NetworkManager WiFi profile is also lost with userdata — re-add with
 `nmcli dev wifi connect <ssid> password <pw>` or the dongle comes back out.
+
+The GPU additionally needs the Samsung-signed zap shader staged BY HAND (it is in
+no repo and no package). It also must end up in the initramfs, or adreno's
+bind-time SQE load fails and the GPU is dead for that whole boot:
+
+```sh
+mount -o ro /dev/disk/by-partlabel/apnhlos /mnt
+mkdir -p /lib/firmware/qcom/sm8450/gts8pwifi
+cp /mnt/image/a730_zap.mdt /mnt/image/a730_zap.b0? /lib/firmware/qcom/sm8450/gts8pwifi/
+umount /mnt
+mkinitfs   # device pkg r12+ pulls the fw into the initramfs via 60-gts8pwifi-gpu-fw.files
+```
+
+(Local copies of the zap splits also live in root-build/stock-extract/. When the
+BUILD chroot's rootfs is regenerated, the same staging must happen there before
+`make boot`, or the packaged initramfs ships without the zap — the file list marks
+them !optional so the build won't fail, it will just quietly produce a GPU-less boot.)
 
 Also note `sudo sh -c "..."` does not inherit a login PATH, so `i2cdetect` and friends
 may report "not found" even when installed. Use a login shell or an absolute path.
@@ -48,6 +66,20 @@ These cost real time; they are not generic Linux knowledge.
   aports dirs and let `make kernel` re-sync from the overlay. Also beware
   `... 2>&1 | tail` masking a failed build's exit code — verify the apk file
   exists, not the pipe status.
+- **Do not run bulk raw reads of UFS block devices on the running device**
+  (e.g. `strings /dev/disk/by-partlabel/super` — 10.7 GB). The one time we
+  did, the system died minutes later: touch i2c writes started failing,
+  then the panel, then the network, then hard-off — with the persistent
+  systemd journal's last entry being that scan starting. Battery was at
+  98%/4.25 V, so not a brown-out. Mechanism unknown (I/O wedge? thermal?);
+  every stock partition of interest exists locally in
+  device-facts/partitions-backup/ (11 GB super.img included) — search
+  there. Note super's members are EROFS (compressed): raw `grep`/`strings`
+  over the image finds nothing; `lpunpack` + loop-mount, then search files.
+- **The zap shader lives in the `apnhlos` partition** (`/image/a730_zap.mdt`
+  + `.b00-.b02`), not in vendor/ or modem/. Mount `/dev/disk/by-partlabel/apnhlos`
+  (vfat, ro) to get at it. Copies staged at
+  /lib/firmware/qcom/sm8450/gts8pwifi/ on-device and in root-build/stock-extract/.
 - **libgpiod on the device is v2.** `gpiofind` does not exist. Use `gpioinfo | grep pogo`
   and `gpioget -c gpiochip3 <line>`.
 - **gpiochip3 = `f100000.pinctrl` = TLMM** (211 lines). gpiochip0/1/2 are

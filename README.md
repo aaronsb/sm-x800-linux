@@ -9,9 +9,10 @@ keyboard, or ssh in over WLAN with no cables at all.
 
 No Galaxy Tab S8 port exists upstream — as far as we can tell this is the first.
 
-> **Status: console daily-driveable.** Boots to `samsung-gts8pwifi login:` on a
-> fully native display stack; local input (keyboard + touch) and wireless access
-> both work. The big remaining gaps are GPU and audio.
+> **Status: console daily-driveable, GPU alive.** Boots to `samsung-gts8pwifi login:`
+> on a fully native display stack with working hardware GL (kmscube renders on the
+> panel); local input (keyboard + touch) and wireless access both work. The big
+> remaining gaps are a compositor/UI stack and audio.
 
 | Component | State |
 |---|---|
@@ -26,12 +27,12 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 | USB host (xhci) | ✅ working |
 | USB ethernet + DHCP + ssh | ✅ working (Realtek RTL8153 dongle) — now the fallback, not the lifeline |
 | Power key, volume down (PMIC PON) | ✅ working |
-| Volume up (pm8350 gpio-keys) | 🟡 dead — cause known (spmi-gpio cell off-by-one, try cell 5), fix not yet flashed |
+| Volume up (pm8350 gpio-keys) | 🟡 dead — NOT an index bug: gpiomon watched every pm8350/pm8350c/pmk8350 line through presses, zero edges anywhere; needs schematic-level digging (pull-up rail / SPMI register poke) |
 | `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
 | Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Story: device-facts/display-s6tuum1.md |
 | S Pen (Wacom EMR digitizer) | ❌ not started (separate chip, separate bus) |
-| GPU | ❌ not started |
+| GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition, firmware rides in the initramfs (a7xx loads SQE at bind time) |
 | Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
 | Sensors (incl. auto-rotate) | ❌ architecturally blocked — SLPI-owned I3C with no mainline path |
 

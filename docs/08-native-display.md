@@ -103,5 +103,9 @@ one before the exotic ones.**
   next tree bump.
 - Not yet needed from stock: delayed display-on (no wakeup garbage seen),
   ESD recovery, runtime VRR (fixed 120 Hz).
-- Next: GPU (a730 — firmware staging + zap shader), then retiring the
-  `clk_ignore_unused`/`pd_ignore_unused` bring-up bootargs.
+- Next: retiring the `clk_ignore_unused`/`pd_ignore_unused` bring-up
+  bootargs, and a compositor to put the GPU to work. (The GPU itself came
+  up the same day: the Samsung-signed zap shader hid in the `apnhlos`
+  partition — not vendor/, not modem/ — and a7xx's bind-time SQE load
+  means all GPU firmware must ride in the first-stage initramfs. kmscube
+  renders on `FD730`, OpenGL ES 3.2.)
