@@ -18,7 +18,7 @@ depends="
 "
 subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh"
+source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh usb-host-wake.start"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -49,6 +49,11 @@ package() {
 	# USB peripherals in host mode. See the script header.
 	install -Dm755 "$srcdir"/vbus-otg.sh \
 		"$pkgdir"/usr/bin/vbus-otg
+
+	# Root hubs must not runtime-suspend or hot-plugged devices on
+	# tablet-sourced VBUS are never detected. See the script header.
+	install -Dm755 "$srcdir"/usb-host-wake.start \
+		"$pkgdir"/etc/local.d/usb-host-wake.start
 }
 
 systemd() {

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Keep the USB root hubs out of runtime suspend.
+#
+# With nothing attached at boot, the xHCI root hubs autosuspend and then
+# miss the connect event when a device appears on tablet-sourced VBUS
+# (vbus-otg on): the peripheral powers up and its LED lights, but it never
+# enumerates. Observed on r29; holding the root hubs active fixes detection.
+# Scoped to the root hubs only — attached devices may still autosuspend.
+
+for hub in /sys/bus/usb/devices/usb*/power/control; do
+	echo on > "$hub" 2>/dev/null
+done
