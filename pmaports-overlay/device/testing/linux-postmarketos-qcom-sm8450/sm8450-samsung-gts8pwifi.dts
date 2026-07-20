@@ -72,6 +72,14 @@
 		 *     | grep pmos_root_uuid
 		 */
 		/*
+		 * NOTE: console=ttyMSM0 was REMOVED. uart7 is enabled (so the
+		 * port exists and earlycon still works), but with no cable
+		 * attached its RX line floats and picks up noise. getty reads
+		 * that noise as input and re-prints the login prompt forever,
+		 * which also corrupts the framebuffer console we actually use.
+		 * Put console=ttyMSM0,115200n8 back only when something is
+		 * physically wired to the UART.
+		 *
 		 * clk_ignore_unused / pd_ignore_unused are REQUIRED to keep the
 		 * panel alive. The bootloader leaves the display clocks and
 		 * power domains running so the cont_splash framebuffer keeps
@@ -81,7 +89,7 @@
 		 * goes BLACK mid-boot, even though the kernel is still running
 		 * happily. Observed exactly that: boot log painted, then black.
 		 */
-		bootargs = "earlycon=qcom_geni,0x0099c000 console=ttyMSM0,115200n8 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=445f80fa-3d7e-453b-be65-295d313daea2 pmos_root_uuid=b11df588-98c4-4914-9d2d-63398d07074f pmos_rootfsopts=defaults";
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=53ac3237-e5db-428f-bf32-ac351ea6851b pmos_root_uuid=63fa8386-a986-4757-95fa-bd02bb692f67 pmos_rootfsopts=defaults";
 
 		framebuffer: framebuffer@b8000000 {
 			compatible = "simple-framebuffer";
@@ -402,7 +410,23 @@
 	 * needed — which also makes this the path to USB networking / SSH.
 	 * Revisit "host"/"otg" only after pmic_glink + Type-C are described.
 	 */
-	dr_mode = "peripheral";
+	/*
+	 * HOST mode, for use with an EXTERNALLY POWERED USB-C dongle/hub.
+	 *
+	 * Plain host mode failed earlier because the tablet must supply 5V VBUS
+	 * and nothing switches it (no Type-C/pmic_glink described), so a
+	 * bus-powered keyboard never powered up. A SELF-POWERED hub sidesteps
+	 * that entirely: it powers its own downstream ports and presents its
+	 * D+ pull-up to us, so enumeration can proceed without us sourcing VBUS.
+	 * That makes USB ethernet (r8152/ax88179/cdc_ether, all built as
+	 * modules) and USB HID keyboards reachable -> DHCP via NetworkManager
+	 * -> ssh, which is the fastest route to a real shell.
+	 *
+	 * Switch back to "peripheral" for USB gadget/networking-to-PC, but note
+	 * that direction likely needs pmic_glink too (dwc3 needs VBUS DETECTION
+	 * before it enables its D+ pullup).
+	 */
+	dr_mode = "host";
 	maximum-speed = "high-speed";
 
 	/* USB 2.0 only — do not reference the disabled SuperSpeed phy. */
@@ -434,6 +458,25 @@
  * and only earlycon (which bypasses the DT node) ever produced output. This is
  * the same UART the stock DTB names in stdout-path.
  */
+/*
+ * QUP wrappers. On Qualcomm the serial/i2c/spi nodes are CHILDREN of a
+ * "geniqup" wrapper, and sm8450.dtsi leaves every wrapper disabled. Enabling
+ * only the leaf node does nothing — the child never probes, silently.
+ *
+ * Confirmed on-device: with just &uart7 and &i2c18 set to okay,
+ * /sys/bus/i2c/devices/ was EMPTY and /proc/consoles listed only tty0.
+ *
+ *   qupv3_id_0 (geniqup@9c0000) -> uart7  (serial@99c000, debug UART)
+ *   qupv3_id_2 (geniqup@8c0000) -> i2c18  (i2c@88c000, pogo keyboard STM32)
+ */
+&qupv3_id_0 {
+	status = "okay";
+};
+
+&qupv3_id_2 {
+	status = "okay";
+};
+
 &uart7 {
 	status = "okay";
 };

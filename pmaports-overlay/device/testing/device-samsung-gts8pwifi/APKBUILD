@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=6
+pkgrel=7
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -15,8 +15,9 @@ depends="
 	android-tools
 	mdev-conf
 "
+subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files"
+source="deviceinfo mkinitfs-mdev.files netinfo-console.sh netinfo-console.service"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -30,6 +31,21 @@ package() {
 	# initramfs can never find root by UUID. See the file for details.
 	install -Dm644 "$srcdir"/mkinitfs-mdev.files \
 		"$pkgdir"/usr/share/mkinitfs/files/50-gts8pwifi-mdev.files
+
+	# Bring-up debug: with no working input, the panel is the only way to
+	# learn what IP we got. Print iface/mac/ip/gateway to the console on
+	# every change. Drop this once ssh or serial access is reliable.
+	install -Dm755 "$srcdir"/netinfo-console.sh \
+		"$pkgdir"/usr/bin/netinfo-console
+}
+
+systemd() {
+	install_if="$pkgname=$pkgver-r$pkgrel systemd"
+	install -Dm644 "$srcdir"/netinfo-console.service \
+		"$subpkgdir"/usr/lib/systemd/system/netinfo-console.service
+	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
+	ln -sf ../netinfo-console.service \
+		"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/netinfo-console.service
 }
 
 sha512sums="
