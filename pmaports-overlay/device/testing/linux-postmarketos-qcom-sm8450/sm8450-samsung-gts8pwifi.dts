@@ -180,6 +180,20 @@
 	};
 
 	/*
+	 * Panel power. Stock models the OLED's supply as a GPIO-switched
+	 * external LDO (fixed_regulator@1 "panel_ldo_en", tlmm 34), boot-on —
+	 * which is why the bootloader splash survives to this day. The panel
+	 * driver consumes it as vdd; boot-on keeps the handoff glitch-free.
+	 */
+	panel_ldo: regulator-panel-ldo {
+		compatible = "regulator-fixed";
+		regulator-name = "panel_ldo_en";
+		gpio = <&tlmm 34 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-boot-on;
+	};
+
+	/*
 	 * Manual switch for tablet-sourced USB VBUS (the MAX77705 OTG boost,
 	 * see charger@69). regulator-output is the mainline convention for a
 	 * userspace-switched rail: it surfaces
@@ -545,6 +559,14 @@
 	 * Without these the pins keep whatever mux/bias the bootloader left,
 	 * which for conn-detect means the level we read may be meaningless.
 	 */
+	/* Panel TE (tear enable), stock sde_te on gpio86, mdp_vsync function */
+	disp_te_default: disp-te-default-state {
+		pins = "gpio86";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
 	/* WCN6855 enable lines + BT UART, values as HDK (stock GPIOs match) */
 	bt_en: bt-en-state {
 		pins = "gpio81";
@@ -1023,6 +1045,54 @@
  * as the HDK: hsuart0 = qup_uart@894000 = mainline uart20, pins 76-79.
  * uart20's wrapper is qupv3_id_2 — which must be enabled too (QUP trap).
  */
+/*
+ * Native display: MSM DPU + DSI + our S6TUUM1 panel driver
+ * (panel-samsung-s6tuum1.c; extraction in device-facts/display-s6tuum1.md).
+ * Command mode, DSC 1.1. Wiring per sm8450-hdk; supplies per HDK (dsi vdda
+ * = l6b 1.2 V, phy vdds = l5b 0.88 V — both already declared for UFS/USB).
+ *
+ * The simple-framebuffer chosen node stays: simpledrm carries the console
+ * until msm probes, then the aperture helper evicts it and fbcon migrates
+ * to the DRM device. If the panel driver fails, the screen goes dark but
+ * WiFi ssh survives — and reverting to pure simpledrm is one status flip.
+ * clk/pd_ignore_unused stay in bootargs until this path is proven.
+ */
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l6b_1p2>;
+	status = "okay";
+
+	panel: panel@0 {
+		compatible = "samsung,s6tuum1-amsa24vu01";
+		reg = <0>;
+
+		vdd-supply = <&panel_ldo>;
+		reset-gpios = <&tlmm 0 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&disp_te_default>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	remote-endpoint = <&panel_in>;
+	data-lanes = <0 1 2 3>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l5b_0p88>;
+	status = "okay";
+};
+
 &pcie0 {
 	status = "okay";
 	max-link-speed = <2>;
