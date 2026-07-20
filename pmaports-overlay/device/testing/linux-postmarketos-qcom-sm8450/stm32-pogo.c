@@ -532,14 +532,24 @@ static void stm32_pogo_ic_work(struct work_struct *work)
 		msleep(200);
 	}
 
-	/* touchpad presence: absent pads report TC version ff.0 */
+	/*
+	 * Touchpad presence, downstream semantics: pad absent iff the u16
+	 * TC major version is 0xff AND the u16 minor is 0. The Slim
+	 * keyboard (EF-DT730) reports exactly that — and byte-wise
+	 * comparison gets it wrong (major 0x00ff is bytes 00 ff).
+	 */
 	pogo->tp_present = false;
 	ret = stm32_pogo_reg_read(pogo, STM32_EP_TOUCHPAD,
 				  STM32_CMD_GET_TC_FW_VERSION, buf, sizeof(buf));
-	if (ret == 0 && !(buf[3] == 0xff && buf[2] == 0xff)) {
+	if (ret == 0) {
+		u16 tc_major = buf[3] << 8 | buf[2];
+		u16 tc_minor = buf[5] << 8 | buf[4];
+
+		pogo->tp_present = !(tc_major == 0xff && tc_minor == 0);
+	}
+	if (pogo->tp_present) {
 		u8 res[4] = { 0 };
 
-		pogo->tp_present = true;
 		ret = stm32_pogo_reg_read(pogo, STM32_EP_TOUCHPAD,
 					  STM32_CMD_GET_TC_RESOLUTION,
 					  res, sizeof(res));
