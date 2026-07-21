@@ -40,7 +40,6 @@
 
 /* packet geometry (wacom_dev.h) */
 #define COM_COORD_NUM		16
-#define COM_QUERY_POS		16	/* query block trails one coord frame */
 #define COM_QUERY_BUFFER	32
 
 /* query block offsets (EPEN_REG_*) */
@@ -99,34 +98,48 @@ static int wacom_send(struct wacom_wez01 *w, u8 cmd)
 }
 
 /*
- * Query the chip: send COM_QUERY, then read a 32-byte buffer whose second half
- * (offset COM_QUERY_POS) carries the query block, tagged by header 0x0f. Fills
- * the geometry fields; returns -EIO if the block never validates.
+ * Query the chip with a single combined transfer: write COM_QUERY then read the
+ * buffer under a repeated start (no STOP between the two messages). The query
+ * block lands at the start of the read, tagged by header 0x0f. Fills the
+ * geometry fields; returns -EIO if the block never validates.
+ *
+ * A repeated start is load-bearing on the bit-bang i2c-gpio bus: the separate
+ * send + recv path issues a STOP and re-addresses the chip between the command
+ * and the read, which dropped the WEZ01's command latch — so the read came back
+ * as a stale coord frame (block shifted to offset 16, header always 0xff) and
+ * never validated. The combined transfer returns the block at offset 0.
  */
 static int wacom_query(struct wacom_wez01 *w)
 {
 	struct device *dev = &w->client->dev;
+	u8 cmd = COM_QUERY;
 	u8 buf[COM_QUERY_BUFFER];
+	struct i2c_msg msgs[] = {
+		{
+			.addr = w->client->addr,
+			.flags = 0,
+			.len = 1,
+			.buf = &cmd,
+		},
+		{
+			.addr = w->client->addr,
+			.flags = I2C_M_RD,
+			.len = COM_QUERY_BUFFER,
+			.buf = buf,
+		},
+	};
 	u8 *q;
 	int ret, retry;
 
 	for (retry = 0; retry < 5; retry++) {
-		ret = wacom_send(w, COM_QUERY);
-		if (ret) {
-			dev_dbg(dev, "query cmd send failed: %d\n", ret);
-			msleep(20);
-			continue;
-		}
-		msleep(20);
-
-		ret = i2c_master_recv(w->client, buf, COM_QUERY_BUFFER);
-		if (ret != COM_QUERY_BUFFER) {
-			dev_dbg(dev, "query recv failed: %d\n", ret);
+		ret = i2c_transfer(w->client->adapter, msgs, ARRAY_SIZE(msgs));
+		if (ret != ARRAY_SIZE(msgs)) {
+			dev_dbg(dev, "query transfer failed: %d\n", ret);
 			msleep(20);
 			continue;
 		}
 
-		q = buf + COM_QUERY_POS;
+		q = buf;
 		if (q[QRY_HEADER] != 0x0f) {
 			dev_dbg(dev, "query header %02x != 0x0f\n", q[QRY_HEADER]);
 			msleep(20);
