@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=14
+pkgrel=16
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -19,7 +19,7 @@ depends="
 "
 subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -39,20 +39,24 @@ package() {
 	install -Dm644 "$srcdir"/mkinitfs-gpu-fw.files \
 		"$pkgdir"/usr/share/mkinitfs/files/60-gts8pwifi-gpu-fw.files
 
+	# UTF-8 for login shells — musl's built-in C.UTF-8; btop and friends
+	# refuse to draw without it.
+	install -Dm644 "$srcdir"/profile-locale.sh \
+		"$pkgdir"/etc/profile.d/locale.sh
+
 	# Extractor for device-signed blobs (zap shader): we ship the TOOL,
 	# the user dumps the firmware from their own device. See the script.
 	install -Dm755 "$srcdir"/fw-extract.sh \
 		"$pkgdir"/usr/bin/gts8pwifi-fw-extract
 
-	# Bring-up debug: with no working input, the panel is the only way to
-	# learn what IP we got. Print iface/mac/ip/gateway to the console on
-	# every change. Drop this once ssh or serial access is reliable.
+	# Login banner generator: writes /etc/issue (art + specs + agetty
+	# escapes for live IP). v1 spammed the console; see the script header.
 	install -Dm755 "$srcdir"/netinfo-console.sh \
 		"$pkgdir"/usr/bin/netinfo-console
 
-	# Manual OLED burn-in protection. There is no backlight or DSI driver
-	# here (DRM_MSM=n, simpledrm owns the panel), so "screen off" means
-	# zeroing the framebuffer. See the script header.
+	# Manual panel off/on. With the native panel driver this is a real
+	# DPMS power cycle; a legacy fbcon/zero-fb fallback remains for
+	# simpledrm boots. See the script header.
 	install -Dm755 "$srcdir"/panel-blank.sh \
 		"$pkgdir"/usr/bin/panel-blank
 
@@ -74,6 +78,11 @@ systemd() {
 	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
 	ln -sf ../netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/netinfo-console.service
+
+	# agetty needs --issue-file spelled out on Alpine or the banner never
+	# prints — see the drop-in's comment.
+	install -Dm644 "$srcdir"/getty-issue.conf \
+		"$subpkgdir"/usr/lib/systemd/system/getty@tty1.service.d/10-gts8pwifi-issue.conf
 }
 
 sha512sums="
@@ -82,6 +91,8 @@ sha512sums="
 a2301018497417bdb5a9cbd5591010e5887745225801db43cba6eb81e1ca8fae562f52e7a680c898c9c158de22a1c3ec0253f13f76edb1dfe6f9457ffd383f83  mkinitfs-gpu-fw.files
 2ef9527def8bb6596a04faad4252cf65791cf14caf9af7270231b319d80df85a359b9b0eddecba84330f13891d322443ae817a590513bf54fc6906a14ef237a7  netinfo-console.sh
 4b2493e0483a19f157c8a4787ef2c272de2c2f61f1c381db0b80c27327a73f5d648a4c77da37ca2d5aff331eb3f2daa66fcd355621176e569546295d15c60fbf  netinfo-console.service
+c1e9c670c7b5c8b671c1595f55a44ce1c71a3c812dbdb3700c9719c92cdc283a2d97a378e68432adc4e3820ca82706e956b2e026fcce8db5e9dec1affb831a95  getty-issue.conf
+8e79ad12fcb48104daf52470385f83415768c93d66480b44febd8b08cccc662fb97e8466ec1b96abb930de38272966b2ba4f6773695382d518bc9382ac738259  profile-locale.sh
 0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
 7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
 eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start

@@ -27,7 +27,7 @@ Reflashing userdata wipes the on-device packages this port leans on. Re-install 
 apk add i2c-tools libgpiod evtest \
     linux-firmware-ath11k linux-firmware-qca linux-firmware-qcom \
     iw wpa_supplicant tcpdump bluez reboot-mode \
-    mesa-dri-gallium kmscube
+    mesa-dri-gallium kmscube btop
 ```
 
 The firmware packages are LOAD-BEARING (WiFi and BT are dead without them), and the

@@ -410,6 +410,12 @@ static int stm32_pogo_register_kbd(struct stm32_pogo *pogo)
 
 	input_set_capability(kbd, EV_MSC, MSC_SCAN);
 	input_set_capability(kbd, EV_LED, LED_CAPSL);
+	/*
+	 * The MCU reports only press/release transitions — no hardware
+	 * autorepeat. EV_REP makes the input core software-repeat held keys
+	 * (holding an arrow actually scrolls).
+	 */
+	__set_bit(EV_REP, kbd->evbit);
 	for (r = 0; r < STM32_KPD_ROWS; r++)
 		for (c = 0; c < STM32_KPD_COLS; c++)
 			if (pogo->keymap[r][c])
