@@ -84,6 +84,13 @@ These cost real time; they are not generic Linux knowledge.
   + `.b00-.b02`), not in vendor/ or modem/. Mount `/dev/disk/by-partlabel/apnhlos`
   (vfat, ro) to get at it. Copies staged at
   /lib/firmware/qcom/sm8450/gts8pwifi/ on-device and in root-build/stock-extract/.
+- **ath11k bulk-RX wedge**: sustained high-rate downloads stall to ~KB/s with
+  `ath11k_pci ... msdu_done bit in attention is not set` in dmesg — a known
+  WCN6855 RX-ring bug. Small traffic (ssh) keeps working, which disguises it
+  as a mirror/network problem. Recovery: `modprobe -r ath11k_pci && modprobe
+  ath11k_pci` (NM re-associates itself). For big installs use a
+  stall-detect/module-cycle loop. Proper fix: hunt the upstream ath11k patch
+  for this and carry it in the kernel package.
 - **libgpiod on the device is v2.** `gpiofind` does not exist. Use `gpioinfo | grep pogo`
   and `gpioget -c gpiochip3 <line>`.
 - **gpiochip3 = `f100000.pinctrl` = TLMM** (211 lines). gpiochip0/1/2 are

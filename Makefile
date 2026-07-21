@@ -46,9 +46,18 @@ help: ## Show available targets
 ## Setup
 ## ---------------------------------------------------------------------------
 
-deps: ## One-time setup: clone uniLoader, install chroot toolchain
-	@test -d $(UL_SRC) || git clone --depth 1 \
-	    https://github.com/ivoszbg/uniLoader.git $(UL_SRC)
+# Every third-party component is PINNED: the kernel to $_commit in its
+# APKBUILD, uniLoader to the rev below. Local modifications are either
+# whole in-repo files (our board port, our drivers) or patch files
+# generated with tools/mkpatch — never hand-written diffs.
+UL_COMMIT := 43770a04327532407194ddd3f9f35770daa01c70
+
+deps: ## One-time setup: clone uniLoader (pinned), install chroot toolchain
+	@test -d $(UL_SRC) || { \
+	    git init -q $(UL_SRC); \
+	    git -C $(UL_SRC) remote add origin https://github.com/ivoszbg/uniLoader.git; \
+	    git -C $(UL_SRC) fetch -q --depth 1 origin $(UL_COMMIT); \
+	    git -C $(UL_SRC) checkout -q FETCH_HEAD; }
 	@# our board port lives in-repo; copy it into the upstream clone
 	install -Dm644 pmaports-overlay/uniloader-port/board/samsung/board-gts8pwifi.c \
 	    $(UL_SRC)/board/samsung/board-gts8pwifi.c

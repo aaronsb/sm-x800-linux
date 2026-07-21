@@ -105,3 +105,28 @@ Never copy a value from a sibling device without checking it against (1).
 - **`/memory` node.** Hardcoding the banks is correct for uniLoader (which does not
   patch `/memory`) but is unusual for a qcom DTS, where the bootloader normally fills
   it in. Upstream may prefer uniLoader to populate it instead.
+
+## 7. Component pinning and the patch model
+
+Every third-party component this port builds is **pinned**, and every local
+modification takes one of exactly two shapes:
+
+| Component | Pin | Modifications |
+|---|---|---|
+| kernel (sm8450-mainline) | `_commit` in the kernel APKBUILD | whole in-repo files (our drivers, DTS, config) + `*.patch` files |
+| uniLoader | `UL_COMMIT` in the Makefile | whole in-repo files (board port) |
+| Alpine/pmOS packages | apk repos (edge) | none — metapackages compose, never fork |
+
+**Patches are generated, never hand-written.** Unified diff is an unforgiving
+format — wrong context or counts can misapply silently. The workflow:
+
+```sh
+tools/mkpatch init            # pinned tree -> git repo, patch stack as commits
+$EDITOR patch-work/linux-*/...
+tools/mkpatch export my-fix   # git diff -> pmaports-overlay/.../my-fix.patch
+```
+
+Then describe the WHY in the patch header, add it to the APKBUILD `source=`,
+and `make kernel`. Patches carry their motivation in-file because they are
+also the to-drop list for the next base bump: each one should name the
+upstream commit that obsoletes it, when known (both current DPU patches do).

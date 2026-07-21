@@ -54,3 +54,4 @@ tools/pmbootstrap/
 # Build staging dir. Holds unpacked STOCK Samsung boot.img contents
 # (stock kernel, ramdisk, boot_signature) — proprietary, never publish.
 .stage/
+patch-work/

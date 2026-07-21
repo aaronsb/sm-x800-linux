@@ -1,0 +1,69 @@
+#!/bin/bash
+# mkpatch — patch workbench for the pinned kernel source.
+#
+# THE RULE: patches in this repo are never written by hand. The unified-diff
+# format is unforgiving (context lines, counts, blank-line prefixes) and a
+# subtly wrong hunk can misapply silently. Patches are GENERATED:
+#
+#   tools/mkpatch init                 # extract pinned tree, git-init, apply
+#                                      # the existing patch stack as commits
+#   ...edit files under patch-work/... #
+#   tools/mkpatch export my-fix        # git diff -> overlay/<pkg>/my-fix.patch
+#
+# After export: add the file to the APKBUILD source= list and let
+# `make kernel` (pmb checksum) pick up the sha512.
+
+set -euo pipefail
+
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+KDIR="$REPO/pmaports-overlay/device/testing/linux-postmarketos-qcom-sm8450"
+WORK="$REPO/patch-work"
+
+commit=$(sed -n 's/^_commit="\(.*\)"/\1/p' "$KDIR/APKBUILD")
+tarball="$REPO/pmb-work/cache_distfiles/linux-postmarketos-qcom-sm8450-$commit.tar.gz"
+tree="$WORK/linux-$commit"
+
+case "${1:-}" in
+init)
+	[ -f "$tarball" ] || { echo "!! $tarball missing — run 'make kernel' once to fetch it"; exit 1; }
+	if [ -d "$tree" ]; then
+		echo ">> $tree already exists; remove it to re-init"; exit 1
+	fi
+	mkdir -p "$WORK"
+	echo ">> extracting pinned tree ($commit)"
+	tar xzf "$tarball" -C "$WORK"
+	cd "$tree"
+	git init -q && git add -A -f && git commit -q -m "base: $commit"
+	for p in "$KDIR"/*.patch; do
+		[ -e "$p" ] || continue
+		echo ">> applying $(basename "$p")"
+		patch -p1 -s < "$p"
+		git add -A && git commit -q -m "patch: $(basename "$p")"
+	done
+	echo ">> workbench ready: $tree"
+	echo ">> edit, then: tools/mkpatch export <name>"
+	;;
+export)
+	name="${2:?usage: mkpatch export <name>}"
+	cd "$tree" 2>/dev/null || { echo "!! no workbench — run 'tools/mkpatch init' first"; exit 1; }
+	out="$KDIR/$name.patch"
+	if git diff --quiet; then
+		echo "!! no uncommitted changes in $tree to export"; exit 1
+	fi
+	{
+		echo "$name"
+		echo
+		echo "(describe WHY here — this header travels with the patch)"
+		echo
+		git diff
+	} > "$out"
+	echo ">> wrote $out"
+	echo ">> 1. edit the description header"
+	echo ">> 2. add '$name.patch' to source= in $KDIR/APKBUILD"
+	echo ">> 3. commit the workbench change locally: git commit -am 'patch: $name'"
+	;;
+*)
+	sed -n '2,15p' "$0"
+	exit 1
+	;;
+esac
