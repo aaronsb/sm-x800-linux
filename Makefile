@@ -166,7 +166,7 @@ rootfs: ## Rebuild the minimal (console) rootfs, preserve image, print UUIDs
 	@echo ">> NO --split: userdata must hold the COMBINED image (GPT with"
 	@echo ">> pmOS_boot AND pmOS_root) because uniLoader owns the real boot"
 	@echo ">> partition. See docs/05 section 8b."
-	$(PMB) install --password 147147
+	$(PMB) install $(if $(PASSWORD),--password $(PASSWORD))
 	@set -e; \
 	SRC=pmb-work/chroot_native/home/pmos/rootfs/$(DEVICE).img; \
 	echo ">> preserving $$SRC -> $(COMBINED)"; \

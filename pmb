@@ -1,2 +1,4 @@
 #!/bin/bash
-exec python3 /home/aaron/Projects/hardware/sm-x800-linux/tools/pmbootstrap/pmbootstrap.py "$@"
+# Repo-local pmbootstrap wrapper: always the vendored checkout, regardless of
+# where the repo lives or what's on PATH.
+exec python3 "$(dirname "$(readlink -f "$0")")/tools/pmbootstrap/pmbootstrap.py" "$@"

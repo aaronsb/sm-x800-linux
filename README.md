@@ -144,12 +144,26 @@ are Samsung's copyrighted binaries and stay local.
 Requires [pmbootstrap](https://postmarketos.org/pmbootstrap), `odin4`,
 `android-tools` (mkbootimg/unpack_bootimg/img2simg), and `dtc`.
 
+First run only — point the vendored pmbootstrap at this repo and device
+(everything lives under the repo; nothing touches your home directory except
+pmbootstrap's own config file):
+
 ```sh
-make deps       # clone uniLoader, apply our board port, install chroot toolchain
+./pmb init      # work path: <this repo>/pmb-work
+                # channel edge, device samsung-gts8pwifi (ours), UI console
+```
+
+Then:
+
+```sh
+make deps       # clone uniLoader (pinned), apply our board port, chroot toolchain
 make boot       # kernel -> uniLoader -> boot.img -> flashable tar
 make flash      # odin4 the boot image (device in download mode)
 make help       # everything else
 ```
+
+`make rootfs` prompts for the device user password unless you pass
+`PASSWORD=...` (the docs use throwaway credentials throughout — pick your own).
 
 `make boot` runs `stage-fw` first (stages the locally-extracted GPU zap into the
 build chroot's initramfs and hard-fails if it does not land) and ends by printing
