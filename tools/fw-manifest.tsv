@@ -1,0 +1,38 @@
+# fw-manifest.tsv — the blob harvest manifest for gts8pwifi.
+#
+# The cartridge-dump model (see docs/09-firmware-harvest.md):
+# this repo ships only OPEN or redistributable content. Every row below names a
+# Samsung/Qualcomm blob that lives in the builder's OWN stock firmware and is
+# copied out of a pre-flash partition dump at build time — nothing copyrighted
+# is ever distributed by us. One row per logical blob; tools/fw-harvest.sh reads
+# this file and stages the blobs a build actually needs.
+#
+# Columns (tab-separated):
+#   name     stable handle for the blob (also the harvest --only selector)
+#   source   which dumped partition/logical-image the blob lives in:
+#              apnhlos = plain vfat partition (mount -o ro)
+#              vendor  = EROFS logical image inside `super` (lpunpack + mount)
+#   src_glob path (glob ok) of the blob(s) WITHIN that source root
+#   dest_dir destination under /lib/firmware (. = the /lib/firmware root)
+#   tier     initramfs = must ride in the first-stage initramfs (loaded at
+#              driver bind, before rootfs mounts); rootfs = staged in /lib/firmware
+#   class    pil = Qualcomm PIL/MDT, TrustZone-authenticated (mdt + bNN splits)
+#            mcu = raw peripheral MCU image, flashed by its own driver over i2c/spi
+#            dsp = Cirrus/codec DSP firmware (wmfw + bin), loaded by ASoC
+#   status   working = a driver on our side consumes it today
+#            wip     = driver exists (often downstream) but not wired up on mainline
+#            none    = no mainline consumer yet; harvested for future bring-up
+#   notes
+#
+#name	source	src_glob	dest_dir	tier	class	status	notes
+a730_zap	apnhlos	image/a730_zap.*	qcom/sm8450/gts8pwifi	initramfs	pil	working	GPU zap shader; TZ will only accept Samsung's signature. The working reference.
+wez01_pen	vendor	firmware/wez01_gts8p.bin	.	rootfs	mcu	wip	S Pen Wacom W90xx digitizer (i2c 0x56, DT wacom,fw_path). Downstream driver in kernel-src/drivers/input/wacom/.
+fts_touch	vendor	firmware/tsp_stm/fts1ba90a_gts8p.bin	.	rootfs	mcu	working	Touchscreen (STM FTS1BA90A). Already ported; driver flashes this over i2c.
+stm32_pogo	vendor	firmware/keyboard_stm/stm32_gts8p.bin	.	rootfs	mcu	working	Pogo Book Cover Keyboard MCU. Already ported (stm32-pogo). Flash is byte-identical to this.
+camera_icp	vendor	firmware/CAMERA_ICP.*	qcom/sm8450/gts8pwifi	rootfs	pil	none	Camera ISP microcontroller (Xtensa PIL). No mainline CAMSS/ICP path on this SoC yet.
+eva	vendor	firmware/evass.*	qcom/sm8450/gts8pwifi	rootfs	pil	none	EVA computer-vision engine (Xtensa PIL). evass-lt-21.* is the low-temp variant.
+vpu	vendor	firmware/vpu20_*.mbn	qcom/sm8450/gts8pwifi	rootfs	pil	none	Iris video codec (Xtensa PIL). Note: signed + _unsigned variants both ship.
+cs35l45	vendor	firmware/cs35l45-*	.	rootfs	dsp	none	Cirrus CS35L45 smart speaker amp DSP (wmfw + tuning bins). Relevant to the audio path.
+cs40l26	vendor	firmware/cs40l26*	.	rootfs	dsp	none	Cirrus CS40L26 haptics DSP.
+mfc	vendor	firmware/mfc/mfc_fw_flash.bin	.	rootfs	mcu	none	MFC wireless-charging IC MCU image.
+ois	vendor	firmware/ois_mcu_stm32g_fw.bin	.	rootfs	mcu	none	Camera OIS STM32G MCU image.

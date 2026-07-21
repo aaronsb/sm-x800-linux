@@ -35,7 +35,7 @@ OS_PATCH    := 2025-04
 
 .PHONY: help deps kernel uniloader bootimg boot flash flash-full flash-rootfs \
         sparse flash-all flash-stay flash-help restore-android sync-aports uuids \
-        rootfs stage-fw manifest toolchain \
+        rootfs stage-fw manifest toolchain check-tools \
         sync-overlay lint clean distclean device-status dtb-dump
 
 help: ## Show available targets
@@ -73,6 +73,24 @@ toolchain: ## Install the aarch64 cross toolchain into the pmb chroot
 	@# pmb build --force zaps the chroot, so this is re-run by other targets
 	$(PMB) chroot -- apk add build-base gcc-aarch64 binutils-aarch64 \
 	    make bison flex >/dev/null 2>&1 || true
+
+# Host tools the harvest + build + flash paths need. Required tools fail the
+# target; optional ones only warn. Firmware harvest from a stock super.img
+# needs lpunpack (vendor split) and an erofs reader (mount or fsck.erofs);
+# sparse dumps need simg2img; DTB inspection needs dtc; flashing needs odin4.
+check-tools: ## Verify host tools for harvest/build/flash are installed
+	@echo ">> required:"; rc=0; \
+	for t in lpunpack simg2img dtc; do \
+	    if command -v $$t >/dev/null; then echo "   ok   $$t"; \
+	    else echo "   MISS $$t"; rc=1; fi; done; \
+	if command -v fsck.erofs >/dev/null || command -v dump.erofs >/dev/null; then \
+	    echo "   ok   erofs-utils (fsck.erofs/dump.erofs)"; \
+	else echo "   MISS erofs-utils  (pacman -S erofs-utils)"; rc=1; fi; \
+	echo ">> optional:"; \
+	for t in odin4 sshpass; do \
+	    command -v $$t >/dev/null && echo "   ok   $$t" || echo "   --   $$t (only needed for flash/on-device)"; done; \
+	test $$rc -eq 0 && echo ">> all required host tools present" \
+	    || { echo "!! missing required host tools (see above)"; exit 1; }
 
 ## ---------------------------------------------------------------------------
 ## Build
