@@ -38,6 +38,7 @@ source="
 	sm8450-samsung-gts8pwifi.dts
 	fts1ba90a.c
 	stm32-pogo.c
+	wacom-wez01.c
 	max77705-otg.c
 	panel-samsung-s6tuum1.c
 	dpu-dsc-topology-wide-mode.patch
@@ -74,6 +75,14 @@ prepare() {
 	cp "$srcdir"/stm32-pogo.c drivers/input/keyboard/stm32-pogo.c
 	if ! grep -q "stm32-pogo.o" drivers/input/keyboard/Makefile; then
 		echo 'obj-y += stm32-pogo.o' >> drivers/input/keyboard/Makefile
+	fi
+
+	# S Pen: our wacom-wez01 port (see the file's header + device-facts/
+	# wacom-wez01.md). Same obj-y staging into the touchscreen dir, which is
+	# already built via CONFIG_INPUT_TOUCHSCREEN=y.
+	cp "$srcdir"/wacom-wez01.c drivers/input/touchscreen/wacom-wez01.c
+	if ! grep -q "wacom-wez01.o" drivers/input/touchscreen/Makefile; then
+		echo 'obj-y += wacom-wez01.o' >> drivers/input/touchscreen/Makefile
 	fi
 
 	# MAX77705 OTG VBUS boost (USB host-mode power), same pattern.
@@ -129,6 +138,7 @@ sha512sums="
 136b1db8d20cff45a1cdca0c1f9c2520f3728941fc3f0d4bcc9fff649fb8cbc2320472ab62795857cd30311e326dadaaf9f85f71361367bb8aae0c1bfa254402  sm8450-samsung-gts8pwifi.dts
 b1ba6dfd005f084f98eb8d2fe1e8dd82377712f39d2422997b70eaffa9c6b54846c04b43839fc2d462734ef510390bc8e7f7a8f00ffc43ba632011839b1fc5c1  fts1ba90a.c
 be657f3f7ed60bdff1067fade2383bb15bb6493ea5c5398c039549b0a32acae57ac7a93ffd8f4ab28239ed4a8aa78f6dfd8f4169f6d4951d2cda0b1b14ec3152  stm32-pogo.c
+2f731553747aaa09d4bae6836ab3d8d229572f0a462415873f3606a60974b596d4f71f4d74e5b4963d33304c78499ce31f6a6e4a18c97b9c9d907241dae1bf9b  wacom-wez01.c
 eafe3ac70d1330972f5f9e3f6fc828c3dff00beba6526da55884b0ce9593a0cf991a9ae1a21fd7aef3a24981d5dc4d5d7fc593e93e1103250b0cae2b9ecc2f77  max77705-otg.c
 b6f67c8bf3d2c67b77aa79a741f5ae0d1cbad09d890782ab07a724f08dd3b982e4633d369a5333351cf893ee9a4353ed50ce8b268c2d57724c758ccd900a6ae1  panel-samsung-s6tuum1.c
 c6888977944be4c8ecd8bc9670aafe60883939f6d44c362b16946b2783bbc6f72ac607b8c3e2f6ce53a1dc09a34cdb13f14178a7e33571e23bd5853bb2b4cf89  dpu-dsc-topology-wide-mode.patch

@@ -101,3 +101,52 @@ gestures, the garage/dock notifications, factory sysfs.
 Wire-in mirrors the others in `linux-postmarketos-qcom-sm8450/APKBUILD`
 (`cp` the file, append `obj-y += wacom-wez01.o` to the target dir's Makefile), and
 flip the DT `compatible` to whatever string the new driver matches.
+
+## Bring-up status (r44 + driver) — BLOCKED on GPI DMA
+
+The driver (`wacom-wez01.c`) is written and builds into the kernel. On-device it
+**binds and works to the edge of the bus**:
+
+- probes, registers input `Wacom WEZ01 S Pen` (event4), requests IRQ (gpio51 →
+  virq 187), claims `0x56` (`UU`).
+- the IRQ is real: **704 interrupts while drawing** — the digitizer senses the pen
+  and signals data-ready.
+
+But **every i2c read on the bus fails**, so no packet is ever parsed and event4
+stays silent:
+
+```
+gpi a00000.dma-controller: not enough space in ring, avail:0 required:1
+geni_i2c a98000.i2c: prep_slave_sg failed
+geni_i2c a98000.i2c: GPI transfer failed: -5
+```
+
+Root cause chain, established from the mainline sources:
+
+1. **SE14 is hardware-forced to GPI DMA.** `i2c-qcom-geni` reads `fifo_disable`
+   from the SE's `GENI_IF_DISABLE_RO` register — SE14's FIFO interface is disabled
+   in silicon, so `gpi_mode = true` is forced; there is no FIFO fallback. (This is
+   why the FIFO bus i2c8/touch works and i2c14 does not — different HW, not the
+   driver.) Small 1-byte reads (`i2cdetect -r`) went through in the probe-only
+   boot, but the driver's 17-/32-byte reads all take the GPI path.
+2. **The GPI channel's ring is empty from the first transfer.** `gpi.c` reports
+   `avail:0` of `CHAN_TRES = 64` on transfer #1. The ring's read pointer only
+   advances as GPI *completion events* are processed, so avail:0 at the start
+   means the channel was never brought to a running/reset state with credit — a
+   GPI channel-start problem, not a ring overrun.
+3. It is **persistent**: once wedged, even manual `i2ctransfer` reads keep failing
+   until a reset. The level-triggered pen IRQ then storms (failed read never
+   deasserts the line) — the console spam the user saw.
+
+The DT wiring is NOT the bug: mainline `sm8450.dtsi` gives i2c14
+`dmas = <&gpi_dma1 0 6 QCOM_GPI_I2C>` (SE14 = 7th SE on QUP1 = index 6), which is
+correct. i2c8–i2c12 have no `dmas` (FIFO), so **i2c14 may be the first real
+consumer of the `gpi_dma1` (a00000) controller** — plausibly why its channel
+start path is exercising an untested/broken corner.
+
+Next avenues (not yet tried): confirm `gpi_dma1` actually probed and its GPII for
+this channel started (instrument `gpi_alloc_chan`/`gpi_start_chan` in `gpi.c`);
+check for a mainline GPI-DMA fix for sm8450 QUP1; compare against a known-good GPI
+consumer (a QUP1 SPI in GPI mode). This is a SoC DMA-plumbing problem in the class
+of "hard SoC integration," distinct from the driver, which is ready to run the
+moment a read succeeds.
