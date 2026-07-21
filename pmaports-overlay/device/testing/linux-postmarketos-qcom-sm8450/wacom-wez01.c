@@ -59,6 +59,9 @@
 
 #define MPU_WEZ01		0x46
 
+/* digitizer density: 100 units/mm across the 12.4" 16:10 active area */
+#define WACOM_RES_UNITS_PER_MM	100
+
 /* coord header bits */
 #define HDR_RDY			0x80
 #define HDR_TIP			0x10
@@ -66,15 +69,21 @@
 #define HDR_ERASER		0x40
 
 /*
- * Axis mapping from the stock DTB's wacom,invert = <0 1 1> — i.e.
- * x_invert = 0, y_invert = 1, xy_switch = 1 — which rotates the digitizer's
- * portrait frame into the panel's landscape frame. These are the values to
- * revisit first if the pen draws mirrored or rotated (watch the raw packet
- * log, enabled via the module's dyndbg, while moving the pen).
+ * Axis mapping: identity. Measured on-device (strokes tracked in a KWin/Wayland
+ * session), the raw digitizer frame already matches the panel's landscape frame
+ * — raw_x is horizontal (left->right, 0..max_x) and raw_y is vertical
+ * (top->bottom, 0..max_y), both un-inverted. The stock DTB's
+ * wacom,invert = <0 1 1> hint is expressed in Samsung's post-rotation frame (see
+ * the touchscreen node's comment in the DTS) and does NOT apply to the raw
+ * coords the mainline i2c read returns; using it rotated + mirrored the cursor.
+ *
+ * If a future panel draws mirrored or rotated, these are the knobs: flip an
+ * invert for a mirror, set xy_switch for a 90-degree rotation. Confirm with a
+ * three-corner raw capture (evtest) rather than guessing.
  */
 #define WACOM_X_INVERT		0
-#define WACOM_Y_INVERT		1
-#define WACOM_XY_SWITCH		1
+#define WACOM_Y_INVERT		0
+#define WACOM_XY_SWITCH		0
 
 struct wacom_wez01 {
 	struct i2c_client *client;
@@ -277,6 +286,16 @@ static int wacom_setup_input(struct wacom_wez01 *w)
 	input_set_abs_params(input, ABS_DISTANCE, 0, w->max_height, 0, 0);
 	input_set_abs_params(input, ABS_TILT_X, -w->max_tilt, w->max_tilt, 0, 0);
 	input_set_abs_params(input, ABS_TILT_Y, -w->max_tilt, w->max_tilt, 0, 0);
+
+	/*
+	 * libinput refuses a tablet tool that reports no X/Y resolution
+	 * ("missing tablet capabilities: resolution. Ignoring this device"),
+	 * so KWin/Wayland never sees the pen. The WEZ01 reports 26712 x 16714
+	 * units across the 12.4" 16:10 active area (267.1 x 166.9 mm) = 100
+	 * units/mm on both axes, the usual Wacom EMR density.
+	 */
+	input_abs_set_res(input, ABS_X, WACOM_RES_UNITS_PER_MM);
+	input_abs_set_res(input, ABS_Y, WACOM_RES_UNITS_PER_MM);
 
 	__set_bit(INPUT_PROP_DIRECT, input->propbit);
 	__set_bit(INPUT_PROP_POINTER, input->propbit);

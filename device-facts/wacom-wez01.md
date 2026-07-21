@@ -117,6 +117,10 @@ pen off geni (which is forced to broken GPI DMA on SE14) onto a **software
 bit-banged `i2c-gpio` bus** on the same pins (gpio52/53). See the DTS comment on
 `&wacom_i2c`.
 
+Usable as a **KDE Plasma (Wayland) input device** — verified: KWin binds it via
+libinput and the cursor tracks the pen tip 1:1. Two fixes past raw evdev were
+needed to get there (below).
+
 Open polish (not blockers):
 - ~~`wacom_i2c_query` returns -5~~ **FIXED.** Two faults compounded: (1) the
   separate `COM_QUERY` write + read issued a STOP and re-addressed the chip
@@ -125,9 +129,30 @@ Open polish (not blockers):
   would sit). A single combined `i2c_transfer` (repeated start) fixes (1) and
   returns the block at **offset 0**, fixing (2). Verified: `mpu=0x46`, exact
   geometry now feeds the input device's ABS ranges (was on fallback).
-- Axis orientation (hardcoded from stock `wacom,invert = <0 1 1>`) not yet
-  verified against the panel with directed strokes.
+- ~~libinput ignored the pen~~ **FIXED.** Raw evdev/evtest and udev
+  (`ID_INPUT_TABLET=1`) were all happy, but the pen did nothing in KWin because
+  libinput rejected it: *"missing tablet capabilities: resolution. Ignoring this
+  device."* libinput hard-requires a non-zero `ABS_X`/`ABS_Y` resolution for
+  tablet tools. The WEZ01's 26712 x 16714 units span the 12.4" 16:10 active area
+  (267.1 x 166.9 mm) = **100 units/mm**, the usual Wacom EMR density; set via
+  `input_abs_set_res()`. libinput then reports the tool as `267x167mm`.
+- ~~Axis orientation~~ **FIXED — mapping is identity.** Measured in a KWin
+  session: the raw digitizer frame already matches the panel's landscape frame —
+  `raw_x` horizontal (L->R, 0..max_x), `raw_y` vertical (T->B, 0..max_y), neither
+  inverted. The stock `wacom,invert = <0 1 1>` is in Samsung's *post-rotation*
+  frame (see the DTS touchscreen comment) and applying it literally rotated +
+  mirrored the cursor. Set `x_invert=y_invert=xy_switch=0`.
 - Tilt/height reported but not eyeballed.
+
+**Gotcha — capturing raw pen data while a compositor runs.** KWin (via
+logind/libinput) takes an `EVIOCGRAB` on the tablet, so a concurrent
+`evtest /dev/input/event2` receives *zero* events even though the pen is firing
+(watch the delta on `/proc/interrupts` IRQ 177 to confirm it's alive). To capture
+raw coords, stop the compositor (`systemctl isolate multi-user.target`) or test
+at a fresh console boot before starting Plasma. Note the digitizer can also come
+up wedged after a *warm* reboot (fires IRQs, emits no input events) — a clean
+boot after a flash clears it. Orientation itself was derivable from the in-session
+tracking behavior without a raw capture.
 
 ## History: why geni/GPI DMA did not work (the road here)
 
