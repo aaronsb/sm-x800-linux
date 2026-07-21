@@ -109,3 +109,11 @@ one before the exotic ones.**
   partition — not vendor/, not modem/ — and a7xx's bind-time SQE load
   means all GPU firmware must ride in the first-stage initramfs. kmscube
   renders on `FD730`, OpenGL ES 3.2.)
+
+## Postscript: the desktop
+
+Same day, a few hours later: KDE Plasma 6.7 (KWin Wayland) composited on the
+Adreno, installed onto the minimal image with one command
+(`gts8pwifi-setup plasma`, Plasma Login Manager autostarting on boot).
+
+![Plasma 6 lock screen](media/plasma-lockscreen.png)

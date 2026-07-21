@@ -14,10 +14,13 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 *kmscube on `FD730` (freedreno, OpenGL ES 3.2) — hardware GL through the native
 DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 
-> **Status: console daily-driveable, GPU alive.** Boots to `samsung-gts8pwifi login:`
-> on a fully native display stack with working hardware GL (kmscube renders on the
-> panel); local input (keyboard + touch) and wireless access both work. The big
-> remaining gaps are a compositor/UI stack and audio.
+> **Status: it's a Linux tablet now.** Boots through a quiet native display stack
+> into **KDE Plasma 6** (KWin Wayland, composited on the Adreno 730), with
+> touchscreen, keyboard, WiFi and Bluetooth all live — or stay on the pure
+> console, which is equally at home. The big remaining gaps are audio and the
+> long tail (S Pen, cameras, sensors).
+
+![Plasma 6 desktop on the Tab S8+](docs/media/plasma-desktop.png)
 
 | Component | State |
 |---|---|
@@ -38,7 +41,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Story: device-facts/display-s6tuum1.md |
 | S Pen (Wacom EMR digitizer) | ❌ not started (separate chip, separate bus) |
 | GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition (`gts8pwifi-fw-extract`), firmware rides in the initramfs (a7xx loads SQE at bind time) |
-| Plasma Desktop 6 (KWin Wayland) | 🟡 landing — one command on a fresh install: `sudo gts8pwifi-setup plasma`; first-session verification in progress. Known polish gaps: tear bands under fast motion (panel idles at ~24 Hz LFD), no runtime 120 Hz switching yet |
+| Plasma Desktop 6 (KWin Wayland) | ✅ working — full KDE 6.7 desktop, KWin composited on the Adreno, Plasma Login Manager autostart; one command on a fresh install: `sudo gts8pwifi-setup plasma`. Polish gaps: tear bands under fast motion (panel idles at ~24 Hz LFD), no runtime 120 Hz switching yet |
 | Login experience | ✅ quiet boot (`loglevel=4`), generated `/etc/issue` banner with live IP (agetty needs `--issue-file` on Alpine), UTF-8 locale, keyboard autorepeat (kernel r42) |
 | Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
 | Sensors (incl. auto-rotate) | ❌ architecturally blocked — SLPI-owned I3C with no mainline path |
