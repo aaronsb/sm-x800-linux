@@ -32,7 +32,9 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
 | Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Story: device-facts/display-s6tuum1.md |
 | S Pen (Wacom EMR digitizer) | ❌ not started (separate chip, separate bus) |
-| GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition, firmware rides in the initramfs (a7xx loads SQE at bind time) |
+| GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition (`gts8pwifi-fw-extract`), firmware rides in the initramfs (a7xx loads SQE at bind time) |
+| Plasma Desktop 6 (KWin Wayland) | 🟡 landing — one command on a fresh install: `sudo gts8pwifi-setup plasma`; first-session verification in progress. Known polish gaps: tear bands under fast motion (panel idles at ~24 Hz LFD), no runtime 120 Hz switching yet |
+| Login experience | ✅ quiet boot (`loglevel=4`), generated `/etc/issue` banner with live IP (agetty needs `--issue-file` on Alpine), UTF-8 locale, keyboard autorepeat (kernel r42) |
 | Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
 | Sensors (incl. auto-rotate) | ❌ architecturally blocked — SLPI-owned I3C with no mainline path |
 
@@ -106,6 +108,10 @@ make boot       # kernel -> uniLoader -> boot.img -> flashable tar
 make flash      # odin4 the boot image (device in download mode)
 make help       # everything else
 ```
+
+`make boot` runs `stage-fw` first (stages the locally-extracted GPU zap into the
+build chroot's initramfs and hard-fails if it does not land) and ends by printing
+the numbered bring-up manifest.
 
 Rebuilding the rootfs as well is a longer path, because the rootfs UUIDs are baked
 into the DTS bootargs (uniLoader passes no kernel cmdline of its own):

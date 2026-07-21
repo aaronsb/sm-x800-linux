@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=16
+pkgrel=17
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -16,10 +16,12 @@ depends="
 	mdev-conf
 	reboot-mode
 	linux-firmware-qcom
+	linux-firmware-ath11k
+	linux-firmware-qca
 "
-subpackages="$pkgname-systemd"
+subpackages="$pkgname-systemd $pkgname-tools"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -49,6 +51,10 @@ package() {
 	install -Dm755 "$srcdir"/fw-extract.sh \
 		"$pkgdir"/usr/bin/gts8pwifi-fw-extract
 
+	# One-command daily-driver assembly on a fresh minimal rootfs.
+	install -Dm755 "$srcdir"/setup.sh \
+		"$pkgdir"/usr/bin/gts8pwifi-setup
+
 	# Login banner generator: writes /etc/issue (art + specs + agetty
 	# escapes for live IP). v1 spammed the console; see the script header.
 	install -Dm755 "$srcdir"/netinfo-console.sh \
@@ -69,6 +75,26 @@ package() {
 	# tablet-sourced VBUS are never detected. See the script header.
 	install -Dm755 "$srcdir"/usb-host-wake.start \
 		"$pkgdir"/etc/local.d/usb-host-wake.start
+}
+
+tools() {
+	pkgdesc="Curated on-device toolkit for the gts8pwifi port (metapackage)"
+	# Alpine's package-selection unit: no files, only depends. Everything
+	# tools/README used to say to re-install by hand after a userdata flash.
+	depends="
+		i2c-tools
+		libgpiod
+		evtest
+		iw
+		wpa_supplicant
+		tcpdump
+		bluez
+		mesa-dri-gallium
+		kmscube
+		btop
+		strace
+	"
+	mkdir -p "$subpkgdir"
 }
 
 systemd() {
@@ -97,4 +123,5 @@ c1e9c670c7b5c8b671c1595f55a44ce1c71a3c812dbdb3700c9719c92cdc283a2d97a378e68432ad
 7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
 eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start
 8c82787b304863cecbfd690f64795ed7e256807ceb31b708d3c7a36138f031a0400060e63f31a08e5f1a67217e88f5704dcb68ec2bc32b31a98d44b325cad85d  fw-extract.sh
+0fc069b5b51758ac37f78cfb467ed8b993c935f3a497fbad7ec6fa19577d0d695188d2a1f26d452703c710d3630649bb5d785e56d41632a76ac5919a567754f7  setup.sh
 "

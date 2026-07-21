@@ -35,7 +35,8 @@ OS_PATCH    := 2025-04
 
 .PHONY: help deps kernel uniloader bootimg boot flash flash-full flash-rootfs \
         sparse flash-all flash-stay flash-help restore-android sync-aports uuids \
-        rootfs sync-overlay lint clean distclean device-status dtb-dump
+        rootfs stage-fw manifest toolchain \
+        sync-overlay lint clean distclean device-status dtb-dump
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -141,7 +142,17 @@ manifest: ## Print the numbered subsystem bring-up manifest
 boot: kernel uniloader bootimg manifest ## Full chain: kernel -> uniLoader -> flashable tar
 	@echo ">> root-build/pmos_uniloader_boot.tar ready. 'make flash' in download mode."
 
-rootfs: ## Rebuild the pmOS rootfs, preserve the image, print the new UUIDs
+# The image stays MINIMAL (console) on purpose — Alpine's composition unit is
+# the metapackage, not the baked image. The assembled daily-driver is applied
+# ON DEVICE after first boot with one command:
+#
+#     sudo gts8pwifi-setup [plasma]
+#
+# which installs device-samsung-gts8pwifi-tools (our curated toolkit
+# metapackage), optionally Plasma Desktop 6, and runs gts8pwifi-fw-extract
+# (the zap can never be part of any image we build). See tools/README.
+rootfs: ## Rebuild the minimal (console) rootfs, preserve image, print UUIDs
+	$(PMB) config ui console
 	@echo ">> WARNING: this regenerates the rootfs with NEW UUIDs."
 	@echo ">> NO --split: userdata must hold the COMBINED image (GPT with"
 	@echo ">> pmOS_boot AND pmOS_root) because uniLoader owns the real boot"

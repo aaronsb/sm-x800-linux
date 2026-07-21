@@ -21,18 +21,22 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 
 ## After any userdata/rootfs flash
 
-Reflashing userdata wipes the on-device packages this port leans on. Re-install them:
+Reflashing userdata wipes the on-device state this port leans on. The image stays
+minimal by design (Alpine composes with metapackages, not baked images) — assembly
+is one command:
 
 ```sh
-apk add i2c-tools libgpiod evtest \
-    linux-firmware-ath11k linux-firmware-qca linux-firmware-qcom \
-    iw wpa_supplicant tcpdump bluez reboot-mode \
-    mesa-dri-gallium kmscube btop
+sudo gts8pwifi-setup            # device toolkit metapackage + GPU fw extraction
+sudo gts8pwifi-setup plasma     # same, plus Plasma Desktop 6 (KWin Wayland)
 ```
 
-The firmware packages are LOAD-BEARING (WiFi and BT are dead without them), and the
-NetworkManager WiFi profile is also lost with userdata — re-add with
-`nmcli dev wifi connect <ssid> password <pw>` or the dongle comes back out.
+The toolkit lives in the `device-samsung-gts8pwifi-tools` metapackage (i2c-tools,
+libgpiod, evtest, iw, wpa_supplicant, tcpdump, bluez, mesa-dri-gallium, kmscube,
+btop, strace). The load-bearing firmware packages (linux-firmware-ath11k/-qca/
+-qcom) and reboot-mode are hard `depends` of the device package itself, so a
+fresh image always has them. The NetworkManager WiFi profile is also lost with
+userdata — re-add with `nmcli dev wifi connect <ssid> password <pw>` or the
+dongle comes back out.
 
 The GPU additionally needs the Samsung-signed zap shader, which no repo and no
 package may ship (cartridge-dump model: we distribute the extractor, the user
