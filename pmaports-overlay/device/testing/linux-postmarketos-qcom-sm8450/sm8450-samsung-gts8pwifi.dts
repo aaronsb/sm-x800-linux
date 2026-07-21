@@ -711,6 +711,14 @@
 		bias-disable;
 		input-enable;
 	};
+
+	/* Bit-banged i2c on the SE14 pins for the S Pen (see &wacom_i2c). */
+	wacom_i2c_gpio: wacom-i2c-gpio-state {
+		pins = "gpio52", "gpio53";	/* SE14 SDA / SCL */
+		function = "gpio";
+		bias-pull-up;
+		drive-strength = <2>;
+	};
 };
 
 /*
@@ -1091,43 +1099,63 @@
 };
 
 /*
- * S Pen — Wacom W90xx EMR digitizer, i2c 0x56 on QUP se14 (&i2c14, pins
- * gpio52/53). Mapped from the stock DTB (qupv3_se14_i2c: i2c@a98000 ->
- * wacom@56). SE14 shares the QUP1 wrapper with the working touch bus
- * (&i2c8), so the GPI-DMA deferred-probe cascade that plagued i2c8 bring-up
- * does not re-apply here — that wrapper's DMA engine is already up.
+ * S Pen — Wacom W90xx EMR digitizer, i2c 0x56, on the SE14 pins (gpio52 SDA /
+ * gpio53 SCL). Mapped from the stock DTB (qupv3_se14_i2c: i2c@a98000 ->
+ * wacom@56).
  *
- * There is no mainline driver for this Samsung EMR part yet (the downstream
- * driver lives in kernel-src/drivers/input/wacom/). This node is staged for
- * the PROBE-FIRST milestone: with AVDD always-on (wacom_avdd) the chip
- * should ACK at 0x56 under `i2cdetect -y -r <bus>` even before a driver
- * exists. Wiring transcribed from the stock wacom@56:
- *   irq  -> &tlmm 51  (epen-int,  input, level-low)
- *   fwe  -> &tlmm 54  (epen-fwe,  flash-enable, driver-owned)
- *   pdct -> &tlmm 155 (epen-pdct, pen-detect, input)
- *   avdd -> wacom_avdd (tlmm 167 fixed reg)
+ * WHY BIT-BANG AND NOT geni: SE14's FIFO interface is disabled in silicon
+ * (GENI_IF_DISABLE_RO), so geni-i2c is forced into GPI DMA — and that DMA
+ * path fails for this chip. Bare idle reads work, but combined write+read
+ * transactions return "DMA txn failed:3" and active-data reads (the chip
+ * clock-stretches while computing a sample) wedge the GPI ring (avail:0),
+ * which does not recover. So we disable geni on SE14 and drive the same two
+ * pins as a software-bit-banged i2c-gpio bus: no DMA ring, and clock-
+ * stretching is handled natively. The pen's ~120 Hz / 17-byte traffic is well
+ * within a 100 kHz bit-bang budget. The full diagnosis is in
+ * device-facts/wacom-wez01.md. The wacom driver is bus-agnostic (plain
+ * i2c_master_send/recv), so it needs no change.
+ *
+ * Wiring transcribed from the stock wacom@56:
+ *   sda/scl -> &tlmm 52 / 53 (open-drain, pull-up; see wacom_i2c_gpio)
+ *   irq     -> &tlmm 51  (epen-int,  input, level-low)
+ *   fwe     -> &tlmm 54  (epen-fwe,  flash-enable, driver-owned)
+ *   pdct    -> &tlmm 155 (epen-pdct, pen-detect, input)
+ *   avdd    -> wacom_avdd (tlmm 167 fixed reg)
  *   firmware wez01_gts8p.bin (harvested; tools/fw-manifest.tsv)
  */
+/* geni on SE14 is disabled — its pins are bit-banged by &wacom_i2c below. */
 &i2c14 {
-	clock-frequency = <400000>;
-	status = "okay";
+	status = "disabled";
+};
 
-	wacom@56 {
-		compatible = "wacom,w90xx";
-		reg = <0x56>;
-
-		interrupt-parent = <&tlmm>;
-		interrupts = <51 IRQ_TYPE_LEVEL_LOW>;
-
+/ {
+	wacom_i2c: i2c-wacom {
+		compatible = "i2c-gpio";
+		sda-gpios = <&tlmm 52 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		scl-gpios = <&tlmm 53 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		i2c-gpio,delay-us = <5>;	/* ~100 kHz half-period; conservative for internal pull-ups */
 		pinctrl-names = "default";
-		pinctrl-0 = <&wacom_irq_default>, <&wacom_pdct_default>;
+		pinctrl-0 = <&wacom_i2c_gpio>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 
-		vdd-supply = <&wacom_avdd>;
+		wacom@56 {
+			compatible = "wacom,w90xx";
+			reg = <0x56>;
 
-		wacom,irq-gpio = <&tlmm 51 GPIO_ACTIVE_LOW>;
-		wacom,fwe-gpio = <&tlmm 54 GPIO_ACTIVE_HIGH>;
-		wacom,pdct-gpio = <&tlmm 155 GPIO_ACTIVE_LOW>;
-		wacom,fw_path = "wez01_gts8p.bin";
+			interrupt-parent = <&tlmm>;
+			interrupts = <51 IRQ_TYPE_LEVEL_LOW>;
+
+			pinctrl-names = "default";
+			pinctrl-0 = <&wacom_irq_default>, <&wacom_pdct_default>;
+
+			vdd-supply = <&wacom_avdd>;
+
+			wacom,irq-gpio = <&tlmm 51 GPIO_ACTIVE_LOW>;
+			wacom,fwe-gpio = <&tlmm 54 GPIO_ACTIVE_HIGH>;
+			wacom,pdct-gpio = <&tlmm 155 GPIO_ACTIVE_LOW>;
+			wacom,fw_path = "wez01_gts8p.bin";
+		};
 	};
 };
 

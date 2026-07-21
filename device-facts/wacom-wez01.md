@@ -102,18 +102,30 @@ Wire-in mirrors the others in `linux-postmarketos-qcom-sm8450/APKBUILD`
 (`cp` the file, append `obj-y += wacom-wez01.o` to the target dir's Makefile), and
 flip the DT `compatible` to whatever string the new driver matches.
 
-## Bring-up status (r44 + driver) — BLOCKED on GPI DMA
+## Bring-up status — WORKING (via i2c-gpio bit-bang)
 
-The driver (`wacom-wez01.c`) is written and builds into the kernel. On-device it
-**binds and works to the edge of the bus**:
+**The S Pen draws.** Position, pressure, and tool detection all work: `ABS_X/ABS_Y`
+track strokes smoothly, `ABS_PRESSURE` reports analog force (measured to ~3500 of
+4095), `BTN_TOOL_PEN` on proximity — clean, no bus errors. The fix was to move the
+pen off geni (which is forced to broken GPI DMA on SE14) onto a **software
+bit-banged `i2c-gpio` bus** on the same pins (gpio52/53). See the DTS comment on
+`&wacom_i2c`.
 
-- probes, registers input `Wacom WEZ01 S Pen` (event4), requests IRQ (gpio51 →
-  virq 187), claims `0x56` (`UU`).
-- the IRQ is real: **704 interrupts while drawing** — the digitizer senses the pen
-  and signals data-ready.
+Open polish (not blockers):
+- `wacom_i2c_query` (`COM_QUERY` write, then 32-byte read) still returns -5 even
+  post-boot, so the driver runs on fallback `max_x/max_y` — calibration is
+  approximate. Likely the query wants a repeated-start (combined write+read via a
+  2-message `i2c_transfer`, which the bit-bang bus supports) rather than two
+  separate transactions; or the reply arrives via IRQ. Fixing it gives exact
+  geometry + an `mpu == 0x46` liveness check.
+- Axis orientation (hardcoded from stock `wacom,invert = <0 1 1>`) not yet
+  verified against the panel with directed strokes.
+- Tilt/height reported but not eyeballed.
 
-But **every i2c read on the bus fails**, so no packet is ever parsed and event4
-stays silent:
+## History: why geni/GPI DMA did not work (the road here)
+
+The first attempt put the pen on geni `&i2c14` (SE14). The driver bound and the
+IRQ fired (704x while drawing), but **every read failed**:
 
 ```
 gpi a00000.dma-controller: not enough space in ring, avail:0 required:1
