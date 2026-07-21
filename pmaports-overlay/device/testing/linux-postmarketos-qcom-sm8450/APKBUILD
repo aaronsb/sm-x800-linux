@@ -7,7 +7,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=6.13_rc3
-pkgrel=42
+pkgrel=44
 pkgdesc="Mainline kernel fork for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -42,6 +42,9 @@ source="
 	panel-samsung-s6tuum1.c
 	dpu-dsc-topology-wide-mode.patch
 	dpu-dsc-merge-count-blocks.patch
+	ath11k-fix-rx-completion-meta-data-corruption.patch
+	ath11k-fix-ring-buffer-corruption.patch
+	ath11k-fix-dest-ring-buffer-corruption.patch
 "
 builddir="$srcdir/linux-$_commit"
 

@@ -9,6 +9,11 @@ keyboard, or ssh in over WLAN with no cables at all.
 
 No Galaxy Tab S8 port exists upstream — as far as we can tell this is the first.
 
+![kmscube rendering on the Adreno 730, native KMS display, Book Cover Keyboard](docs/media/kmscube-adreno730.png)
+
+*kmscube on `FD730` (freedreno, OpenGL ES 3.2) — hardware GL through the native
+DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
+
 > **Status: console daily-driveable, GPU alive.** Boots to `samsung-gts8pwifi login:`
 > on a fully native display stack with working hardware GL (kmscube renders on the
 > panel); local input (keyboard + touch) and wireless access both work. The big
@@ -22,7 +27,7 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 | UFS storage — root mounted, auto-resized | ✅ working |
 | Touchscreen (STM FTS1BA90A) | ✅ working — our `fts1ba90a` driver, orientation measured on-device |
 | Book Cover Keyboard (pogo STM32 @ i2c 0x2a) | ✅ working — our `stm32-pogo` driver (keyboard, caps LED; touchpad supported but untested, the Slim cover has none) |
-| WiFi (WCN6855, ath11k on PCIe0) | ✅ working — NetworkManager autoconnects at boot; primary ssh path |
+| WiFi (WCN6855, ath11k on PCIe0) | ✅ working — NetworkManager autoconnects at boot; primary ssh path. Carries the upstream RX-corruption fix trilogy (bulk downloads used to wedge with `msdu_done` errors / silent drops) |
 | Bluetooth (WCN6855 on uart20) | ✅ controller up, firmware loads (`hci0`); pairing not yet exercised |
 | USB host (xhci) | ✅ working |
 | USB ethernet + DHCP + ssh | ✅ working (Realtek RTL8153 dongle) — now the fallback, not the lifeline |
@@ -38,6 +43,11 @@ No Galaxy Tab S8 port exists upstream — as far as we can tell this is the firs
 | Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
 | Sensors (incl. auto-rotate) | ❌ architecturally blocked — SLPI-owned I3C with no mainline path |
 
+![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
+
+*Daily-driver console: btop over UTF-8 fbcon — all 8 cores, WiFi, 95 GB root,
+half a watt of load average.*
+
 ### Getting a shell
 
 **Local:** attach the Book Cover Keyboard and log in at the panel like any laptop.
@@ -49,6 +59,32 @@ the panel whenever they change — read the address off the screen and ssh to it
 **Fallback:** a self-powered USB-C ethernet dongle still works the same way, and
 holding **volume-down from initial power-on** drops into the postmarketOS initramfs
 debug shell (on-screen keyboard via osk-sdl).
+
+## Should you try this?
+
+If "mainline Linux with a real GPU on Samsung tablet hardware" makes you grin,
+genuinely: yes, come on in — the water's weird but warm. Read this first, though,
+because the door locks behind you:
+
+- **Unlocking the bootloader permanently blows the Knox efuse.** Warranty gone,
+  Knox/Samsung Pay features dead forever — even if you return to stock Android.
+  There is no un-blowing it.
+- **Going back to stock is possible but not painless.** Odin can reflash Samsung
+  firmware (`make restore-android` documents our path), but expect friction, and
+  Knox stays tripped regardless.
+- **The unlock/root path has a firmware ceiling** — no later than One UI 7.0.
+  If your tablet has already updated past it, this door may simply be closed.
+  Details and the full runbook: `docs/01-unlock-root-runbook.md`.
+- **This is a development platform, not a product.** No audio, no S Pen, no
+  cameras, no sensors. What works, works genuinely well — native display, GPU,
+  input, wireless — but you are signing up to be a porter, not a customer.
+
+And a sincere off-ramp: if any of the above reads as risk rather than fun,
+**Samsung DeX plus a Linux terminal/emulator app gets you a capable Linux
+environment with zero risk and zero soldered-shut doors.** That is the sensible
+choice. This repo is the other one.
+
+Start with `docs/01` (unlock/root), then `docs/05` (the boot recipe).
 
 ## Why this is unusual
 
@@ -90,7 +126,10 @@ pmaports-overlay/         Our postmarketOS packages (the actual port)
   device/testing/device-samsung-gts8pwifi/         device pkg + deviceinfo
   uniloader-port/                                  our uniLoader board port
 device-facts/             Non-proprietary device documentation
-Makefile                  Build/flash automation
+tools/                    Runbooks + helpers: mkpatch (patch workbench),
+                          post-flash procedure, hard-won gotchas
+Makefile                  Build/flash automation (make help; boot builds run
+                          the stage-fw gate and end with the bring-up manifest)
 ```
 
 Not in git (see `.gitignore`): `pmb-work/`, `kernel-src/`, `reference/`,
@@ -133,12 +172,10 @@ reason a freshly flashed system drops to the initramfs debug shell.
 These cost us many cycles — see `docs/05` §5:
 
 - **The device must be in a freshly entered download mode.** A session that has sat
-  through boot attempts fails with `FAIL! (Auth)`. Worse, the *"an error has occurred
-  while updating the device software"* screen enumerates as `04e8:685d` and `odin4 -l`
-  finds it, but it will not accept a flash — "fake download mode".
-  With the keyboard working, the cleanest entry is now: `sudo shutdown now` at the
-  device, unplug power, hold both volume keys, plug the cable. (`reboot-mode
-  download` from Linux does not work yet — see the status table.)
+  through boot attempts fails with `FAIL! (Auth)`, and the *"an error has occurred
+  while updating the device software"* screen is a "fake download mode": it
+  enumerates as `04e8:685d` and `odin4 -l` finds it, but it will not accept a
+  flash. Entry choreography and recovery details: `docs/05` §5.
 - **userdata must be a sparse image** (`img2simg`). A raw ext4 image fails at ~3%
   with `Fail request receive 3`.
 - **userdata must hold the *combined* image**, i.e. `pmb install` *without*
@@ -152,7 +189,6 @@ These cost us many cycles — see `docs/05` §5:
   as `make flash-all` does) rather than calling odin twice — that is what caused the
   reboot between writes. `--reboot` is opt-in, and `--redownload` returns the device
   to download mode for the next round.
-- Avoid deep USB hubs; use a direct port.
 
 Only `boot`, `vendor_boot`, `dtbo`, `vbmeta` and `userdata` are ever written.
 **Never** flash bootloader or secure-world partitions (`xbl`, `aop`, `tz`, `abl`,
