@@ -210,6 +210,24 @@
 	};
 
 	/*
+	 * S Pen (Wacom W90xx EMR digitizer) AVDD. Stock models it as a
+	 * GPIO-switched fixed regulator (fixed_regulator0, tlmm 167, active
+	 * high). regulator-always-on for now: the pen has no mainline driver
+	 * yet, so nothing else would enable the rail — always-on lets the chip
+	 * power up so its i2c presence (0x56 on &i2c14) can be probed. Once a
+	 * wacom driver lands it should own this rail (drop always-on), the way
+	 * the stm32-pogo driver took over pogo_vddo.
+	 */
+	wacom_avdd: regulator-wacom-avdd {
+		compatible = "regulator-fixed";
+		regulator-name = "wacom_avdd";
+		gpio = <&tlmm 167 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	/*
 	 * Manual switch for tablet-sourced USB VBUS (the MAX77705 OTG boost,
 	 * see charger@69). regulator-output is the mainline convention for a
 	 * userspace-switched rail: it surfaces
@@ -674,6 +692,25 @@
 		bias-disable;
 		input-enable;
 	};
+
+	/*
+	 * S Pen (Wacom) lines, from the stock epen-int-active / epen-pdct-active
+	 * states: both inputs, bias-disable. The fwe line (gpio54) is driven by
+	 * the driver directly, so it gets no pin state here.
+	 */
+	wacom_irq_default: wacom-irq-default-state {
+		pins = "gpio51";		/* wacom,irq-gpio (epen-int) */
+		function = "gpio";
+		bias-disable;
+		input-enable;
+	};
+
+	wacom_pdct_default: wacom-pdct-default-state {
+		pins = "gpio155";		/* wacom,pdct-gpio (epen-pdct) */
+		function = "gpio";
+		bias-disable;
+		input-enable;
+	};
 };
 
 /*
@@ -1050,6 +1087,47 @@
 		touchscreen-size-y = <2800>;
 		touchscreen-swapped-x-y;
 		touchscreen-inverted-x;
+	};
+};
+
+/*
+ * S Pen — Wacom W90xx EMR digitizer, i2c 0x56 on QUP se14 (&i2c14, pins
+ * gpio52/53). Mapped from the stock DTB (qupv3_se14_i2c: i2c@a98000 ->
+ * wacom@56). SE14 shares the QUP1 wrapper with the working touch bus
+ * (&i2c8), so the GPI-DMA deferred-probe cascade that plagued i2c8 bring-up
+ * does not re-apply here — that wrapper's DMA engine is already up.
+ *
+ * There is no mainline driver for this Samsung EMR part yet (the downstream
+ * driver lives in kernel-src/drivers/input/wacom/). This node is staged for
+ * the PROBE-FIRST milestone: with AVDD always-on (wacom_avdd) the chip
+ * should ACK at 0x56 under `i2cdetect -y -r <bus>` even before a driver
+ * exists. Wiring transcribed from the stock wacom@56:
+ *   irq  -> &tlmm 51  (epen-int,  input, level-low)
+ *   fwe  -> &tlmm 54  (epen-fwe,  flash-enable, driver-owned)
+ *   pdct -> &tlmm 155 (epen-pdct, pen-detect, input)
+ *   avdd -> wacom_avdd (tlmm 167 fixed reg)
+ *   firmware wez01_gts8p.bin (harvested; tools/fw-manifest.tsv)
+ */
+&i2c14 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	wacom@56 {
+		compatible = "wacom,w90xx";
+		reg = <0x56>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <51 IRQ_TYPE_LEVEL_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&wacom_irq_default>, <&wacom_pdct_default>;
+
+		vdd-supply = <&wacom_avdd>;
+
+		wacom,irq-gpio = <&tlmm 51 GPIO_ACTIVE_LOW>;
+		wacom,fwe-gpio = <&tlmm 54 GPIO_ACTIVE_HIGH>;
+		wacom,pdct-gpio = <&tlmm 155 GPIO_ACTIVE_LOW>;
+		wacom,fw_path = "wez01_gts8p.bin";
 	};
 };
 
