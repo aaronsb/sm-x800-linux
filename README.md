@@ -1,5 +1,11 @@
 # Samsung Galaxy Tab S8+ (SM-X800) — mainline Linux / postmarketOS port
 
+![License](https://img.shields.io/badge/license-GPL--2.0%20%2B%20MIT-blue)
+![Kernel](https://img.shields.io/badge/kernel-6.13--rc3%20(sm8450--mainline)-informational)
+![UI](https://img.shields.io/badge/desktop-KDE%20Plasma%206-brightgreen)
+![GitHub last commit](https://img.shields.io/github/last-commit/aaronsb/sm-x800-linux)
+![GitHub stars](https://img.shields.io/github/stars/aaronsb/sm-x800-linux?style=social)
+
 Mainline Linux runs **usably** on the Galaxy Tab S8+ Wi-Fi (`gts8pwifi`, Qualcomm
 SM8450 "Waipio"): kernel 6.13-rc3, all 8 cores, a **native KMS display driver**
 (our S6TUUM1 panel driver — DSC, 120 Hz, real power management) on the 2800×1752
@@ -221,5 +227,14 @@ not publicly available).
 
 ## License
 
-Port sources (DTS, board file, packaging) follow their upstream projects:
-GPL-2.0-only for kernel/uniLoader sources, MIT for the pmaports device package.
+Dual, following each part's upstream: GPL-2.0-only for kernel/uniLoader sources,
+MIT for packaging, docs, and tools — the per-directory table is in
+[LICENSE.md](LICENSE.md). Samsung-proprietary content is never in this repo;
+extractors pull it from your own device.
+
+## Contributing
+
+Issues and PRs welcome — especially [device variant reports](.github/ISSUE_TEMPLATE/variant_report.md)
+from the rest of the Tab S8 family (same SoC). House style: one variable per
+flash, patches via `tools/mkpatch` (never hand-written), evidence over theory —
+see `docs/06-upstreaming.md` for the conventions.
