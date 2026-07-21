@@ -43,8 +43,10 @@ while drawing), as expected for a passive EMR stylus.
 
 ## Protocol (from the downstream driver)
 
-**Query** — send `COM_QUERY` (`0x2A`), read back a buffer; the query block starts
-where `query[0] == 0x0F` (EPEN_REG_HEADER). Big-endian pairs:
+**Query** — write `COM_QUERY` (`0x2A`) then read the buffer **as one combined
+`i2c_transfer` (repeated start, no STOP between)**; the query block lands at
+**offset 0** of the read, tagged by `query[0] == 0x0F` (EPEN_REG_HEADER). Big-endian
+pairs:
 
 ```
 max_x        = query[1]<<8 | query[2]
@@ -56,6 +58,10 @@ bl_ver       = query[10]
 tilt_x/y     = query[11], query[12]
 height       = query[13]
 ```
+
+Confirmed live on this unit (dmesg):
+`mpu=46 fw=400e max_x=26712 max_y=16714 max_p=4095 tilt=63 height=255`. Note the
+real geometry (26712×16714) is larger than the old fallback guess (21658×13538).
 
 **Coordinate packet** — `COM_COORD_NUM = 16` bytes (read 17). `data[0]` is the
 header; low nibble is the packet type (`NOTI_PACKET = 13`, else pen data):
@@ -112,12 +118,13 @@ bit-banged `i2c-gpio` bus** on the same pins (gpio52/53). See the DTS comment on
 `&wacom_i2c`.
 
 Open polish (not blockers):
-- `wacom_i2c_query` (`COM_QUERY` write, then 32-byte read) still returns -5 even
-  post-boot, so the driver runs on fallback `max_x/max_y` — calibration is
-  approximate. Likely the query wants a repeated-start (combined write+read via a
-  2-message `i2c_transfer`, which the bit-bang bus supports) rather than two
-  separate transactions; or the reply arrives via IRQ. Fixing it gives exact
-  geometry + an `mpu == 0x46` liveness check.
+- ~~`wacom_i2c_query` returns -5~~ **FIXED.** Two faults compounded: (1) the
+  separate `COM_QUERY` write + read issued a STOP and re-addressed the chip
+  between them, dropping the WEZ01's command latch on the bit-bang bus; (2) the
+  old code then read the query block at offset 16 (where a stale coord frame
+  would sit). A single combined `i2c_transfer` (repeated start) fixes (1) and
+  returns the block at **offset 0**, fixing (2). Verified: `mpu=0x46`, exact
+  geometry now feeds the input device's ABS ranges (was on fallback).
 - Axis orientation (hardcoded from stock `wacom,invert = <0 1 1>`) not yet
   verified against the panel with directed strokes.
 - Tilt/height reported but not eyeballed.
