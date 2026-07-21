@@ -2,7 +2,7 @@
 
 **Why mainline:** the downstream Samsung kernel refuses to run any non-Samsung initramfs and
 gives ZERO boot visibility (console=null, no display driver, no serial exposed, ramoops needs
-Samsung params). See `docs/03-boot-debug-log.md`. **Mainline flips this: `earlycon` + a
+Samsung params). See `03-boot-debug-log.md` (this directory). **Mainline flips this: `earlycon` + a
 `simple-framebuffer` node give us a visible boot** — the actual unlock. We now also have the
 real DTB + all vendor blobs to work from.
 
@@ -61,7 +61,7 @@ Pulled from the stock `/chosen` bootargs (the real ones, before Samsung userspac
 
 ## Downstream artifacts (keep for reference, not the active path)
 `pmaports-overlay/device/downstream/{device,linux}-samsung-gts8pwifi` (built kernel + rootfs
-work). The downstream kernel builds (docs/02 + the memory build-gotchas) — useful if we ever
+work). The downstream kernel builds (02-pmos-port-prep.md here + the memory build-gotchas) — useful if we ever
 want vendor drivers, but the mainline path is now primary.
 
 ---

@@ -109,16 +109,14 @@ a lot of blind reboots.
 ## Layout
 
 ```
-docs/                     Findings, runbooks, and the boot-debug history
-  00-recon-findings.md      Device recon
+docs/                     The maintained story, in phase order
   01-unlock-root-runbook.md Bootloader unlock + root
-  02-pmos-port-prep.md      Downstream port prep
-  03-boot-debug-log.md      Why the DOWNSTREAM kernel path failed (dead end)
-  04-mainline-prep.md       Pivot to mainline; visibility keys from the stock DTB
   05-mainline-uniloader-boot.md   ★ the working recipe + every bug and fix
-  06-upstreaming.md         Conventions, versioning, contributing back
+  06-upstreaming.md         Conventions, pinning + patch model, contributing back
   07-input-and-wireless.md  Touch + keyboard driver ports, WiFi/BT bring-up
   08-native-display.md      Native KMS: DPU/DSC bring-up and the Anapass TCON
+  discovery-notes/          Raw early-session notes, kept for provenance
+                            (recon, the downstream dead end, the mainline pivot)
 pmaports-overlay/         Our postmarketOS packages (the actual port)
   device/testing/linux-postmarketos-qcom-sm8450/   kernel pkg: DTS, config, DPU DSC
                                                    patches, and four drivers written

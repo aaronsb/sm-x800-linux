@@ -7,7 +7,7 @@
  * leaves the panel scanning out of the "splash_region" at 0xb8000000,
  * so a matching simple-framebuffer node gives us a VISIBLE fbcon console
  * on the panel before any real DRM driver exists. This is the whole
- * point of the mainline pivot (see docs/04-mainline-prep.md).
+ * point of the mainline pivot (see docs/discovery-notes/04-mainline-prep.md).
  *
  * Framebuffer geometry pulled from the stock DTB:
  *   splash reserved-memory  = <0x0 0xb8000000 0x0 0x2b00000> (45 MiB)
