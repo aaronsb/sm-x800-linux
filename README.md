@@ -1,13 +1,13 @@
 # Samsung Galaxy Tab S8+ (SM-X800) — mainline Linux / postmarketOS port
 
 ![License](https://img.shields.io/badge/license-GPL--2.0%20%2B%20MIT-blue)
-![Kernel](https://img.shields.io/badge/kernel-6.13--rc3%20(sm8450--mainline)-informational)
+![Kernel](https://img.shields.io/badge/kernel-7.2%20(vanilla%20mainline)-informational)
 ![UI](https://img.shields.io/badge/desktop-KDE%20Plasma%206-brightgreen)
 ![GitHub last commit](https://img.shields.io/github/last-commit/aaronsb/sm-x800-linux)
 ![GitHub stars](https://img.shields.io/github/stars/aaronsb/sm-x800-linux?style=social)
 
 Mainline Linux runs **usably** on the Galaxy Tab S8+ Wi-Fi (`gts8pwifi`, Qualcomm
-SM8450 "Waipio"): kernel 6.13-rc3, all 8 cores, a **native KMS display driver**
+SM8450 "Waipio"): vanilla kernel 7.2, all 8 cores, a **native KMS display driver**
 (our S6TUUM1 panel driver — DSC, 120 Hz, real power management) on the 2800×1752
 OLED, root on UFS, **WiFi with ssh**, **Bluetooth**, **touchscreen**, and the
 **Book Cover Keyboard** — you can log in at the panel and type on the real
@@ -225,7 +225,7 @@ not publicly available).
 
 - [uniLoader](https://github.com/ivoszbg/uniLoader) by Ivaylo Ivanov — the piece that
   makes this possible.
-- [sm8450-mainline](https://github.com/sm8450-mainline) — kernel tree and SM8450 config.
+- [sm8450-mainline](https://github.com/sm8450-mainline) — the kernel tree this port ran on until 2026-09, and still the source of the SM8450 config fragment.
 - `sm8450-samsung-r0q.dts` (Galaxy S22) — the skeleton this port started from.
 - [postmarketOS](https://postmarketos.org).
 
