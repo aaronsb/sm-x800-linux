@@ -178,13 +178,14 @@ boot: kernel uniloader bootimg manifest ## Full chain: kernel -> uniLoader -> fl
 # which installs device-samsung-gts8pwifi-tools (our curated toolkit
 # metapackage), optionally Plasma Desktop 6, and runs gts8pwifi-fw-extract
 # (the zap can never be part of any image we build). See tools/README.
-rootfs: ## Rebuild the minimal (console) rootfs, preserve image, print UUIDs
+rootfs: ## Rebuild the minimal (console) rootfs, preserve image, print UUIDs (DEVSUDO=1: passwordless sudo)
 	$(PMB) config ui console
 	@echo ">> WARNING: this regenerates the rootfs with NEW UUIDs."
 	@echo ">> NO --split: userdata must hold the COMBINED image (GPT with"
 	@echo ">> pmOS_boot AND pmOS_root) because uniLoader owns the real boot"
 	@echo ">> partition. See docs/05 section 8b."
-	$(PMB) install $(if $(PASSWORD),--password $(PASSWORD))
+	$(PMB) install $(if $(PASSWORD),--password $(PASSWORD)) \
+		$(if $(DEVSUDO),--add $(DPKG)-devsudo)
 	@set -e; \
 	SRC=pmb-work/chroot_native/home/pmos/rootfs/$(DEVICE).img; \
 	echo ">> preserving $$SRC -> $(COMBINED)"; \
