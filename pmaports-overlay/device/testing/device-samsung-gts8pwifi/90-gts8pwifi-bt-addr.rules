@@ -1,0 +1,8 @@
+# Give hci0 its public address as soon as it appears.
+#
+# The WCN6855 controller comes up unconfigured: the DT bluetooth node has no
+# local-bd-address and the bootloader fills none, so `btmgmt info` lists no
+# controller and bluetoothd sees "No default controller available". The
+# service reads the factory address from the efs partition and hands it to
+# the kernel with `btmgmt public-addr`. See /usr/bin/gts8pwifi-bt-addr.
+SUBSYSTEM=="bluetooth", KERNEL=="hci0", ACTION=="add", TAG+="systemd", ENV{SYSTEMD_WANTS}+="gts8pwifi-bt-addr.service"

@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=20
+pkgrel=21
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -18,10 +18,11 @@ depends="
 	linux-firmware-qcom
 	linux-firmware-ath11k
 	linux-firmware-qca
+	bluez-btmgmt
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -80,6 +81,13 @@ package() {
 	install -Dm644 "$srcdir"/90-gts8pwifi-cs35l45-no-hibernate.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/90-gts8pwifi-cs35l45-no-hibernate.rules
 
+	# Bluetooth: the controller comes up unconfigured (no local-bd-address
+	# from DT or bootloader). This reads the factory address from the efs
+	# partition and hands it to hci0 with btmgmt; the udev rule and unit
+	# that trigger it live in the systemd subpackage. See the script header.
+	install -Dm755 "$srcdir"/bt-addr.sh \
+		"$pkgdir"/usr/bin/gts8pwifi-bt-addr
+
 	# Audio: UCM profile for the "Samsung-Galaxy-Tab-S8-Plus" card. The
 	# card driver name is "sm8450", so alsa-ucm-conf looks in
 	# conf.d/sm8450/<card long name>.conf.
@@ -136,6 +144,13 @@ systemd() {
 	# prints — see the drop-in's comment.
 	install -Dm644 "$srcdir"/getty-issue.conf \
 		"$subpkgdir"/usr/lib/systemd/system/getty@tty1.service.d/10-gts8pwifi-issue.conf
+
+	# Bluetooth public address: udev pulls the oneshot in when hci0 appears
+	# (ENV{SYSTEMD_WANTS}), so the unit has no [Install] section.
+	install -Dm644 "$srcdir"/bt-addr.service \
+		"$subpkgdir"/usr/lib/systemd/system/gts8pwifi-bt-addr.service
+	install -Dm644 "$srcdir"/90-gts8pwifi-bt-addr.rules \
+		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8pwifi-bt-addr.rules
 }
 
 sha512sums="
