@@ -123,7 +123,7 @@
 		 * "login:" (photo-verified). Warnings and errors still reach
 		 * the console; everything lands in the persistent journal.
 		 */
-		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=4 arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=a52ecfd9-ba7c-4c8e-a80f-d6341ef93081 pmos_root_uuid=ae56a720-d465-46c7-9e43-ecbd33124aa9 pmos_rootfsopts=defaults";
+		bootargs = "earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=4 arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=9079c132-d703-46ce-87c0-999a2f3bca83 pmos_root_uuid=b5c72aa4-b9f9-448b-8f28-d968542eafe4 pmos_rootfsopts=defaults";
 
 		framebuffer: framebuffer@b8000000 {
 			compatible = "simple-framebuffer";
