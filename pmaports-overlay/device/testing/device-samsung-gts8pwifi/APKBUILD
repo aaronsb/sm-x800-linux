@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=17
+pkgrel=20
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -19,9 +19,9 @@ depends="
 	linux-firmware-ath11k
 	linux-firmware-qca
 "
-subpackages="$pkgname-systemd $pkgname-tools"
+subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -75,6 +75,33 @@ package() {
 	# tablet-sourced VBUS are never detected. See the script header.
 	install -Dm755 "$srcdir"/usb-host-wake.start \
 		"$pkgdir"/etc/local.d/usb-host-wake.start
+
+	# Audio: keep the CS35L45 amps out of runtime suspend (see the rule).
+	install -Dm644 "$srcdir"/90-gts8pwifi-cs35l45-no-hibernate.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/90-gts8pwifi-cs35l45-no-hibernate.rules
+
+	# Audio: UCM profile for the "Samsung-Galaxy-Tab-S8-Plus" card. The
+	# card driver name is "sm8450", so alsa-ucm-conf looks in
+	# conf.d/sm8450/<card long name>.conf.
+	install -Dm644 "$srcdir"/Samsung-Galaxy-Tab-S8-Plus.conf \
+		"$pkgdir"/usr/share/alsa/ucm2/conf.d/sm8450/Samsung-Galaxy-Tab-S8-Plus.conf
+	install -Dm644 "$srcdir"/HiFi.conf \
+		"$pkgdir"/usr/share/alsa/ucm2/Qualcomm/sm8450/gts8pwifi/HiFi.conf
+
+	# Audio: AudioReach topology, loaded by q6apm as
+	# qcom/sm8450/<card model>-tplg.bin. Derived from linux-firmware's
+	# SM8450-HDK topology (BSD-3-Clause, linux-msm/audioreach-topology)
+	# with the PRIMARY_MI2S_RX data line moved from SD0 to SD1 -- see
+	# tools/mk-tplg.py for the derivation and why.
+	install -Dm644 "$srcdir"/Samsung-Galaxy-Tab-S8-Plus-tplg.bin \
+		"$pkgdir"/usr/lib/firmware/qcom/sm8450/Samsung-Galaxy-Tab-S8-Plus-tplg.bin
+}
+
+devsudo() {
+	pkgdesc="Passwordless sudo for the default user (development only)"
+	install_if=""
+	install -Dm440 "$srcdir"/devsudo-sudoers \
+		"$subpkgdir"/etc/sudoers.d/10-gts8pwifi-devsudo
 }
 
 tools() {
@@ -122,6 +149,11 @@ c1e9c670c7b5c8b671c1595f55a44ce1c71a3c812dbdb3700c9719c92cdc283a2d97a378e68432ad
 0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
 7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
 eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start
-8c82787b304863cecbfd690f64795ed7e256807ceb31b708d3c7a36138f031a0400060e63f31a08e5f1a67217e88f5704dcb68ec2bc32b31a98d44b325cad85d  fw-extract.sh
+0f2ad26e2b5e14537a73e9f40b5ad98bbf6aaee2750387480126f1862610312cc3550cfb255da0b51e21742a606bcf48062f32c006f534070cfc2757cb1c6e6c  fw-extract.sh
 0fc069b5b51758ac37f78cfb467ed8b993c935f3a497fbad7ec6fa19577d0d695188d2a1f26d452703c710d3630649bb5d785e56d41632a76ac5919a567754f7  setup.sh
+38159785ff05cea88aeec224869ae2b2aee2c29868e37066877e983d2393ef34207cd45ee770dadba3291b9ea015bda99e6368e9bf9d22031010c5fc25d08f64  90-gts8pwifi-cs35l45-no-hibernate.rules
+6af17e5f9157f900089ba091d8f747fd1e466df4865f1ae1228d880eae9b18eab4caf9521e933211c3ed8472cb65b5924ec766f4ee1d94e942584be6caac36be  Samsung-Galaxy-Tab-S8-Plus.conf
+84694e3eba41888bb4c47b7b98a7da998527de710e1b448fef8c57c7d36e92704324129ea89bf255601cd12496b090d488d8b131022ffe8ffad680f1bd7d569e  HiFi.conf
+40b8969e1b0c4f715a938bc61db4408eee195d4b20a014816502f4cf2f2ffe7c96146b45c9ca22ceb02ac524590f30a4dbcaa31a6fe9d8a415ff02706b1f34c7  devsudo-sudoers
+697f6e0b288a485792cdcb40f0ebff33fe405758d83310988c5dc0e3f07d01bb468e0e91936ea06fb42783e94b299500dac1fd8ce05200d650c341b2f77278ed  Samsung-Galaxy-Tab-S8-Plus-tplg.bin
 "

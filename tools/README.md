@@ -38,12 +38,13 @@ fresh image always has them. The NetworkManager WiFi profile is also lost with
 userdata — re-add with `nmcli dev wifi connect <ssid> password <pw>` or the
 dongle comes back out.
 
-The GPU additionally needs the Samsung-signed zap shader, which no repo and no
-package may ship (cartridge-dump model: we distribute the extractor, the user
-dumps firmware from their own device). One command, device pkg r14+:
+The GPU additionally needs the Samsung-signed zap shader, and audio needs the
+Samsung-signed ADSP image; no repo and no package may ship either
+(cartridge-dump model: we distribute the extractor, the user dumps firmware
+from their own device). One command, device pkg r14+ (ADSP from r18):
 
 ```sh
-sudo gts8pwifi-fw-extract   # mounts apnhlos ro, stages the zap, reruns mkinitfs
+sudo gts8pwifi-fw-extract   # mounts apnhlos ro, stages zap + adsp, reruns mkinitfs
 ```
 
 It must end up in the initramfs (a7xx loads firmware at bind time, before the
@@ -80,8 +81,9 @@ These cost real time; they are not generic Linux knowledge.
   device-facts/partitions-backup/ (11 GB super.img included) — search
   there. Note super's members are EROFS (compressed): raw `grep`/`strings`
   over the image finds nothing; `lpunpack` + loop-mount, then search files.
-- **The zap shader lives in the `apnhlos` partition** (`/image/a730_zap.mdt`
-  + `.b00-.b02`), not in vendor/ or modem/. Mount `/dev/disk/by-partlabel/apnhlos`
+- **The zap shader and the ADSP image live in the `apnhlos` partition**
+  (`/image/a730_zap.mdt` + `.b00-.b02`; `/image/adsp.mdt` + `.b00-.b24`), not
+  in vendor/ or modem/. Mount `/dev/disk/by-partlabel/apnhlos`
   (vfat, ro) to get at it. Copies staged at
   /lib/firmware/qcom/sm8450/gts8pwifi/ on-device and in root-build/stock-extract/.
 - **ath11k bulk-RX wedge**: sustained high-rate downloads stall to ~KB/s with

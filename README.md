@@ -22,9 +22,9 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 
 > **Status: it's a Linux tablet now.** Boots through a quiet native display stack
 > into **KDE Plasma 6** (KWin Wayland, composited on the Adreno 730), with
-> touchscreen, keyboard, WiFi and Bluetooth all live — or stay on the pure
-> console, which is equally at home. The big remaining gaps are audio and the
-> long tail (S Pen, cameras, sensors).
+> touchscreen, keyboard, WiFi, Bluetooth and speakers all live — or stay on the
+> pure console, which is equally at home. The remaining gaps are the long tail
+> (microphones, cameras, sensors).
 
 ![Plasma 6 desktop on the Tab S8+](docs/media/plasma-desktop.png)
 
@@ -49,7 +49,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition (`gts8pwifi-fw-extract`), firmware rides in the initramfs (a7xx loads SQE at bind time) |
 | Plasma Desktop 6 (KWin Wayland) | ✅ working — full KDE 6.7 desktop, KWin composited on the Adreno, Plasma Login Manager autostart; one command on a fresh install: `sudo gts8pwifi-setup plasma`. Polish gaps: tear bands under fast motion (panel idles at ~24 Hz LFD), no runtime 120 Hz switching yet |
 | Login experience | ✅ quiet boot (`loglevel=4`), generated `/etc/issue` banner with live IP (agetty needs `--issue-file` on Alpine), UTF-8 locale, keyboard autorepeat (kernel r42) |
-| Audio | ❌ blocked twice over: ADSP firmware, and AudioReach has no MI2S/TDM path; no WCD codec / SoundWire on this board |
+| Audio | ✅ working — four CS35L45 amps on Primary MI2S from the ADSP (AudioReach), stereo playback through PipeWire/UCM; volume capped (no speaker-protection DSP yet). DMICs wired through the VA macro and streaming, but silent: needs a pad probe or the mic supply net. Story: docs/10-audio.md |
 | Sensors (incl. auto-rotate) | ❌ architecturally blocked — SLPI-owned I3C with no mainline path |
 
 ![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
@@ -84,7 +84,7 @@ because the door locks behind you:
 - **The unlock/root path has a firmware ceiling** — no later than One UI 7.0.
   If your tablet has already updated past it, this door may simply be closed.
   Details and the full runbook: `docs/01-unlock-root-runbook.md`.
-- **This is a development platform, not a product.** No audio, no S Pen, no
+- **This is a development platform, not a product.** No microphones, no
   cameras, no sensors. What works, works genuinely well — native display, GPU,
   input, wireless — but you are signing up to be a porter, not a customer.
 
@@ -121,6 +121,8 @@ docs/                     The maintained story, in phase order
   06-upstreaming.md         Conventions, pinning + patch model, contributing back
   07-input-and-wireless.md  Touch + keyboard driver ports, WiFi/BT bring-up
   08-native-display.md      Native KMS: DPU/DSC bring-up and the Anapass TCON
+  09-firmware-harvest.md    Which blobs live where, and the extractor model
+  10-audio.md               ADSP + AudioReach + four CS35L45 amps on MI2S
   discovery-notes/          Raw early-session notes, kept for provenance
                             (recon, the downstream dead end, the mainline pivot)
 pmaports-overlay/         Our postmarketOS packages (the actual port)
@@ -168,6 +170,8 @@ make help       # everything else
 
 `make rootfs` prompts for the device user password unless you pass
 `PASSWORD=...` (the docs use throwaway credentials throughout — pick your own).
+`DEVSUDO=1` additionally installs the `-devsudo` subpackage: passwordless sudo
+for the default user, for development images only.
 
 `make boot` runs `stage-fw` first (stages the locally-extracted GPU zap into the
 build chroot's initramfs and hard-fails if it does not land) and ends by printing

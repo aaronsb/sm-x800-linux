@@ -1,0 +1,28 @@
+sc8280xp-mi2s-dai-format
+
+Backport of mainline 596e8ba2faf0 "ASoC: qcom: sc8280xp: Enable DAI format configuration for MI2S interfaces".
+
+Add support for configuring the DAI format on MI2S interfaces,
+this enhancement allows setting the appropriate bit clock and
+frame clock polarity, ensuring correct audio data transmission
+over MI2S.
+Reviewed-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Signed-off-by: Mohammad Rafi Shaik <mohammad.rafi.shaik@oss.qualcomm.com>
+Message-ID: <20250908053631.70978-4-mohammad.rafi.shaik@oss.qualcomm.com>
+Signed-off-by: Mark Brown <broonie@kernel.org>
+
+diff --git a/sound/soc/qcom/sc8280xp.c b/sound/soc/qcom/sc8280xp.c
+index 311377317..0328efedf 100644
+--- a/sound/soc/qcom/sc8280xp.c
++++ b/sound/soc/qcom/sc8280xp.c
+@@ -32,6 +32,10 @@ static int sc8280xp_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 	int dp_pcm_id = 0;
+ 
+ 	switch (cpu_dai->id) {
++	case PRIMARY_MI2S_RX...QUATERNARY_MI2S_TX:
++	case QUINARY_MI2S_RX...QUINARY_MI2S_TX:
++		snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
++		break;
+ 	case WSA_CODEC_DMA_RX_0:
+ 	case WSA_CODEC_DMA_RX_1:
+ 		/*

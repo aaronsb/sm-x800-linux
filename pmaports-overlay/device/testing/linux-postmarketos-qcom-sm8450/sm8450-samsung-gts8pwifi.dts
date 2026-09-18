@@ -21,6 +21,7 @@
 #include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
 
 #include "sm8450.dtsi"
 #include "pm8350.dtsi"
@@ -719,6 +720,61 @@
 		bias-pull-up;
 		drive-strength = <2>;
 	};
+
+	/*
+	 * Speaker amplifiers: the four CS35L45 share one reset line and one
+	 * interrupt line. Stock cs35l45_gpio_default: gpio18 + gpio19,
+	 * function gpio, drive-strength 2, bias-disable. Claimed by the first
+	 * amplifier only (pinmux ownership is per pin; the other three amps
+	 * find the reset line busy and treat it as shared, as the driver
+	 * documents).
+	 */
+	cs35l45_gpio_default: cs35l45-gpio-default-state {
+		pins = "gpio18", "gpio19";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	/*
+	 * Primary MI2S to the amplifiers, transcribed from the stock
+	 * pri_tdm_{clk,sync,din,dout}_active nodes: drive-strength 8,
+	 * bias-disable, clock and word-select parked high. Samsung ran this
+	 * port as a 4-slot TDM bus; mainline AudioReach (this tree) only has
+	 * an I2S path, so the amps pair up on the two I2S channels until the
+	 * 7.3 TDM backend lands.
+	 */
+	pri_mi2s_active: pri-mi2s-active-state {
+		clk-pins {
+			pins = "gpio126";
+			function = "mi2s0_sck";
+			drive-strength = <8>;
+			bias-disable;
+			output-high;
+		};
+
+		ws-pins {
+			pins = "gpio129";
+			function = "mi2s0_ws";
+			drive-strength = <8>;
+			bias-disable;
+			output-high;
+		};
+
+		din-pins {
+			pins = "gpio127";
+			function = "mi2s0_data0";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		dout-pins {
+			pins = "gpio128";
+			function = "mi2s0_data1";
+			drive-strength = <8>;
+			bias-disable;
+		};
+	};
 };
 
 /*
@@ -1015,6 +1071,103 @@
 
 		max77705_otg_vbus: otg-vbus {
 			regulator-name = "usb_otg_vbus";
+		};
+	};
+};
+
+/*
+ * i2c4 (stock qupv3_se4_i2c, i2c@990000; downstream alias i2c18, hence the
+ * "cs35l45.18-003x" names in the stock sound card) carries the four Cirrus
+ * CS35L45 speaker amplifiers. Same QUP plumbing as i2c5: wrapper qupv3_id_0
+ * and gpi_dma0 are enabled above. Bus speed from stock qcom,clk-freq-out.
+ *
+ * Per stock node names: 0x30 rear-left, 0x31 front-left, 0x32 rear-right,
+ * 0x33 front-right. All four share reset gpio18 and interrupt gpio19 (stock
+ * reset-gpios = tlmm 18, interrupts = 19). gpio-ctrl1/2 = 2 and
+ * asp-sdout-hiz-ctrl = 3 are verbatim stock. Stock VP/VA supplies point at
+ * dummy_vreg, so no supplies are described (the driver falls back to dummy
+ * regulators). The Cirrus speaker-protection DSP firmware is not loaded, so
+ * userspace (UCM) caps the per-amp digital volume.
+ */
+&i2c4 {
+	clock-frequency = <1000000>;
+	status = "okay";
+
+	cs35l45_rl: amplifier@30 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x30>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <19 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 18 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cs35l45_gpio_default>;
+		sound-name-prefix = "Rear Left";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
+		};
+	};
+
+	cs35l45_fl: amplifier@31 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x31>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <19 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 18 GPIO_ACTIVE_HIGH>;
+		sound-name-prefix = "Front Left";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
+		};
+	};
+
+	cs35l45_rr: amplifier@32 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x32>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <19 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 18 GPIO_ACTIVE_HIGH>;
+		sound-name-prefix = "Rear Right";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
+		};
+	};
+
+	cs35l45_fr: amplifier@33 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x33>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <19 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 18 GPIO_ACTIVE_HIGH>;
+		sound-name-prefix = "Front Right";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
 		};
 	};
 };
@@ -1323,5 +1476,124 @@
 
 	zap-shader {
 		firmware-name = "qcom/sm8450/gts8pwifi/a730_zap.mdt";
+	};
+};
+
+/*
+ * Audio DSP. Samsung's signed image is split adsp.mdt + adsp.b00-b24 in the
+ * apnhlos partition (same cartridge-dump model as the GPU zap: staged by
+ * gts8pwifi-fw-extract, never packaged). SM8450 has no separate adsp_dtb.
+ * With the DSP up, q6prm hands out the LPASS clocks that the LPI pinctrl and
+ * codec macros were deferring on, and q6apm exposes the AudioReach graph
+ * described by qcom/sm8450/<model>-tplg.bin (the HDK topology, which already
+ * carries the PRIMARY_MI2S_RX device graph this board needs).
+ */
+&remoteproc_adsp {
+	firmware-name = "qcom/sm8450/gts8pwifi/adsp.mdt";
+	status = "okay";
+};
+
+/*
+ * Samsung's ADSP image is 59 MiB of relocatable segments and its firmware
+ * (and TrustZone's PAS checks) expect the stock carve-out, not the 33 MiB
+ * region sm8450.dtsi reserves for the QRD/HDK image: with the dtsi value the
+ * loader fails with "segment outside memory range". Regions copied verbatim
+ * from the stock DTB reserved-memory (the three that differ around the
+ * ADSP: cdsp_secure_heap shrinks, video_mem moves down, adsp_mem grows).
+ */
+&cdsp_secure_heap {
+	reg = <0x0 0x80c00000 0x0 0x600000>;
+};
+
+&video_mem {
+	reg = <0x0 0x83e00000 0x0 0x700000>;
+};
+
+&adsp_mem {
+	reg = <0x0 0x84500000 0x0 0x3b00000>;
+};
+
+/*
+ * Microphones: digital mics straight into the LPASS VA macro, no WCD codec
+ * and no SoundWire on this board (stock qcom,wcd-disabled). Stock
+ * cdc-dmic01/23/45 gpios: LPI gpio6/7, gpio8/9, gpio12/13 (mainline
+ * function names dmic1/dmic2/dmic3 clk+data); sm8450.dtsi carries the first
+ * two pin states, the third is ours. Stock's qcom,va-dmic-sample-rate is
+ * 600 kHz (0x927c0), which the downstream driver treats as the *sample*
+ * rate. Stock's regular-capture path (TX macro) clocks the mics at
+ * 2.4 MHz (qcom,tx-dmic-sample-rate = 0x249f00); 600 kHz and 4.8 MHz were
+ * both tried on the VA macro and captured silence. Stock's micbias is
+ * 1.8 V; the rail is the same S10B 1.8 V the HDK uses for vdd-micb.
+ */
+&lpass_tlmm {
+	dmic45_default: dmic45-default-state {
+		clk-pins {
+			pins = "gpio12";
+			function = "dmic3_clk";
+			drive-strength = <8>;
+			output-high;
+		};
+
+		data-pins {
+			pins = "gpio13";
+			function = "dmic3_data";
+			drive-strength = <8>;
+			input-enable;
+		};
+	};
+};
+
+&vamacro {
+	pinctrl-0 = <&dmic01_default>, <&dmic23_default>, <&dmic45_default>;
+	pinctrl-names = "default";
+	vdd-micb-supply = <&vreg_s10b_1p8>;
+	qcom,dmic-sample-rate = <2400000>;
+	status = "okay";
+};
+
+/*
+ * Sound card: the four amplifiers on Primary MI2S for playback, the VA
+ * macro's DMICs for capture. The VA macro has its own LPASS DMA lane,
+ * VA_CODEC_DMA_TX_0. sm8450-hdk wires its VA link to TX_CODEC_DMA_TX_3;
+ * tried here, arecord fails with -EIO on that lane (the Tab S9 Ultra port
+ * reports the same), so the VA lane it is.
+ */
+&sound {
+	compatible = "qcom,sm8450-sndcard";
+	model = "Samsung-Galaxy-Tab-S8-Plus";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pri_mi2s_active>;
+
+	speaker-playback-dai-link {
+		link-name = "CS35L45 Speaker Playback";
+
+		cpu {
+			sound-dai = <&q6apmbedai PRIMARY_MI2S_RX>;
+		};
+
+		codec {
+			sound-dai = <&cs35l45_fl 0>, <&cs35l45_fr 0>,
+				    <&cs35l45_rl 0>, <&cs35l45_rr 0>;
+		};
+
+		platform {
+			sound-dai = <&q6apm>;
+		};
+	};
+
+	va-capture-dai-link {
+		link-name = "Internal DMIC Capture";
+
+		cpu {
+			sound-dai = <&q6apmbedai VA_CODEC_DMA_TX_0>;
+		};
+
+		codec {
+			sound-dai = <&vamacro 0>;
+		};
+
+		platform {
+			sound-dai = <&q6apm>;
+		};
 	};
 };

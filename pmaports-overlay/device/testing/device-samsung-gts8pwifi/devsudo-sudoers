@@ -1,0 +1,4 @@
+# Development convenience: passwordless sudo for the default pmOS user.
+# Installed only by the device-samsung-gts8pwifi-devsudo subpackage
+# (make rootfs DEVSUDO=1). Never ship this on a device you hand to someone.
+user ALL=(ALL) NOPASSWD: ALL
