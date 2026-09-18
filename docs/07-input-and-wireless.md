@@ -104,8 +104,16 @@ reference design.
   1 Mbit); an ath11k module reload with the same board file fixed it and it
   has not recurred since the aliases fix. Watch, don't chase.
 
-BT comes up as `hci0` with `hpbtfw21.tlv`/`hpnv21.bin` loading; pairing is
-stock bluez userspace and untested as of this doc.
+BT comes up as `hci0` with `wcnhpbtfw21.tlv`/`wcnhpnv21.bin` loading on 7.2
+(`hpbtfw21.tlv`/`hpnv21.bin` on 6.13). The controller used to stop there,
+unconfigured: the DT `bluetooth` node has no `local-bd-address` and the
+bootloader supplies none, so `btmgmt info` listed no controller and
+bluetoothd saw "No default controller available". The device package now
+ships `gts8pwifi-bt-addr`, a oneshot pulled in by udev when `hci0` appears;
+it mounts the `efs` partition read-only, reads the first address from
+`bluetooth/bt_addr` and sets it with `btmgmt public-addr`, falling back to a
+machine-id-derived locally administered address if efs is unusable. Scanning
+finds devices; pairing is stock bluez userspace and still to be exercised.
 
 ## Open threads
 
