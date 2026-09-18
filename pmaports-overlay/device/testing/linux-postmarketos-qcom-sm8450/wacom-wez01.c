@@ -24,6 +24,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/interrupt.h>
@@ -90,6 +91,7 @@ struct wacom_wez01 {
 	struct i2c_client *client;
 	struct input_dev *input;
 	struct regulator *avdd;
+	struct gpio_desc *fwe;	/* flash-mode enable; low = run app firmware */
 
 	u16 max_x;
 	u16 max_y;
@@ -349,6 +351,18 @@ static int wacom_probe(struct i2c_client *client)
 	w->max_height = 255;
 	w->max_tilt_x = 63;
 	w->max_tilt_y = 63;
+
+	/*
+	 * fwe (stock epen-fwe, tlmm 54) selects the flash-mode bootloader when
+	 * high across a power cycle. Downstream forces it low before powering
+	 * the chip (wacom_i2c.c 3331-3340); do the same so a stray high from
+	 * the bootloader cannot leave the WEZ01 in flash mode. Optional: the
+	 * chip runs normally without it if the line is not described.
+	 */
+	w->fwe = devm_gpiod_get_optional(dev, "flash-mode", GPIOD_OUT_LOW);
+	if (IS_ERR(w->fwe))
+		return dev_err_probe(dev, PTR_ERR(w->fwe),
+				     "cannot get flash-mode gpio\n");
 
 	w->avdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(w->avdd))
