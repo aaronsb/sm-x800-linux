@@ -1,0 +1,27 @@
+q6apm-lpass-dais-i2s-set-fmt
+
+Backport of mainline 33b55b94bca9 "ASoC: qcom: q6apm-lpass-dais: Fix missing set_fmt DAI op for I2S".
+
+The q6i2s_set_fmt() function was defined but never linked into the
+I2S DAI operations, resulting DAI format settings is being ignored
+during stream setup. This change fixes the issue by properly linking
+the .set_fmt handler within the DAI ops.
+Fixes: 30ad723b93ade ("ASoC: qdsp6: audioreach: add q6apm lpass dai support")
+Cc: stable@vger.kernel.org
+Reviewed-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Signed-off-by: Mohammad Rafi Shaik <mohammad.rafi.shaik@oss.qualcomm.com>
+Message-ID: <20250908053631.70978-3-mohammad.rafi.shaik@oss.qualcomm.com>
+Signed-off-by: Mark Brown <broonie@kernel.org>
+
+diff --git a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+index 9c98a35ad..4505e5648 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
++++ b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+@@ -260,6 +260,7 @@ static const struct snd_soc_dai_ops q6i2s_ops = {
+ 	.shutdown	= q6apm_lpass_dai_shutdown,
+ 	.set_channel_map  = q6dma_set_channel_map,
+ 	.hw_params        = q6dma_hw_params,
++	.set_fmt	= q6i2s_set_fmt,
+ };
+ 
+ static const struct snd_soc_dai_ops q6hdmi_ops = {
