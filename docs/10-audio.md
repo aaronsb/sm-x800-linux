@@ -127,7 +127,21 @@ What was established, in order:
   the first 100 ms and nothing after: the decimator's high-pass filter
   settling on a flat, low PDM line. Still not a microphone.
 - Declaring the two stock 1.7-3.0 V LDOs with no DT consumer (L4C, L5C)
-  always-on at their stock 1.8 V init changed nothing; reverted.
+  always-on at their stock 1.8 V init changed nothing; reverted. Same
+  for L2C (stock's sensor_vdd for the SLPI hub, a plausible shared
+  sensor/mic rail): enabled at 1.8 V, still flat; reverted.
+- Stock's audio HAL (`/vendor/etc/audio/sku_taro/mixer_paths.xml` in the
+  super dump) maps the mics: main = DMIC1, sub = DMIC3, third = DMIC5,
+  fourth = DMIC7, one mic per pin pair on the odd index. Regular
+  recording goes through the TX macro (`TX DMIC MUX0 = DMIC1`, 2.4 MHz);
+  voice activation through the VA macro (`VA DEC0 MUX = MSM_DMIC`,
+  `VA DMIC MUX0 = DMIC1`), the same controls this port sets. All three
+  inputs recorded flat here.
+- The VA GFMux at 0x3420000 (stock `qcom,va-island-mode-muxsel`) reads
+  0 on mainline; downstream writes 1 while the VA macro runs from the
+  TX core clock. Writing 1 at runtime through /dev/mem stalls capture
+  with -EIO until reboot, so 0 is the working select and mainline is
+  right to leave it.
 - The mainline TX macro takes DMICs only over SoundWire, so stock's
   regular-capture path (TX macro at 2.4 MHz) has no mainline equivalent.
 - The decimator's HPF turns a flat PDM line into exact zeros, so "zeros"
@@ -138,7 +152,14 @@ What was established, in order:
 
 What would settle it: a scope on LPI gpio6 (DMIC clock) and gpio7 (data)
 during `arecord`, or the mic supply net from the schematic. Stock's VA
-macro node carries no `micb` supply at all, unlike the Tab S9 Ultra's.
+macro node carries no `micb` supply at all, unlike the Tab S9 Ultra's,
+and neither the stock DT, the vendor init scripts, nor the mixer paths
+name anything that powers or gates the microphones. Whatever rail it is,
+it is not L2C, L4C, L5C, S10B or anything else this DTS declares.
+
+Speaker-protection firmware for the follow-up sits in the vendor
+partition of the super dump: `/vendor/firmware/cs35l45-dsp1-spk-prot.wmfw`,
+`.bin` and `-calib.bin`.
 
 ## What is not done
 
