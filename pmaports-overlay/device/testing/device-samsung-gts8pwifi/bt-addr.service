@@ -1,0 +1,12 @@
+[Unit]
+Description=Set the Bluetooth public address from efs (gts8pwifi)
+# Pulled in by 90-gts8pwifi-bt-addr.rules when hci0 appears; no [Install]
+# section on purpose. The controller has no local-bd-address in the DT and
+# the bootloader supplies none, so it stays unconfigured until userspace
+# hands it one. bluetoothd picks the controller up over mgmt once it is
+# configured, so no ordering against bluetooth.service is needed.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/gts8pwifi-bt-addr

@@ -37,7 +37,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Touchscreen (STM FTS1BA90A) | ✅ working — our `fts1ba90a` driver, orientation measured on-device |
 | Book Cover Keyboard (pogo STM32 @ i2c 0x2a) | ✅ working — our `stm32-pogo` driver (keyboard, caps LED; touchpad supported but untested, the Slim cover has none) |
 | WiFi (WCN6855, ath11k on PCIe0) | ✅ working — NetworkManager autoconnects at boot; primary ssh path. Carries the upstream RX-corruption fix trilogy (bulk downloads used to wedge with `msdu_done` errors / silent drops) |
-| Bluetooth (WCN6855 on uart20) | ✅ controller up, firmware loads (`hci0`); pairing not yet exercised |
+| Bluetooth (WCN6855 on uart20) | ✅ controller up, address from efs, scan finds devices; pairing pending |
 | USB host (xhci) | ✅ working |
 | USB ethernet + DHCP + ssh | ✅ working (Realtek RTL8153 dongle) — now the fallback, not the lifeline |
 | Power key, volume down (PMIC PON) | ✅ working |
