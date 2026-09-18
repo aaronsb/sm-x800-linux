@@ -1,0 +1,143 @@
+add device 1: /dev/input/event14
+  name:     "Book Cover Keyboard Slim (EF-DT730)"
+  events:
+    KEY (0001): KEY_ESC               KEY_1                 KEY_2                 KEY_3                
+                KEY_4                 KEY_5                 KEY_6                 KEY_7                
+                KEY_8                 KEY_9                 KEY_0                 KEY_MINUS            
+                KEY_EQUAL             KEY_BACKSPACE         KEY_TAB               KEY_Q                
+                KEY_W                 KEY_E                 KEY_R                 KEY_T                
+                KEY_Y                 KEY_U                 KEY_I                 KEY_O                
+                KEY_P                 KEY_LEFTBRACE         KEY_RIGHTBRACE        KEY_ENTER            
+                KEY_LEFTCTRL          KEY_A                 KEY_S                 KEY_D                
+                KEY_F                 KEY_G                 KEY_H                 KEY_J                
+                KEY_K                 KEY_L                 KEY_SEMICOLON         KEY_APOSTROPHE       
+                KEY_GRAVE             KEY_LEFTSHIFT         KEY_BACKSLASH         KEY_Z                
+                KEY_X                 KEY_C                 KEY_V                 KEY_B                
+                KEY_N                 KEY_M                 KEY_COMMA             KEY_DOT              
+                KEY_SLASH             KEY_RIGHTSHIFT        KEY_LEFTALT           KEY_SPACE            
+                KEY_CAPSLOCK          KEY_F1                KEY_F2                KEY_F3               
+                KEY_F4                KEY_F5                KEY_F6                KEY_F7               
+                KEY_F8                KEY_F9                KEY_F10               KEY_102ND            
+                KEY_F11               KEY_F12               KEY_SYSRQ             KEY_RIGHTALT         
+                KEY_HOME              KEY_UP                KEY_PAGEUP            KEY_LEFT             
+                KEY_RIGHT             KEY_END               KEY_DOWN              KEY_PAGEDOWN         
+                KEY_DELETE            KEY_MUTE              KEY_VOLUMEDOWN        KEY_VOLUMEUP         
+                KEY_HANGEUL           KEY_LEFTMETA          KEY_NEXTSONG          KEY_PLAYPAUSE        
+                KEY_PREVIOUSSONG      KEY_HOMEPAGE          KEY_BRIGHTNESSDOWN    KEY_BRIGHTNESSUP     
+                00fe                  KEY_FN                02bd                  BTN_TRIGGER_HAPPY2   
+                BTN_TRIGGER_HAPPY3    BTN_TRIGGER_HAPPY6    BTN_TRIGGER_HAPPY7    BTN_TRIGGER_HAPPY10  
+                BTN_TRIGGER_HAPPY11   BTN_TRIGGER_HAPPY12  
+    MSC (0004): MSC_SCAN             
+  input props:
+    <none>
+add device 2: /dev/input/event13
+  name:     "sec_e-pen"
+  events:
+    KEY (0001): KEY_HOMEPAGE          00fd                  BTN_DIGI              BTN_TOOL_RUBBER      
+                BTN_TOUCH             BTN_STYLUS           
+    ABS (0003): ABS_X                 : value 701, min 0, max 16714, fuzz 4, flat 0, resolution 0
+                ABS_Y                 : value 8492, min 0, max 26712, fuzz 4, flat 0, resolution 0
+                ABS_PRESSURE          : value 0, min 0, max 4095, fuzz 0, flat 0, resolution 0
+                ABS_DISTANCE          : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_TILT_X            : value 22, min -63, max 63, fuzz 0, flat 0, resolution 0
+                ABS_TILT_Y            : value -15, min -63, max 63, fuzz 0, flat 0, resolution 0
+    SW  (0005): SW_PEN_INSERTED*      SW_MACHINE_COVER     
+  input props:
+    <none>
+add device 3: /dev/input/event12
+  name:     "grip_notifier"
+  events:
+    REL (0002): REL_X                
+  input props:
+    <none>
+add device 4: /dev/input/event11
+  name:     "grip_sensor_sub"
+  events:
+    REL (0002): REL_X                 REL_Y                 REL_DIAL              REL_MISC             
+  input props:
+    <none>
+add device 5: /dev/input/event10
+  name:     "grip_notifier"
+  events:
+    REL (0002): REL_X                
+  input props:
+    <none>
+add device 6: /dev/input/event9
+  name:     "grip_sensor"
+  events:
+    REL (0002): REL_X                 REL_Y                 REL_DIAL              REL_MISC             
+  input props:
+    <none>
+add device 7: /dev/input/event8
+  name:     "hall_logical"
+  events:
+    SW  (0005): SW_KEYPAD_SLIDE       SW_LINEIN_INSERT      SW_MACHINE_COVER     
+  input props:
+    <none>
+add device 8: /dev/input/event7
+  name:     "sec_touchpad"
+  events:
+    KEY (0001): KEY_WAKEUP            0118                  0119                  BTN_TOOL_FINGER      
+                BTN_TOOL_QUINTTAP     BTN_TOUCH             BTN_TOOL_DOUBLETAP    BTN_TOOL_TRIPLETAP   
+                BTN_TOOL_QUADTAP      01c7                  0226                  02be                 
+    ABS (0003): ABS_X                 : value 0, min 0, max 1751, fuzz 0, flat 0, resolution 0
+                ABS_Y                 : value 0, min 0, max 2799, fuzz 0, flat 0, resolution 0
+                ABS_MT_SLOT           : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MINOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 1751, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 2799, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_POINTER
+add device 9: /dev/input/event6
+  name:     "sec_touchscreen"
+  events:
+    KEY (0001): KEY_WAKEUP            0118                  0119                  BTN_TOOL_FINGER      
+                BTN_TOUCH             01c7                  0226                  02be                 
+    ABS (0003): ABS_X                 : value 0, min 0, max 1751, fuzz 0, flat 0, resolution 0
+                ABS_Y                 : value 0, min 0, max 2799, fuzz 0, flat 0, resolution 0
+                ABS_MT_SLOT           : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MINOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 1751, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 2799, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 10: /dev/input/event5
+  name:     "hall"
+  events:
+    SW  (0005): SW_MACHINE_COVER     
+  input props:
+    <none>
+add device 11: /dev/input/event4
+  name:     "hall_wacom"
+  events:
+    SW  (0005): SW_ROTATE_LOCK*      
+  input props:
+    <none>
+add device 12: /dev/input/event3
+  name:     "pmic_resin"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN       
+  input props:
+    <none>
+add device 13: /dev/input/event2
+  name:     "pmic_pwrkey"
+  events:
+    KEY (0001): KEY_POWER            
+  input props:
+    <none>
+add device 14: /dev/input/event1
+  name:     "meta_event"
+  events:
+    REL (0002): REL_HWHEEL            REL_DIAL             
+  input props:
+    <none>
+add device 15: /dev/input/event0
+  name:     "gpio-keys"
+  events:
+    KEY (0001): KEY_VOLUMEUP         
+  input props:
+    <none>

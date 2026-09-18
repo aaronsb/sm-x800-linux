@@ -1,0 +1,351 @@
+ regulator                      use open bypass  opmode voltage current     min     max
+---------------------------------------------------------------------------------------
+ regulator-dummy                  3   28      0 unknown     0mV     0mA     0mV     0mV 
+    ae96400.qcom,mdss_dsi_phy1-gdsc   0                                 0mA     0mV     0mV
+    ae94400.qcom,mdss_dsi_phy0-gdsc   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,eeprom20-cam_vana   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,eeprom20-cam_vio   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,eeprom20-cam_vdig   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,eeprom21-cam_vana   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,eeprom21-cam_vio   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,eeprom21-cam_vdig   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,cam-sensor12-cam_vana   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,cam-sensor12-cam_vio   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,cam-sensor12-cam_vdig   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,cam-sensor1-cam_vana   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,cam-sensor1-cam_vio   0                                 0mA     0mV     0mV
+    ac16000.qcom,cci1:qcom,cam-sensor1-cam_vdig   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,cam-sensor0-cam_vana   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,cam-sensor0-cam_vio   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,cam-sensor0-cam_vdig   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,cam-sensor2-cam_vana   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,cam-sensor2-cam_vio   0                                 0mA     0mV     0mV
+    ac15000.qcom,cci0:qcom,cam-sensor2-cam_vdig   0                                 0mA     0mV     0mV
+    60-0058-cam_vio               0                                 0mA     0mV     0mV
+    60-0058-cam_vaf               0                                 0mA     0mV     0mV
+    60-0018-cam_vio               0                                 0mA     0mV     0mV
+    60-0018-cam_vaf               0                                 0mA     0mV     0mV
+    636000.mx_sdpm-pcie_0_aux     0                                 0mA     0mV     0mV
+    636000.mx_sdpm-mdss_mdp       0                                 0mA     0mV     0mV
+    88e8000.ssphy-usb3_dp_phy_gdsc   1                                 0mA     0mV     0mV
+    1c00000.qcom,pcie-gdsc-phy-vdd   1                                 0mA     0mV     0mV
+ dummy_vreg                       9    8      0 unknown     0mV     0mA     0mV     0mV 
+    18-0033-VP                    1                                 0mA     0mV     0mV
+    18-0033-VA                    1                                 0mA     0mV     0mV
+    18-0032-VP                    1                                 0mA     0mV     0mV
+    18-0032-VA                    1                                 0mA     0mV     0mV
+    18-0031-VP                    1                                 0mA     0mV     0mV
+    18-0031-VA                    1                                 0mA     0mV     0mV
+    18-0030-VP                    1                                 0mA     0mV     0mV
+    18-0030-VA                    1                                 0mA     0mV     0mV
+ gcc_usb30_prim_gdsc              1    2      0  normal     0mV     0mA     0mV     0mV 
+    gcc_usb30_prim_gdsc           0                                 0mA     0mV     0mV
+    a600000.ssusb-USB3_GDSC       1                                 0mA     0mV     0mV
+ pm8350_s5_level                  0    2      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350_s5_level               0                                 0mA     0mV     0mV
+    pm8350c_s2_gfx_voter_level    0    2      0 unknown     0mV     0mA     0mV     0mV 
+       pm8350c_s2_gfx_voter_level   0                                 0mA     0mV     0mV
+       gpu_cc_gx_gdsc             0    2      0  normal     0mV     0mA     0mV     0mV 
+          gpu_cc_gx_gdsc          0                                 0mA     0mV     0mV
+          3d68000.qcom,gmu-vdd    0                                 0mA     0mV     0mV
+ pm8350_l8_level                  0    3      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350_l8_level               0                                 0mA     0mV     0mV
+    2400000.remoteproc-slpi-cx    0                                 0mA     0mV     0mV
+    3000000.remoteproc-adsp-cx    0                                 0mA     0mV     0mV
+ pm8350c_s4_level                 0    2      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350c_s4_level              0                                 0mA     0mV     0mV
+    4080000.remoteproc-mss-mx     0                                 0mA     0mV     0mV
+ pm8350c_s6_level                 2   11      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350c_s6_level              0                                 0mA     0mV     0mV
+    4080000.remoteproc-mss-cx     0                                 0mA     0mV     0mV
+    32300000.remoteproc-cdsp-cx   0                                 0mA     0mV     0mV
+    188101c.remoteproc-spss-cx    0                                 0mA     0mV     0mV
+    1c00000.qcom,pcie-vreg-cx     0                                 0mA     0mV     0mV
+    3d90000.clock-controller-vdd_cx   0                                 0mA     0mV     0mV
+    100000.clock-controller-vdd_cx   1                                 0mA     0mV     0mV
+    gcc_pcie_0_gdsc               0    2      0  normal     0mV     0mA     0mV     0mV 
+       gcc_pcie_0_gdsc            0                                 0mA     0mV     0mV
+       1c00000.qcom,pcie-gdsc-vdd   0                                 0mA     0mV     0mV
+    gcc_pcie_1_gdsc               0    1      0  normal     0mV     0mA     0mV     0mV 
+       gcc_pcie_1_gdsc            0                                 0mA     0mV     0mV
+    gcc_ufs_phy_gdsc              1    2      0  normal     0mV     0mA     0mV     0mV 
+       gcc_ufs_phy_gdsc           0                                 0mA     0mV     0mV
+       1d84000.ufshc-vdd-hba      1                                 0mA     0mV     0mV
+    gpu_cc_cx_gdsc                0    4      0  normal     0mV     0mA     0mV     0mV 
+       gpu_cc_cx_gdsc             0                                 0mA     0mV     0mV
+       3d68000.qcom,gmu-vddcx     0                                 0mA     0mV     0mV
+       3da0000.qcom,kgsl-iommu-vddcx   0                                 0mA     0mV     0mV
+       3da0000.kgsl-smmu-vdd      0                                 0mA     0mV     0mV
+ pm8350c_s6_level_ao              0    1      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350c_s6_level_ao           0                                 0mA     0mV     0mV
+ pm8350c_s6_mmcx_sup_level        0    2      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350c_s6_mmcx_sup_level     0                                 0mA     0mV     0mV
+    pm8450_s4_level               0    8      0 unknown     0mV     0mA     0mV     0mV 
+       pm8450_s4_level            0                                 0mA     0mV     0mV
+       ae00000.qcom,mdss_mdp-mmcx   0                                 0mA     0mV     0mV
+       ade0000.clock-controller-vdd_mm   0                                 0mA     0mV     0mV
+       aaf0000.clock-controller-vdd_mm   0                                 0mA     0mV     0mV
+       af00000.clock-controller-vdd_mm   0                                 0mA     0mV     0mV
+       pm8350c_s2_mmcx_voter_level   0   12      0 unknown     0mV     0mA     0mV     0mV 
+          pm8350c_s2_mmcx_voter_level   0                                 0mA     0mV     0mV
+          video_cc_mvs0c_gdsc     0    3      0  normal     0mV     0mA     0mV     0mV 
+             video_cc_mvs0c_gdsc   0                                 0mA     0mV     0mV
+             aa00000.qcom,vidc-iris-ctl   0                                 0mA     0mV     0mV
+             video_cc_mvs0_gdsc   0    2      0  normal     0mV     0mA     0mV     0mV 
+                video_cc_mvs0_gdsc   0                                 0mA     0mV     0mV
+                aa00000.qcom,vidc-vcodec   0                                 0mA     0mV     0mV
+          video_cc_mvs1c_gdsc     0    3      0  normal     0mV     0mA     0mV     0mV 
+             video_cc_mvs1c_gdsc   0                                 0mA     0mV     0mV
+             ab00000.qcom,cvp-cvp   0                                 0mA     0mV     0mV
+             video_cc_mvs1_gdsc   0    2      0  normal     0mV     0mA     0mV     0mV 
+                video_cc_mvs1_gdsc   0                                 0mA     0mV     0mV
+                ab00000.qcom,cvp-cvp-core   0                                 0mA     0mV     0mV
+          cam_cc_bps_gdsc         0    2      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_bps_gdsc      0                                 0mA     0mV     0mV
+             ac2c000.qcom,bps-bps-vdd   0                                 0mA     0mV     0mV
+          cam_cc_ife_0_gdsc       0    2      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_ife_0_gdsc    0                                 0mA     0mV     0mV
+             ac62000.qcom,ife0-ife0   0                                 0mA     0mV     0mV
+          cam_cc_ife_1_gdsc       0    2      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_ife_1_gdsc    0                                 0mA     0mV     0mV
+             ac71000.qcom,ife1-ife1   0                                 0mA     0mV     0mV
+          cam_cc_ife_2_gdsc       0    2      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_ife_2_gdsc    0                                 0mA     0mV     0mV
+             ac80000.qcom,ife2-ife2   0                                 0mA     0mV     0mV
+          cam_cc_ipe_0_gdsc       0    2      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_ipe_0_gdsc    0                                 0mA     0mV     0mV
+             ac42000.qcom,ipe0-ipe0-vdd   0                                 0mA     0mV     0mV
+          cam_cc_sbi_gdsc         0    1      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_sbi_gdsc      0                                 0mA     0mV     0mV
+          cam_cc_sfe_0_gdsc       0    2      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_sfe_0_gdsc    0                                 0mA     0mV     0mV
+             ac9e000.qcom,sfe0-sfe0   0                                 0mA     0mV     0mV
+          cam_cc_sfe_1_gdsc       0    2      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_sfe_1_gdsc    0                                 0mA     0mV     0mV
+             aca6000.qcom,sfe1-sfe1   0                                 0mA     0mV     0mV
+          cam_cc_titan_top_gdsc   0   38      0  normal     0mV     0mA     0mV     0mV 
+             cam_cc_titan_top_gdsc   0                                 0mA     0mV     0mV
+             ac2b000.qcom,jpegdma-gdsc   0                                 0mA     0mV     0mV
+             ac2a000.qcom,jpegenc-gdsc   0                                 0mA     0mV     0mV
+             ac01000.qcom,lx7-gdsc   0                                 0mA     0mV     0mV
+             acf8000.qcom,tpg15-gdsc   0                                 0mA     0mV     0mV
+             acf7000.qcom,tpg14-gdsc   0                                 0mA     0mV     0mV
+             acf6000.qcom,tpg13-gdsc   0                                 0mA     0mV     0mV
+             ac16000.qcom,cci1:qcom,eeprom20-cam_clk   0                                 0mA     0mV     0mV
+             ac15000.qcom,cci0:qcom,eeprom21-cam_clk   0                                 0mA     0mV     0mV
+             ac16000.qcom,cci1:qcom,cam-sensor12-cam_clk   0                                 0mA     0mV     0mV
+             ac16000.qcom,cci1:qcom,cam-sensor1-cam_clk   0                                 0mA     0mV     0mV
+             ac15000.qcom,cci0:qcom,cam-sensor0-cam_clk   0                                 0mA     0mV     0mV
+             ac15000.qcom,cci0:qcom,cam-sensor2-cam_clk   0                                 0mA     0mV     0mV
+             acee000.qcom,csiphy5-gdscr   0                                 0mA     0mV     0mV
+             acec000.qcom,csiphy4-gdscr   0                                 0mA     0mV     0mV
+             acea000.qcom,csiphy3-gdscr   0                                 0mA     0mV     0mV
+             ace8000.qcom,csiphy2-gdscr   0                                 0mA     0mV     0mV
+             ace6000.qcom,csiphy1-gdscr   0                                 0mA     0mV     0mV
+             ace4000.qcom,csiphy0-gdscr   0                                 0mA     0mV     0mV
+             ac16000.qcom,cci1-gdscr   0                                 0mA     0mV     0mV
+             ac15000.qcom,cci0-gdscr   0                                 0mA     0mV     0mV
+             aca6000.qcom,sfe1-gdsc   0                                 0mA     0mV     0mV
+             ac9e000.qcom,sfe0-gdsc   0                                 0mA     0mV     0mV
+             acca000.qcom,ife-lite1-gdsc   0                                 0mA     0mV     0mV
+             acc6000.qcom,ife-lite0-gdsc   0                                 0mA     0mV     0mV
+             ac80000.qcom,ife2-gdsc   0                                 0mA     0mV     0mV
+             ac71000.qcom,ife1-gdsc   0                                 0mA     0mV     0mV
+             ac62000.qcom,ife0-gdsc   0                                 0mA     0mV     0mV
+             acca000.qcom,csid-lite1-gdsc   0                                 0mA     0mV     0mV
+             acc6000.qcom,csid-lite0-gdsc   0                                 0mA     0mV     0mV
+             acbb000.qcom,csid2-gdsc   0                                 0mA     0mV     0mV
+             acb9000.qcom,csid1-gdsc   0                                 0mA     0mV     0mV
+             acb7000.qcom,csid0-gdsc   0                                 0mA     0mV     0mV
+             ac27000.qcom,rt-cdm2-gdsc   0                                 0mA     0mV     0mV
+             ac26000.qcom,rt-cdm1-gdsc   0                                 0mA     0mV     0mV
+             ac25000.qcom,rt-cdm0-gdsc   0                                 0mA     0mV     0mV
+             ac24000.qcom,cpas-cdm0-gdsc   0                                 0mA     0mV     0mV
+             ac13000.qcom,cam-cpas-gdsc   0                                 0mA     0mV     0mV
+       disp_cc_mdss_core_gdsc     0    2      0    fast     0mV     0mA     0mV     0mV 
+          disp_cc_mdss_core_gdsc   0                                 0mA     0mV     0mV
+          af20000.qcom,sde_rscc-vdd   0                                 0mA     0mV     0mV
+       disp_cc_mdss_core_int2_gdsc   0    1      0  normal     0mV     0mA     0mV     0mV 
+          disp_cc_mdss_core_int2_gdsc   0                                 0mA     0mV     0mV
+ pm8450_s2_level                  0    1      0 unknown     0mV     0mA     0mV     0mV 
+    pm8450_s2_level               0                                 0mA     0mV     0mV
+ pm8450_s4_level_ao               0    1      0 unknown     0mV     0mA     0mV     0mV 
+    pm8450_s4_level_ao            0                                 0mA     0mV     0mV
+ pm8450_s4_level_so               0    1      0 unknown     0mV     0mA     0mV     0mV 
+    pm8450_s4_level_so            0                                 0mA     0mV     0mV
+ pm8350c_s2_level                 0    5      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350c_s2_level              0                                 0mA     0mV     0mV
+    32300000.remoteproc-cdsp-mx   0                                 0mA     0mV     0mV
+    ade0000.clock-controller-vdd_mxc   0                                 0mA     0mV     0mV
+    aaf0000.clock-controller-vdd_mxc   0                                 0mA     0mV     0mV
+    3d90000.clock-controller-vdd_mxc   0                                 0mA     0mV     0mV
+ pm8350c_s2_level_ao              0    1      0 unknown     0mV     0mA     0mV     0mV 
+    pm8350c_s2_level_ao           0                                 0mA     0mV     0mV
+ pm8450_s6_level                  1    7      0 unknown     0mV     0mA     0mV     0mV 
+    pm8450_s6_level               0                                 0mA     0mV     0mV
+    ae90000.qcom,dp_display-vdd_mx   0                                 0mA     0mV     0mV
+    1c00000.qcom,pcie-vreg-mx     0                                 0mA     0mV     0mV
+    ade0000.clock-controller-vdd_mxa   0                                 0mA     0mV     0mV
+    3d90000.clock-controller-vdd_mx   0                                 0mA     0mV     0mV
+    af00000.clock-controller-vdd_mxa   0                                 0mA     0mV     0mV
+    100000.clock-controller-vdd_mxa   1                                 0mA     0mV     0mV
+ pm8450_s6_level_ao               0    1      0 unknown     0mV     0mA     0mV     0mV 
+    pm8450_s6_level_ao            0                                 0mA     0mV     0mV
+ pm8450_l1_level                  0    3      0 unknown     0mV     0mA     0mV     0mV 
+    pm8450_l1_level               0                                 0mA     0mV     0mV
+    2400000.remoteproc-slpi-mx    0                                 0mA     0mV     0mV
+    3000000.remoteproc-adsp-mx    0                                 0mA     0mV     0mV
+ pm8350_s10                       1    2      0 unknown  1800mV     0mA  1800mV  1800mV 
+    pm8350_s10                    0                                 0mA     0mV     0mV
+    b0000000.qcom,cnss-qca6490-vdd-wlan-io   1                                 0mA  1800mV  1800mV
+ pm8350_s11                       3    4      0 unknown   848mV     0mA   848mV  1104mV 
+    pm8350_s11                    0                                 0mA     0mV     0mV
+    soc:bt_qca6490-qcom,bt-vdd-dig   1                                 0mA   848mV   966mV
+    soc:bt_qca6490-qcom,bt-vdd-aon   1                                 0mA   848mV   966mV
+    b0000000.qcom,cnss-qca6490-vdd-wlan-dig   1                                 0mA   848mV   966mV
+ pm8350_s12                       3    4      0 unknown  1224mV     0mA  1224mV  1400mV 
+    pm8350_s12                    0                                 0mA     0mV     0mV
+    soc:bt_qca6490-qcom,bt-vdd-rfa2   1                                 0mA  1224mV  1350mV
+    b0000000.qcom,cnss-qca6490-vdd-wlan-rfa2   1                                 0mA  1224mV  1350mV
+    1d84000.ufshc-qcom,vccq-parent   1                               210mA     0mV     0mV
+ pm8350_l1                        1    3      0    fast   912mV     0mA   912mV   920mV 
+    pm8350_l1                     0                                 0mA     0mV     0mV
+    ae90000.qcom,dp_display-vdda-0p9   0                                 0mA     0mV     0mV
+    88e8000.ssphy-vdd             1                                47mA   912mV   912mV
+ pm8350_l2                        1    3      0    fast  3072mV     0mA  3072mV  3072mV 
+    pm8350_l2                     0                                 0mA     0mV     0mV
+    ae90000.qcom,dp_display-aux-pullup   0                                 0mA     0mV     0mV
+    88e3000.hsphy-vdda33          1                                16mA  3072mV  3072mV
+ pm8350_l3                        0    1      0    fast   904mV     0mA   904mV   904mV 
+    pm8350_l3                     0                                 0mA     0mV     0mV
+ pm8350_l5                        3   13      0    fast   880mV     0mA   880mV   912mV 
+    pm8350_l5                     0                                 0mA     0mV     0mV
+    ae90000.qcom,dp_display-vdda_usb-0p9   0                                 0mA     0mV     0mV
+    ae96400.qcom,mdss_dsi_phy1-vdda-0p9   0                                 0mA     0mV     0mV
+    ae94400.qcom,mdss_dsi_phy0-vdda-0p9   1                                97mA   880mV   880mV
+    acee000.qcom,csiphy5-csi-vdd-0p9   0                                 0mA     0mV     0mV
+    acec000.qcom,csiphy4-csi-vdd-0p9   0                                 0mA     0mV     0mV
+    acea000.qcom,csiphy3-csi-vdd-0p9   0                                 0mA     0mV     0mV
+    ace8000.qcom,csiphy2-csi-vdd-0p9   0                                 0mA     0mV     0mV
+    ace6000.qcom,csiphy1-csi-vdd-0p9   0                                 0mA   880mV   912mV
+    ace4000.qcom,csiphy0-csi-vdd-0p9   0                                 0mA     0mV     0mV
+    88e3000.hsphy-vdd             1                                30mA   880mV   880mV
+    1c00000.qcom,pcie-vreg-0p9    0                                 0mA   880mV   880mV
+    1d87000.ufsphy_mem-vdda-phy   1                               173mA   880mV   912mV
+ pm8350_l5_ao                     1    2      0    fast   880mV     0mA   880mV   880mV 
+    pm8350_l5_ao                  0                                 0mA     0mV     0mV
+    soc:qcom,limits-dcvs-isens_vref_0p8   1                                30mA   880mV   880mV
+ pm8350_l5_so                     0    1      0    idle   880mV     0mA   880mV   880mV 
+    pm8350_l5_so                  0                                 0mA     0mV     0mV
+ pm8350_l6                        3   13      0    fast  1200mV     0mA  1200mV  1200mV 
+    pm8350_l6                     0                                 0mA     0mV     0mV
+    ae90000.qcom,dp_display-vdda-1p2   0                                 0mA     0mV     0mV
+    ae96000.qcom,mdss_dsi_ctrl1-vdda-1p2   0                                 0mA     0mV     0mV
+    ae94000.qcom,mdss_dsi_ctrl0-vdda-1p2   1                                16mA  1200mV  1200mV
+    acee000.qcom,csiphy5-csi-vdd-1p2   0                                 0mA     0mV     0mV
+    acec000.qcom,csiphy4-csi-vdd-1p2   0                                 0mA     0mV     0mV
+    acea000.qcom,csiphy3-csi-vdd-1p2   0                                 0mA     0mV     0mV
+    ace8000.qcom,csiphy2-csi-vdd-1p2   0                                 0mA     0mV     0mV
+    ace6000.qcom,csiphy1-csi-vdd-1p2   0                                 0mA  1200mV  1200mV
+    ace4000.qcom,csiphy0-csi-vdd-1p2   0                                 0mA     0mV     0mV
+    88e8000.ssphy-core            1                                30mA  1200mV  1200mV
+    1c00000.qcom,pcie-vreg-1p8    0                                 0mA  1200mV  1200mV
+    1d87000.ufsphy_mem-vdda-pll   1                                24mA  1200mV  1200mV
+ pm8350_l6_ao                     1    2      0    idle  1200mV     0mA  1200mV  1200mV 
+    pm8350_l6_ao                  0                                 0mA     0mV     0mV
+    soc:qcom,limits-dcvs-isens_vref_1p8   1                                 8mA  1200mV  1200mV
+ pm8350_l6_so                     0    1      0    idle  1200mV     0mA  1200mV  1200mV 
+    pm8350_l6_so                  0                                 0mA     0mV     0mV
+ pm8350_l7                        1    2      0    fast  2504mV     0mA  2504mV  2504mV 
+    pm8350_l7                     0                                 0mA     0mV     0mV
+    1d84000.ufshc-vcc             1                              1100mA     0mV     0mV
+ pm8350_l9                        2    3      0    fast  1200mV     0mA  1200mV  1200mV 
+    pm8350_l9                     0                                 0mA     0mV     0mV
+    1d84000.ufshc-qcom,vddp-ref-clk   1                                 0mA  1200mV  1200mV
+    1d84000.ufshc-vccq            1                              1200mA     0mV     0mV
+ pm8350c_s1                       2    3      0 unknown  1800mV     0mA  1800mV  2024mV 
+    pm8350c_s1                    0                                 0mA     0mV     0mV
+    soc:bt_qca6490-qcom,bt-vdd-rfa1   1                                 0mA  1800mV  2024mV
+    b0000000.qcom,cnss-qca6490-vdd-wlan-rfa1   1                                 0mA  1800mV  2024mV
+ pm8350c_s10                      0    1      0 unknown  1052mV     0mA  1000mV  1100mV 
+    pm8350c_s10                   0                                 0mA     0mV     0mV
+ pm8350c_l1                       1    2      0    fast  1800mV     0mA  1800mV  1800mV 
+    pm8350c_l1                    0                                 0mA     0mV     0mV
+    88e3000.hsphy-vdda18          1                                19mA  1800mV  1800mV
+ pm8350c_l2                       1    2      0    fast  1800mV     0mA  1800mV  1800mV 
+    pm8350c_l2                    0                                 0mA     0mV     0mV
+    2400000.remoteproc-slpi-sensor_vdd   1                                 0mA  1800mV  1800mV
+ pm8350c_l3                       0    2      0    fast  1800mV     0mA  1800mV  1800mV 
+    pm8350c_l3                    0                                 0mA     0mV     0mV
+    65-0023-1p8_pvdd              0                                 0mA     0mV     0mV
+ pm8350c_l4                       0    1      0    fast  1808mV     0mA  1704mV  3000mV 
+    pm8350c_l4                    0                                 0mA     0mV     0mV
+ pm8350c_l5                       0    1      0    fast  1808mV     0mA  1704mV  3000mV 
+    pm8350c_l5                    0                                 0mA     0mV     0mV
+ pm8350c_l6                       0    2      0    idle  1800mV     0mA  1800mV  3008mV 
+    pm8350c_l6                    0                                 0mA     0mV     0mV
+    8804000.sdhci-vdd-io          0                                 0mA  1800mV  2960mV
+ pm8350c_l7                       1    2      0    fast  3300mV     0mA  3300mV  3300mV 
+    pm8350c_l7                    0                                 0mA     0mV     0mV
+    63-0049-tsp_avdd_ldo          1                                 0mA     0mV     0mV
+ pm8350c_l8                       1    2      0    fast  1848mV     0mA  1848mV  1848mV 
+    pm8350c_l8                    0                                 0mA     0mV     0mV
+    63-0049-tsp_io_ldo            1                                 0mA     0mV     0mV
+ pm8350c_l9                       0    2      0    idle  2960mV     0mA  2960mV  3008mV 
+    pm8350c_l9                    0                                 0mA     0mV     0mV
+    8804000.sdhci-vdd             0                                 0mA  2960mV  2960mV
+ pm8350c_l10                      0    1      0    fast  1200mV     0mA  1200mV  1200mV 
+    pm8350c_l10                   0                                 0mA     0mV     0mV
+ pm8350c_l11                      0    2      0    fast  3000mV     0mA  3000mV  3000mV 
+    pm8350c_l11                   0                                 0mA     0mV     0mV
+    samsung_mobile_device:dc_vibrator-dc_vib   0                                 0mA     0mV     0mV
+ pm8350c_l12                      1    1      0    fast  1800mV     0mA  1800mV  1968mV 
+    pm8350c_l12                   0                                 0mA     0mV     0mV
+ pm8350c_l13                      1    2      0    fast  3000mV     0mA  3000mV  3000mV 
+    pm8350c_l13                   0                                 0mA     0mV     0mV
+    2400000.remoteproc-slpi-sensor_vddio   1                                 0mA  3000mV  3000mV
+ pm8350c_bob                      0    1      0 standby  3296mV     0mA  3008mV  3960mV 
+    pm8350c_bob                   0                                 0mA     0mV     0mV
+ pm8350c_bob_ao                   0    1      0  normal  3008mV     0mA  3008mV  3960mV 
+    pm8350c_bob_ao                0                                 0mA     0mV     0mV
+ pmr735a_s1                       0    1      0 unknown  1256mV     0mA  1200mV  1296mV 
+    pmr735a_s1                    0                                 0mA     0mV     0mV
+ pmr735a_s2                       1    2      0 unknown   500mV     0mA   500mV  1040mV 
+    pmr735a_s2                    0                                 0mA     0mV     0mV
+    b0000000.qcom,cnss-qca6490-vdd-wlan-aon   1                                 0mA   500mV  1012mV
+ pmr735a_s3                       0    1      0 unknown  2200mV     0mA   435mV  2352mV 
+    pmr735a_s3                    0                                 0mA     0mV     0mV
+ pmr735a_l1                       0    1      0    fast   800mV     0mA   800mV   800mV 
+    pmr735a_l1                    0                                 0mA     0mV     0mV
+ pmr735a_l2                       0    1      0    fast   800mV     0mA   480mV   912mV 
+    pmr735a_l2                    0                                 0mA     0mV     0mV
+ pmr735a_l3                       0    1      0    fast  1200mV     0mA  1200mV  1200mV 
+    pmr735a_l3                    0                                 0mA     0mV     0mV
+ pmr735a_l4                       0    1      0    fast  1776mV     0mA  1776mV  1776mV 
+    pmr735a_l4                    0                                 0mA     0mV     0mV
+ pmr735a_l5                       0    1      0    fast   880mV     0mA   880mV   880mV 
+    pmr735a_l5                    0                                 0mA     0mV     0mV
+ pmr735a_l6                       0    1      0    fast  1200mV     0mA  1200mV  1200mV 
+    pmr735a_l6                    0                                 0mA     0mV     0mV
+ pmr735a_l7                       2    3      0    fast  2800mV     0mA  2800mV  2800mV 
+    pmr735a_l7                    0                                 0mA     0mV     0mV
+    soc:bt_qca6490-qcom,bt-vdd-asd   1                                 0mA  2800mV  2800mV
+    b0000000.qcom,cnss-qca6490-wlan-ant-switch   1                                 0mA  2800mV  2800mV
+ pm8450_s3                        0    1      0 unknown   504mV     0mA   500mV   600mV 
+    pm8450_s3                     0                                 0mA     0mV     0mV
+ pm8450_l2                        0    1      0    fast   880mV     0mA     0mV     0mV 
+    pm8450_l2                     0                                 0mA     0mV     0mV
+ pm8450_l3                        0    1      0    fast   912mV     0mA     0mV     0mV 
+    pm8450_l3                     0                                 0mA     0mV     0mV
+ pm8450_l4                        0    1      0    fast  1800mV     0mA  1800mV  1800mV 
+    pm8450_l4                     0                                 0mA     0mV     0mV
+ fixed_regulator2                 1    1      0 unknown     0mV     0mA     0mV     0mV 
+    67-002a-stm32_vddo            1                                 0mA     0mV     0mV
+ panel_ldo_en                     1    2      0 unknown     0mV     0mA     0mV     0mV 
+    soc:qcom,dsi-display-primary-panel_ldo_en   1                               100mA     0mV     0mV
+    soc:qcom,dsi-display-primary-panel_ldo_en   0                                 0mA     0mV     0mV
+ fixed_regulator0                 1    1      0 unknown     0mV     0mA     0mV     0mV 
+    66-0056-wacom_avdd            1                                 0mA     0mV     0mV
+ display_panel_avdd               0    1      0 unknown  5500mV     0mA  5500mV  5500mV 
+    display_panel_avdd            0                                 0mA     0mV     0mV
+ hsphy@88e3000                    0    0      0 unknown     0mV     0mA     0mV     0mV 

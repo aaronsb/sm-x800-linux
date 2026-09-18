@@ -1,0 +1,11 @@
+Pin config settings per pin
+Format: pin (name): configs
+pin 0 (gpio1): 
+pin 1 (gpio2): 
+pin 2 (gpio3): 
+pin 3 (gpio4): 
+pin 4 (gpio5): 
+pin 5 (gpio6): 
+pin 6 (gpio7): 
+pin 7 (gpio8): 
+pin 8 (gpio9): 

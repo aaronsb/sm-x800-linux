@@ -1,0 +1,22 @@
+  821 [uaudio_svc]                [uaudio_svc]
+  962 [sdm_dp_audio_no]           [sdm_dp_audio_no]
+ 1416 android.hardware.audio.service_64 android.hardware.audio.service_64
+ 1470 samsung.software.media.c2@1.0-service samsung.software.media.c2@1.0-service
+ 1473 secaudiohalaidl             secaudiohalaidl
+ 1494 media.hwcodec               media.hwcodec /vendor.qti.media.c2@1.0-service
+ 1496 media.audio.qc.codec        media.audio.qc.codec .qti.media.c2audio@1.0-service
+ 1500 vendor.samsung.hardware.camera.provider@4.0-service_64 vendor.samsung.hardware.camera.provider@4.0-service_64
+ 1503 vendor.samsung.hardware.media.converter@1.0-service vendor.samsung.hardware.media.converter@1.0-service
+ 1538 audioserver                 audioserver
+ 1877 cameraserver                cameraserver
+ 1900 media.extractor             media.extractor aextractor
+ 1901 media.metrics               media.metrics diametrics
+ 1909 mediaserver32               mediaserver32
+ 1923 media.codec                 media.codec hw/android.hardware.media.omx@1.0-service
+ 1932 audioadsprpcd               audioadsprpcd audiopd
+ 1946 media.swcodec               media.swcodec oid.media.swcodec/bin/mediaswcodec
+ 4979 com.google.android.providers.media.module com.google.android.providers.media.module
+ 5263 android.process.media       android.process.media
+27504 com.sec.android.app.camera  com.sec.android.app.camera
+31502 sh                          sh -c su -c "sh /data/local/tmp/fastsnap.sh 05-playback; D=/data/local/tmp/audiocap/hal/05-playback; mkdir -p \$D/regmap-amps; timeout 120 cat /sys/kernel/debug/regmap/18-0030/registers > \$D/regmap-amps/18-0030.txt 2>/dev/null; wc -l \$D/regmap-amps/18-0030.txt"
+31505 sh                          sh -c sh /data/local/tmp/fastsnap.sh 05-playback; D=/data/local/tmp/audiocap/hal/05-playback; mkdir -p $D/regmap-amps; timeout 120 cat /sys/kernel/debug/regmap/18-0030/registers > $D/regmap-amps/18-0030.txt 2>/dev/null; wc -l $D/regmap-amps/18-0030.txt
