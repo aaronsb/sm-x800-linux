@@ -33,6 +33,9 @@
 #define FTS_I2C_RETRY_CNT		3
 #define FTS_RETRY_COUNT			10
 
+/* contact pressure z: byte 6 bits [5:0] (bits [7:6] are the ttype high bits) */
+#define FTS_PRESSURE_MAX		63
+
 /* command opcodes (downstream fts_ts.h) */
 #define FTS_CMD_SENSE_OFF		0x11
 #define FTS_CMD_FORCE_CALIBRATION	0x13
@@ -170,7 +173,8 @@ static int fts1ba90a_wait_for_ready(struct fts1ba90a *ts)
 		if (ret < 0)
 			return ret;
 
-		if (((data[0] >> 2) & 0xf) == FTS_EVENT_STATUSTYPE_INFO &&
+		if ((data[0] & 0x3) == FTS_STATUS_EVENT &&
+		    ((data[0] >> 2) & 0xf) == FTS_EVENT_STATUSTYPE_INFO &&
 		    data[1] == FTS_INFO_READY_STATUS)
 			return 0;
 
@@ -270,7 +274,7 @@ static int fts1ba90a_read_ids(struct fts1ba90a *ts)
 	if (ret < 0)
 		return ret;
 
-	if (id[2] != FTS_ID0 && id[3] != FTS_ID1) {
+	if (id[2] != FTS_ID0 || id[3] != FTS_ID1) {
 		dev_err(&ts->client->dev, "unexpected chip id: %*ph\n", 5, id);
 		return -ENODEV;
 	}
@@ -372,6 +376,7 @@ static void fts1ba90a_handle_coordinate(struct fts1ba90a *ts, const u8 *ev)
 	u8 tid = (ev[0] >> 2) & 0xf;
 	u8 action = ev[0] >> 6;
 	u8 ttype = ((ev[6] >> 6) << 2) | (ev[7] >> 6);
+	u8 z = ev[6] & 0x3f;
 	u16 x = (ev[1] << 4) | (ev[3] >> 4);
 	u16 y = (ev[2] << 4) | (ev[3] & 0xf);
 
@@ -392,6 +397,12 @@ static void fts1ba90a_handle_coordinate(struct fts1ba90a *ts, const u8 *ev)
 		touchscreen_report_pos(ts->input, &ts->prop, x, y, true);
 		input_report_abs(ts->input, ABS_MT_TOUCH_MAJOR, ev[4]);
 		input_report_abs(ts->input, ABS_MT_TOUCH_MINOR, ev[5]);
+		/*
+		 * A held contact can report z == 0; keep it non-zero so
+		 * userspace that treats pressure 0 as a lift does not drop
+		 * the finger (same clamp as downstream and the S9 port).
+		 */
+		input_report_abs(ts->input, ABS_MT_PRESSURE, z ? z : 1);
 		break;
 	case FTS_ACTION_RELEASE:
 		input_mt_report_slot_inactive(ts->input);
@@ -469,6 +480,9 @@ static int fts1ba90a_probe(struct i2c_client *client)
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENXIO;
 
+	if (!client->irq)
+		return dev_err_probe(&client->dev, -EINVAL, "no irq specified\n");
+
 	ts = devm_kzalloc(&client->dev, sizeof(*ts), GFP_KERNEL);
 	if (!ts)
 		return -ENOMEM;
@@ -517,6 +531,8 @@ static int fts1ba90a_probe(struct i2c_client *client)
 	input_set_abs_params(ts->input, ABS_MT_POSITION_Y, 0, ts->max_y, 0, 0);
 	input_set_abs_params(ts->input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
 	input_set_abs_params(ts->input, ABS_MT_TOUCH_MINOR, 0, 255, 0, 0);
+	input_set_abs_params(ts->input, ABS_MT_PRESSURE, 0, FTS_PRESSURE_MAX,
+			     0, 0);
 	touchscreen_parse_properties(ts->input, true, &ts->prop);
 
 	ret = input_mt_init_slots(ts->input, FTS_FINGER_MAX, INPUT_MT_DIRECT);

@@ -14,7 +14,8 @@
  * cold), so no firmware load is needed to read it.
  *
  * Coordinate packet (COM_COORD_NUM = 16 bytes, read 17):
- *   data[0]  header: rdy 0x80 (in range), tip 0x10, side-btn 0x20, eraser 0x40
+ *   data[0]  header: rdy 0x80 (in range), tip 0x10, side-btn 0x20, eraser 0x40;
+ *            low nibble is the packet type (COORD = 1, see PKT_*)
  *   data[1..2]  x   (big-endian)
  *   data[3..4]  y
  *   data[5..6]  pressure  (12-bit: (data[5] & 0x0f) << 8 | data[6])
@@ -24,11 +25,13 @@
  */
 
 #include <linux/delay.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
+#include <linux/pm.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 
@@ -62,6 +65,18 @@
 /* digitizer density: 100 units/mm across the 12.4" 16:10 active area */
 #define WACOM_RES_UNITS_PER_MM	100
 
+/*
+ * Packet type, low nibble of byte 0 (downstream wacom_dev.h enum; the
+ * irq handler dispatches on it at wacom_i2c.c 1584-1599). Only COORD is
+ * handled here; AOP (screen-off gesture), NOTI (scan-mode change) and
+ * REPLY (command echo) frames must not be parsed as coordinates.
+ */
+#define PKT_ID_MASK		0x0f
+#define PKT_COORD		1
+#define PKT_AOP			3
+#define PKT_NOTI		13
+#define PKT_REPLY		14
+
 /* coord header bits */
 #define HDR_RDY			0x80
 #define HDR_TIP			0x10
@@ -89,12 +104,14 @@ struct wacom_wez01 {
 	struct i2c_client *client;
 	struct input_dev *input;
 	struct regulator *avdd;
+	struct gpio_desc *fwe;	/* flash-mode enable; low = run app firmware */
 
 	u16 max_x;
 	u16 max_y;
 	u16 max_pressure;
 	u8 max_height;
-	s8 max_tilt;
+	s8 max_tilt_x;
+	s8 max_tilt_y;
 
 	bool prox;	/* pen currently in range (tool reported down) */
 };
@@ -103,7 +120,11 @@ static int wacom_send(struct wacom_wez01 *w, u8 cmd)
 {
 	int ret = i2c_master_send(w->client, &cmd, 1);
 
-	return ret < 0 ? ret : 0;
+	if (ret < 0)
+		return ret;
+	if (ret != 1)
+		return -EIO;
+	return 0;
 }
 
 /*
@@ -159,13 +180,14 @@ static int wacom_query(struct wacom_wez01 *w)
 		w->max_y = ((u16)q[QRY_Y1] << 8) | q[QRY_Y2];
 		w->max_pressure = ((u16)q[QRY_PRESSURE1] << 8) | q[QRY_PRESSURE2];
 		w->max_height = q[QRY_HEIGHT];
-		w->max_tilt = q[QRY_TILT_X];
+		w->max_tilt_x = q[QRY_TILT_X];
+		w->max_tilt_y = q[QRY_TILT_Y];
 
 		dev_info(dev,
-			 "WEZ01 mpu=%02x fw=%02x%02x max_x=%u max_y=%u max_p=%u tilt=%d height=%u\n",
+			 "WEZ01 mpu=%02x fw=%02x%02x max_x=%u max_y=%u max_p=%u tilt=%d/%d height=%u\n",
 			 q[QRY_MPUVER], q[QRY_FWVER1], q[QRY_FWVER2],
 			 w->max_x, w->max_y, w->max_pressure,
-			 w->max_tilt, w->max_height);
+			 w->max_tilt_x, w->max_tilt_y, w->max_height);
 
 		if (q[QRY_MPUVER] != MPU_WEZ01)
 			dev_warn(dev, "unexpected MPU id %02x (want %02x)\n",
@@ -194,6 +216,28 @@ static void wacom_map_axes(struct wacom_wez01 *w, u16 *x, u16 *y,
 	}
 }
 
+/*
+ * Forced release: if the pen was in range, report it lifted and gone so
+ * userspace never sees a stuck tool. Used for the out-of-range packet and
+ * on suspend (downstream wacom_sleep_sequence -> wacom_forced_release).
+ */
+static void wacom_release(struct wacom_wez01 *w)
+{
+	struct input_dev *input = w->input;
+
+	if (!w->prox)
+		return;
+
+	input_report_abs(input, ABS_PRESSURE, 0);
+	input_report_abs(input, ABS_DISTANCE, 0);
+	input_report_key(input, BTN_TOUCH, 0);
+	input_report_key(input, BTN_STYLUS, 0);
+	input_report_key(input, BTN_TOOL_PEN, 0);
+	input_report_key(input, BTN_TOOL_RUBBER, 0);
+	input_sync(input);
+	w->prox = false;
+}
+
 static irqreturn_t wacom_irq(int irq, void *dev_id)
 {
 	struct wacom_wez01 *w = dev_id;
@@ -213,18 +257,21 @@ static irqreturn_t wacom_irq(int irq, void *dev_id)
 	print_hex_dump_debug("wez01 pkt: ", DUMP_PREFIX_NONE, 16, 1,
 			     data, sizeof(data), false);
 
+	/*
+	 * Only coordinate frames carry pen data. Anything else is logged with
+	 * its type nibble and payload so a device capture can confirm which
+	 * ids this firmware actually emits (enable with dynamic debug:
+	 * `echo 'file wacom-wez01.c +p' > /sys/kernel/debug/dynamic_debug/control`).
+	 */
+	if ((data[0] & PKT_ID_MASK) != PKT_COORD) {
+		dev_dbg(&w->client->dev, "non-coord packet id %u: %*ph\n",
+			data[0] & PKT_ID_MASK, COM_COORD_NUM, data);
+		return IRQ_HANDLED;
+	}
+
 	/* pen out of range: release everything once */
 	if (!(data[0] & HDR_RDY)) {
-		if (w->prox) {
-			input_report_abs(input, ABS_PRESSURE, 0);
-			input_report_abs(input, ABS_DISTANCE, 0);
-			input_report_key(input, BTN_TOUCH, 0);
-			input_report_key(input, BTN_STYLUS, 0);
-			input_report_key(input, BTN_TOOL_PEN, 0);
-			input_report_key(input, BTN_TOOL_RUBBER, 0);
-			input_sync(input);
-			w->prox = false;
-		}
+		wacom_release(w);
 		return IRQ_HANDLED;
 	}
 
@@ -284,8 +331,10 @@ static int wacom_setup_input(struct wacom_wez01 *w)
 	input_set_abs_params(input, ABS_Y, 0, abs_y_max, 4, 0);
 	input_set_abs_params(input, ABS_PRESSURE, 0, w->max_pressure, 0, 0);
 	input_set_abs_params(input, ABS_DISTANCE, 0, w->max_height, 0, 0);
-	input_set_abs_params(input, ABS_TILT_X, -w->max_tilt, w->max_tilt, 0, 0);
-	input_set_abs_params(input, ABS_TILT_Y, -w->max_tilt, w->max_tilt, 0, 0);
+	input_set_abs_params(input, ABS_TILT_X, -w->max_tilt_x, w->max_tilt_x,
+			     0, 0);
+	input_set_abs_params(input, ABS_TILT_Y, -w->max_tilt_y, w->max_tilt_y,
+			     0, 0);
 
 	/*
 	 * libinput refuses a tablet tool that reports no X/Y resolution
@@ -297,8 +346,12 @@ static int wacom_setup_input(struct wacom_wez01 *w)
 	input_abs_set_res(input, ABS_X, WACOM_RES_UNITS_PER_MM);
 	input_abs_set_res(input, ABS_Y, WACOM_RES_UNITS_PER_MM);
 
+	/*
+	 * DIRECT only: the pen touches the surface it draws on. POINTER is
+	 * for indirect (opaque tablet) devices and contradicts DIRECT; libinput
+	 * classifies on these bits, so do not set both.
+	 */
 	__set_bit(INPUT_PROP_DIRECT, input->propbit);
-	__set_bit(INPUT_PROP_POINTER, input->propbit);
 
 	w->input = input;
 	return input_register_device(input);
@@ -320,12 +373,29 @@ static int wacom_probe(struct i2c_client *client)
 	w->client = client;
 	i2c_set_clientdata(client, w);
 
-	/* sane fallbacks in case the query is unreadable */
-	w->max_x = 21658;
-	w->max_y = 13538;
+	/*
+	 * Fallbacks in case the query is unreadable: the values the query
+	 * returns on this unit (device-facts/wacom-wez01.md, live dmesg:
+	 * max_x=26712 max_y=16714 max_p=4095 tilt=63 height=255).
+	 */
+	w->max_x = 26712;
+	w->max_y = 16714;
 	w->max_pressure = 4095;
 	w->max_height = 255;
-	w->max_tilt = 63;
+	w->max_tilt_x = 63;
+	w->max_tilt_y = 63;
+
+	/*
+	 * fwe (stock epen-fwe, tlmm 54) selects the flash-mode bootloader when
+	 * high across a power cycle. Downstream forces it low before powering
+	 * the chip (wacom_i2c.c 3331-3340); do the same so a stray high from
+	 * the bootloader cannot leave the WEZ01 in flash mode. Optional: the
+	 * chip runs normally without it if the line is not described.
+	 */
+	w->fwe = devm_gpiod_get_optional(dev, "flash-mode", GPIOD_OUT_LOW);
+	if (IS_ERR(w->fwe))
+		return dev_err_probe(dev, PTR_ERR(w->fwe),
+				     "cannot get flash-mode gpio\n");
 
 	w->avdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(w->avdd))
@@ -374,6 +444,50 @@ static void wacom_remove(struct i2c_client *client)
 	regulator_disable(w->avdd);
 }
 
+/*
+ * System sleep. Downstream wacom_sleep_sequence stops sampling, then
+ * force-releases a pen still in range; wacom_wakeup_sequence leaves any
+ * survey (screen-off) mode and restarts sampling. The IRQ is held off in
+ * between so a packet raised by the STOP itself cannot race the release.
+ * The avdd rail is left on: on the S8+ it is a GPIO switch that is still
+ * regulator-always-on in the DTS, so nothing would be saved by dropping it.
+ */
+static int wacom_suspend(struct device *dev)
+{
+	struct wacom_wez01 *w = dev_get_drvdata(dev);
+	int ret;
+
+	disable_irq(w->client->irq);
+
+	ret = wacom_send(w, COM_SAMPLERATE_STOP);
+	if (ret)
+		dev_warn(dev, "suspend: samplerate-stop failed: %d\n", ret);
+
+	wacom_release(w);
+
+	return 0;
+}
+
+static int wacom_resume(struct device *dev)
+{
+	struct wacom_wez01 *w = dev_get_drvdata(dev);
+	int ret;
+
+	ret = wacom_send(w, COM_SURVEY_EXIT);
+	if (ret)
+		dev_warn(dev, "resume: survey-exit failed: %d\n", ret);
+
+	ret = wacom_send(w, COM_SAMPLERATE_START);
+	if (ret)
+		dev_warn(dev, "resume: samplerate-start failed: %d\n", ret);
+
+	enable_irq(w->client->irq);
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(wacom_pm_ops, wacom_suspend, wacom_resume);
+
 static const struct of_device_id wacom_of_match[] = {
 	{ .compatible = "wacom,w90xx" },
 	{ }
@@ -384,6 +498,7 @@ static struct i2c_driver wacom_driver = {
 	.driver = {
 		.name = "wacom-wez01",
 		.of_match_table = wacom_of_match,
+		.pm = pm_sleep_ptr(&wacom_pm_ops),
 	},
 	.probe = wacom_probe,
 	.remove = wacom_remove,
