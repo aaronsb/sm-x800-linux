@@ -290,9 +290,11 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 	struct s6tuum1 *priv;
 	int ret;
 
-	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
-	if (!priv)
-		return -ENOMEM;
+	priv = devm_drm_panel_alloc(dev, struct s6tuum1, panel,
+				    &s6tuum1_panel_funcs,
+				    DRM_MODE_CONNECTOR_DSI);
+	if (IS_ERR(priv))
+		return PTR_ERR(priv);
 
 	priv->vdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(priv->vdd))
@@ -317,8 +319,6 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS;
 
-	drm_panel_init(&priv->panel, dev, &s6tuum1_panel_funcs,
-		       DRM_MODE_CONNECTOR_DSI);
 	priv->panel.prepare_prev_first = true;
 
 	priv->panel.backlight = s6tuum1_create_backlight(dsi);

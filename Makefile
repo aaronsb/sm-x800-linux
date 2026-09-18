@@ -46,10 +46,11 @@ help: ## Show available targets
 ## Setup
 ## ---------------------------------------------------------------------------
 
-# Every third-party component is PINNED: the kernel to $_commit in its
-# APKBUILD, uniLoader to the rev below. Local modifications are either
-# whole in-repo files (our board port, our drivers) or patch files
-# generated with tools/mkpatch — never hand-written diffs.
+# Every third-party component is PINNED: the kernel to the release tarball
+# named by pkgver in its APKBUILD, uniLoader to the rev below. Local
+# modifications are either whole in-repo files (our board port, our
+# drivers) or patch files generated with tools/mkpatch — never hand-written
+# diffs.
 UL_COMMIT := 43770a04327532407194ddd3f9f35770daa01c70
 
 deps: ## One-time setup: clone uniLoader (pinned), install chroot toolchain

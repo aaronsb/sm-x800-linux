@@ -869,19 +869,19 @@
 };
 
 /*
- * USB — gadget only, USB 2.0 only.
+ * USB — host mode behind a self-powered hub, USB 2.0 only.
  *
- * IMPORTANT: sm8450-mainline's sm8450.dtsi uses the SPLIT dwc3 binding —
- *   usb_1:      usb@a6f8800  "qcom,sm8450-dwc3"  (Qualcomm glue/wrapper)
- *   usb_1_dwc3: usb@a600000  "snps,dwc3"         (the actual core)
- * Properties like dr_mode / phys / maximum-speed belong on the CORE node.
- * Setting them on the wrapper (as sm8450-samsung-r0q.dts does) silently does
- * nothing here. Note that upstream torvalds has since MERGED these into one
- * node, so DTS snippets copied from mainline devices will not match this tree.
+ * v7.2's sm8450.dtsi uses the FLATTENED dwc3 binding: the single node usb_1
+ * (usb@a600000, "qcom,sm8450-dwc3" + "qcom,snps-dwc3") carries both the
+ * Qualcomm glue and the Synopsys core properties, so dr_mode / phys /
+ * maximum-speed / qcom,select-utmi-as-pipe-clk all go on &usb_1. Until
+ * 2026-09 this port built sm8450-mainline's 6.13 tree, whose split binding
+ * put the core properties on a separate usb_1_dwc3 child (usb@a600000,
+ * "snps,dwc3") and hard-failed without it; that node no longer exists.
  *
  * Two separate things are needed for USB2-only operation:
  *
- * 1. Remove usb_1_qmpphy from the CORE's phys list. Do not rely on leaving it
+ * 1. Remove usb_1_qmpphy from the phys list. Do not rely on leaving it
  *    status="disabled": _of_phy_get() looks the provider up BEFORE checking
  *    availability, so a disabled phy whose driver never bound returns
  *    -EPROBE_DEFER forever rather than the graceful "Requested PHY is
@@ -889,63 +889,37 @@
  *    and lets dwc3 probe. Symptom of getting this wrong:
  *      platform a600000.usb: deferred probe pending: dwc3: failed to initialize core
  *
- * 2. qcom,select-utmi-as-pipe-clk on the GLUE node (below). With the
- *    SuperSpeed phy gone there is no pipe clock, so the qcom glue must be told
- *    to clock from UTMI instead.
+ * 2. qcom,select-utmi-as-pipe-clk. With the SuperSpeed phy gone there is no
+ *    pipe clock, so the qcom glue must be told to clock from UTMI instead.
  *
- * NOTE: "dwc3 a600000.usb: Configuration mismatch. dr_mode forced to gadget"
- * is NOT an error. With no extcon and no usb-role-switch, dwc3_get_dr_mode()
- * degrades OTG->PERIPHERAL and logs that — i.e. it settled on gadget, which is
- * what we want. Do NOT add usb-role-switch to "fix" it; that is only needed
- * for dr_mode="otg".
+ * Host mode, for use with an EXTERNALLY POWERED USB-C dongle/hub.
  *
- * The split binding is the ONLY one this kernel supports: dwc3_qcom_of_match[]
- * has just "qcom,dwc3", and dwc3_qcom_of_register_core() hard-fails without a
- * "snps,dwc3" child. Bjorn Andersson's flatten series landed in v6.16, so
- * never backport a flattened single-node USB DTS into this tree.
+ * Plain host mode failed earlier because the tablet must supply 5V VBUS
+ * and nothing switches it. VBUS on this device is NOT pmic_glink — it is
+ * the MAX77705 companion PMIC's OTG boost (charger @ i2c5 0x69, CHG_CNFG_00
+ * mode field; see the &i2c5 comment), driven from userspace through
+ * max77705-otg.c. A SELF-POWERED hub sidesteps that entirely: it powers its
+ * own downstream ports and presents its D+ pull-up to us, so enumeration
+ * proceeds without us sourcing VBUS. That makes USB ethernet (r8152/
+ * ax88179/cdc_ether, all modules) and USB HID keyboards reachable.
+ *
+ * Peripheral (gadget) mode was used first for USB networking to a PC. Switch
+ * dr_mode back to "peripheral" for that; note dwc3 wants VBUS detection
+ * before it enables its D+ pull-up, which this DTS does not describe.
+ *
+ * The dtsi sets usb-role-switch on usb_1 for boards with a Type-C
+ * controller behind pmic_glink. This board describes no role-switch
+ * consumer, and the 6.13 core node that was tested never had the property,
+ * so it is deleted here to keep dwc3 in plain fixed-role host mode.
+ *
+ * Do NOT /delete-node/ ports here: usb_1_qmpphy's port@1 endpoint has
+ * remote-endpoint = <&usb_1_dwc3_ss>, and dtc validates phandles even for
+ * disabled nodes, so removing the label fails the build with
+ *   ERROR (phandle_references): ... non-existent node or label "usb_1_dwc3_ss"
+ * Leaving the graph in place is harmless — the kernel ignores the link
+ * because usb_1_qmpphy is disabled and we no longer list it in phys.
  */
 &usb_1 {
-	/*
-	 * Required for USB2-only: with usb_1_qmpphy out of the picture there is
-	 * no SuperSpeed pipe clock, so the glue must source from UTMI instead.
-	 */
-	qcom,select-utmi-as-pipe-clk;
-
-	status = "okay";
-};
-
-&usb_1_dwc3 {
-	/*
-	 * PERIPHERAL (gadget) mode.
-	 *
-	 * Host mode was tried so a USB keyboard could be used for input, and it
-	 * cannot work here: in host mode the tablet has to supply 5V VBUS to the
-	 * peripheral, and VBUS is switched by the Type-C/PMIC (pmic_glink),
-	 * which this DTS does not describe. A bus-powered keyboard therefore
-	 * never gets power and never enumerates, no matter what dwc3 does.
-	 *
-	 * In peripheral mode the HOST supplies VBUS, so no Type-C support is
-	 * needed — which also makes this the path to USB networking / SSH.
-	 * Revisit "host"/"otg" only after pmic_glink + Type-C are described.
-	 */
-	/*
-	 * HOST mode, for use with an EXTERNALLY POWERED USB-C dongle/hub.
-	 *
-	 * Plain host mode failed earlier because the tablet must supply 5V VBUS
-	 * and nothing switches it. NOTE: VBUS on this device is NOT pmic_glink —
-	 * it is the MAX77705 companion PMIC's OTG boost (charger @ i2c5 0x69,
-	 * CHG_CNFG_00 mode field; see the &i2c5 comment). Until that regulator
-	 * is driven, a SELF-POWERED hub sidesteps
-	 * that entirely: it powers its own downstream ports and presents its
-	 * D+ pull-up to us, so enumeration can proceed without us sourcing VBUS.
-	 * That makes USB ethernet (r8152/ax88179/cdc_ether, all built as
-	 * modules) and USB HID keyboards reachable -> DHCP via NetworkManager
-	 * -> ssh, which is the fastest route to a real shell.
-	 *
-	 * Switch back to "peripheral" for USB gadget/networking-to-PC, but note
-	 * that direction likely needs pmic_glink too (dwc3 needs VBUS DETECTION
-	 * before it enables its D+ pullup).
-	 */
 	dr_mode = "host";
 	maximum-speed = "high-speed";
 
@@ -953,15 +927,11 @@
 	phys = <&usb_1_hsphy>;
 	phy-names = "usb2-phy";
 
-	/*
-	 * Do NOT /delete-node/ ports here: usb_1_qmpphy's port@1 endpoint has
-	 * remote-endpoint = <&usb_1_dwc3_ss>, and dtc validates phandles even
-	 * for disabled nodes, so removing the label fails the build with
-	 *   ERROR (phandle_references): ... non-existent node or label
-	 *   "usb_1_dwc3_ss"
-	 * Leaving the graph in place is harmless — the kernel ignores the link
-	 * because usb_1_qmpphy is disabled and we no longer list it in phys.
-	 */
+	/delete-property/ usb-role-switch;
+
+	qcom,select-utmi-as-pipe-clk;
+
+	status = "okay";
 };
 
 &usb_1_hsphy {
