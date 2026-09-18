@@ -346,8 +346,12 @@ static int wacom_setup_input(struct wacom_wez01 *w)
 	input_abs_set_res(input, ABS_X, WACOM_RES_UNITS_PER_MM);
 	input_abs_set_res(input, ABS_Y, WACOM_RES_UNITS_PER_MM);
 
+	/*
+	 * DIRECT only: the pen touches the surface it draws on. POINTER is
+	 * for indirect (opaque tablet) devices and contradicts DIRECT; libinput
+	 * classifies on these bits, so do not set both.
+	 */
 	__set_bit(INPUT_PROP_DIRECT, input->propbit);
-	__set_bit(INPUT_PROP_POINTER, input->propbit);
 
 	w->input = input;
 	return input_register_device(input);
@@ -369,9 +373,13 @@ static int wacom_probe(struct i2c_client *client)
 	w->client = client;
 	i2c_set_clientdata(client, w);
 
-	/* sane fallbacks in case the query is unreadable */
-	w->max_x = 21658;
-	w->max_y = 13538;
+	/*
+	 * Fallbacks in case the query is unreadable: the values the query
+	 * returns on this unit (device-facts/wacom-wez01.md, live dmesg:
+	 * max_x=26712 max_y=16714 max_p=4095 tilt=63 height=255).
+	 */
+	w->max_x = 26712;
+	w->max_y = 16714;
 	w->max_pressure = 4095;
 	w->max_height = 255;
 	w->max_tilt_x = 63;
