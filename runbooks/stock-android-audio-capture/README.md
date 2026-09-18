@@ -39,7 +39,7 @@ Host:
 | `root-build/combined.img` | pmOS rootfs GPT image (built 2026-07-20) |
 | `root-build/pmos_userdata_sparse.tar` | sparse form of the above, what `make flash-all` writes |
 
-- KernelSU manager APK. `docs/01` step 7 names tiann KernelSU v1.0.5. Location on the host: not found in repo, confirm. The pmOS user home may hold a copy (see the backup list).
+- KernelSU manager APK. `docs/01` step 7 names tiann KernelSU v1.0.5. Fetch it with `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`. The pmOS user home may also hold a copy (see the backup list).
 
 Device:
 
@@ -84,27 +84,39 @@ If `/home/user` holds anything else you care about, copy it now. The listing fil
 
 ## Step 2: enter download mode
 
-From pmOS the reboot-reason path may not work (`tools/reboot-download.py` header). Use the keys.
+From pmOS the reboot-reason path may not work (`tools/reboot-download.py` header). The method that worked on 2026-09-18:
+
+1. Unplug USB.
+2. Shut the device down gracefully (`sudo poweroff` on pmOS, or the power menu on stock). Wait for the screen to go black.
+3. Hold both volume keys and plug USB. The device powers straight into the download screen. No Warning screen, no Vol-Up.
+4. `make device-status`. The USB device number must be new for this entry.
+
+Fallback, if the device is hung and will not shut down:
 
 1. Hold Vol-Down + Power until the screen goes black.
 2. Hold both volume keys, plug USB. Blue Warning screen appears.
 3. Vol-Up to continue.
-4. `make device-status`. The USB device number must be new for this entry.
+4. `make device-status` as above.
+
+A failed `odin4` transfer wedges the download session. The next `odin4` call fails with `FAIL! (Auth)` or hangs until download mode is entered again. Unplug, shut down, re-enter.
 
 ## Step 3: flash rooted stock
 
-One `odin4` session writes boot, vendor_boot and vbmeta. Build the AP tar once from the existing artifacts. It pairs the KernelSU boot with the stock vendor_boot, which is what `make restore-android` and `docs/01` step 5 do between them.
+One `odin4` session writes boot, vendor_boot and vbmeta. Build a single AP tar that holds all three images. Splitting vbmeta into `-u` was not needed on 2026-09-18. One tar, one `-a`, one session.
 
 ```sh
 cd root-build
 mkdir -p stock-rooted && cd stock-rooted
 tar -xf ../kernelsu_boot.tar boot.img
 tar -xf ../android_restore.tar vendor_boot.img
-tar -H ustar -cf ../kernelsu_restore.tar boot.img vendor_boot.img
+tar -xf ../vbmeta_disabled.tar vbmeta.img
+tar -H ustar -cf ../kernelsu_restore.tar boot.img vendor_boot.img vbmeta.img
 cd ..
 odin4 -l
-odin4 -a kernelsu_restore.tar -u vbmeta_disabled.tar
+odin4 -a kernelsu_restore.tar
 ```
+
+The tar pairs the KernelSU boot with the stock vendor_boot and the verity-off vbmeta, which is what `make restore-android` and `docs/01` step 5 do between them.
 
 Then Vol-Down + Power to leave download mode. Stock boots.
 
@@ -117,23 +129,60 @@ Unrooted alternative: `make restore-android`, then a second download-mode entry 
 1. Setup wizard: skip Wi-Fi and accounts. Decline updates.
 2. Settings, About tablet, Software information, tap Build number seven times. Developer options, enable USB debugging.
 3. Plug in, accept the RSA prompt on the tablet. `adb devices` shows `device`.
-4. `adb install <KernelSU manager apk>`. Open it once. Grant root to Shell (docs/01 step 7).
+4. `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`, then `adb install KernelSU_*.apk`. Open it once. Grant root to Shell (docs/01 step 7).
 5. Check: `adb shell su -c id` prints `uid=0`. `adb root` will not work on a production build. The script tries both.
 
 ## Step 5: run the capture
+
+Two paths. The manual fast-state path is what produced `device-facts/stock-runtime/2026-09-18/`. The `capture.sh` path is the scripted version and has two constraints learned on the first run, listed below.
+
+### 5a. Manual fast-state procedure (used 2026-09-18)
+
+`fastsnap.sh` reads regulator, GPIO, pinctrl, clock, the audio regmaps, `tinymix` and `/proc/interrupts` in a few seconds. It skips the four CS35L45 regmaps, which are the slow part of `capture.sh`.
+
+```sh
+cd runbooks/stock-android-audio-capture
+adb push fastsnap.sh /data/local/tmp/
+adb shell su -c 'sh /data/local/tmp/fastsnap.sh 00-idle'
+# put the tablet in the next state, then:
+adb shell su -c 'sh /data/local/tmp/fastsnap.sh 01-video-recording'
+# ... one call per state ...
+adb pull /data/local/tmp/audiocap/hal ./out/hal
+```
+
+States used on 2026-09-18, in order:
+
+| Name | State | How |
+|---|---|---|
+| `00-idle` | home screen | nothing running |
+| `01-video-recording` | camera app recording video | `com.sec.android.app.camera`, video mode, tap Record |
+| `02-front-camera` | front camera preview | camera app, switch sensor |
+| `03-back-camera` | back camera preview | camera app, switch sensor |
+| `04-idle-after` | camera app closed | none |
+| `05-playback` | Gallery playing the recorded clip | open the clip from step 01 |
+
+For `05-playback` also dump one or more amps by hand while the clip plays. Each dump is about 400 KB and takes over a minute:
+
+```sh
+adb shell su -c 'D=/data/local/tmp/audiocap/hal/05-playback; mkdir -p $D/regmap-amps; timeout 120 cat /sys/kernel/debug/regmap/18-0030/registers > $D/regmap-amps/18-0030.txt'
+```
+
+No voice recorder app is installed on stock. The camera app in video mode is the HAL-routed microphone path. It is the only one.
+
+### 5b. Scripted path
 
 ```sh
 cd runbooks/stock-android-audio-capture
 ./capture.sh --out ./out
 ```
 
-Default modes are HAL-routed and need two taps on the tablet: start a recording in the recorder app the script opens, then play the system sound it opens. The script prompts and waits at each point. The prompts matter. `tinycap` and `tinyplay` open raw PCM devices and skip the vendor audio HAL. The HAL is the code that powers the mics and configures the amps, so a raw-PCM run answers a different question.
+Default modes are HAL-routed and need two taps on the tablet: start a recording in the app the script opens, then play the system sound it opens. The script prompts and waits at each point. The prompts read `/dev/tty`, so run it from a terminal. An automated adb session without a tty cannot answer them.
 
-Run a second pass with the raw modes as a control:
+Constraints from the first run:
 
-```sh
-./capture.sh --out ./out --no-prompt          # tinycap + tinyplay, no taps
-```
+- One `capture.sh` snapshot takes about five minutes. The four CS35L45 regmaps are about 400 KB each and are read over I2C. `--seconds` must exceed one snapshot or the active state ends before `01-recording` is read. Use `--seconds 360` or more. The script enforces 300 as the floor when `--record tinycap` is in effect.
+- `tinycap` and `tinyplay` are not viable on this device. `tinycap` on a backend PCM under AudioReach returns zero frames. The raw-mode control pass (`--no-prompt`) answers nothing. Only HAL-routed states are meaningful.
+- No voice recorder app is installed on stock, so the recorder intent the script fires has nothing to open. Use `--record manual` and start a camera video recording by hand when prompted.
 
 Flags:
 
@@ -141,7 +190,7 @@ Flags:
 |---|---|
 | `--out DIR` | parent for the timestamped result dir (default `./out`) |
 | `--serial S` | `adb -s S` |
-| `--seconds N` | recording and playback window, at least 8 (default 20) |
+| `--seconds N` | recording and playback window, at least 8 (default 20). At least 300 with `--record tinycap`. Must exceed one snapshot, about five minutes, for the recording state to be captured. |
 | `--record voicenote\|tinycap\|manual\|skip` | how the recording phase is started |
 | `--playback view\|tinyplay\|manual\|skip` | how the playback phase is started |
 | `--i2cdetect` | run `i2cdetect -y -r` on every bus. Off by default: probing a live bus can disturb devices. |
@@ -164,13 +213,17 @@ The regmap filter matches CS35L45 instances (`*-0030` to `*-0033` on whatever bu
 ```sh
 D=device-facts/stock-runtime/$(date +%F)
 mkdir -p "$D"
-cp -r runbooks/stock-android-audio-capture/out/<stamp>/* "$D/"
+cp -r runbooks/stock-android-audio-capture/out/hal/* "$D/"      # fast-state set
+cp -r runbooks/stock-android-audio-capture/out/<stamp>/* "$D/"  # capture.sh set, if any
 ```
 
 Before committing:
 
-- `getprop.txt` and `dmesg.txt` carry the serial number. The repo already keeps `device-facts/getprop-full.txt` out of git for that reason. Scrub or exclude them.
-- The vendor `*.xml` copies are Samsung's files. The repo's rule is that Samsung's bytes stay local. Keep the file names and the `sha256` list in git, and keep the copies out. `.gitignore` has no rule for `device-facts/stock-runtime/` yet. Add one in the same commit.
+- Scrub the device serial everywhere: `grep -rl <serial> "$D" | xargs sed -i 's/<serial>/SERIAL-REDACTED/g'`. On 2026-09-18 it appeared only in `usb/host-lsusb-v.txt` (`iSerial`). `getprop.txt` and `dmesg.txt` also carry it when `capture.sh` is used. The repo already keeps `device-facts/getprop-full.txt` out of git for that reason.
+- Drop files over 1 MB unless one is the point of the capture. A CS35L45 register dump is about 400 KB and stays.
+- The vendor `*.xml` copies are Samsung's files. The repo's rule is that Samsung's bytes stay local. Keep the file names and the `sha256` list in git, and keep the copies out.
+- Write `$D/README.md`: what was captured, how, the findings with file and line evidence, and what the set does not show. `device-facts/stock-runtime/2026-09-18/README.md` is the template.
+- `runbooks/stock-android-audio-capture/out/` is a working directory. Do not commit it.
 - Update `docs/10-audio.md` "Microphones" and issue #7 with the finding, whichever way it goes.
 
 ## Step 7: restore pmOS
@@ -238,11 +291,15 @@ If debugfs was not available on the stock kernel (`notes.txt` says so), the sysf
 
 ## Facts to confirm on device
 
-Not found in repo, confirm on device:
+Confirmed on 2026-09-18 (`device-facts/stock-runtime/2026-09-18/`):
+
+- debugfs is mountable on the stock 5.10 kernel. `fastsnap.sh` mounts it and every debugfs read in the set succeeded.
+- `tinymix` and `tinycap` ship on the stock image. `tinycap` runs but returns zero frames on a backend PCM.
+- No voice recorder app is installed. The script's `com.sec.android.app.voicenote` and `RECORD_SOUND` attempts find nothing. The camera app in video mode is the HAL mic path.
+- Stock regmap directory names: the amps are `18-0030` to `18-0033` (I2C bus 18). The codec is one regmap, `soc:spf_core_platform:lpass-cdc`. No separate `*macro*` regmap exists.
+- KernelSU manager APK: `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`.
+
+Still not confirmed:
 
 - Whether stock formats userdata itself or stops in recovery.
-- Whether debugfs is mounted or mountable on the stock 5.10 kernel.
-- Whether `tinymix`, `tinycap`, `tinyplay` ship on the stock image (`static/manifest.txt` records it).
-- The Samsung Voice Recorder component name. The script tries `com.sec.android.app.voicenote/.main.VNMainActivity`, then the generic `RECORD_SOUND` intent, then asks you to open one.
-- The stock regmap directory names for the amps and the macros (`static/regmap-index.txt`).
-- The host location of the KernelSU manager APK.
+- Whether `tinyplay` ships. It was not tried; playback used the Gallery app.
