@@ -29,6 +29,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
+#include <linux/pm.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 
@@ -200,6 +201,28 @@ static void wacom_map_axes(struct wacom_wez01 *w, u16 *x, u16 *y,
 	}
 }
 
+/*
+ * Forced release: if the pen was in range, report it lifted and gone so
+ * userspace never sees a stuck tool. Used for the out-of-range packet and
+ * on suspend (downstream wacom_sleep_sequence -> wacom_forced_release).
+ */
+static void wacom_release(struct wacom_wez01 *w)
+{
+	struct input_dev *input = w->input;
+
+	if (!w->prox)
+		return;
+
+	input_report_abs(input, ABS_PRESSURE, 0);
+	input_report_abs(input, ABS_DISTANCE, 0);
+	input_report_key(input, BTN_TOUCH, 0);
+	input_report_key(input, BTN_STYLUS, 0);
+	input_report_key(input, BTN_TOOL_PEN, 0);
+	input_report_key(input, BTN_TOOL_RUBBER, 0);
+	input_sync(input);
+	w->prox = false;
+}
+
 static irqreturn_t wacom_irq(int irq, void *dev_id)
 {
 	struct wacom_wez01 *w = dev_id;
@@ -221,16 +244,7 @@ static irqreturn_t wacom_irq(int irq, void *dev_id)
 
 	/* pen out of range: release everything once */
 	if (!(data[0] & HDR_RDY)) {
-		if (w->prox) {
-			input_report_abs(input, ABS_PRESSURE, 0);
-			input_report_abs(input, ABS_DISTANCE, 0);
-			input_report_key(input, BTN_TOUCH, 0);
-			input_report_key(input, BTN_STYLUS, 0);
-			input_report_key(input, BTN_TOOL_PEN, 0);
-			input_report_key(input, BTN_TOOL_RUBBER, 0);
-			input_sync(input);
-			w->prox = false;
-		}
+		wacom_release(w);
 		return IRQ_HANDLED;
 	}
 
@@ -383,6 +397,50 @@ static void wacom_remove(struct i2c_client *client)
 	regulator_disable(w->avdd);
 }
 
+/*
+ * System sleep. Downstream wacom_sleep_sequence stops sampling, then
+ * force-releases a pen still in range; wacom_wakeup_sequence leaves any
+ * survey (screen-off) mode and restarts sampling. The IRQ is held off in
+ * between so a packet raised by the STOP itself cannot race the release.
+ * The avdd rail is left on: on the S8+ it is a GPIO switch that is still
+ * regulator-always-on in the DTS, so nothing would be saved by dropping it.
+ */
+static int wacom_suspend(struct device *dev)
+{
+	struct wacom_wez01 *w = dev_get_drvdata(dev);
+	int ret;
+
+	disable_irq(w->client->irq);
+
+	ret = wacom_send(w, COM_SAMPLERATE_STOP);
+	if (ret)
+		dev_warn(dev, "suspend: samplerate-stop failed: %d\n", ret);
+
+	wacom_release(w);
+
+	return 0;
+}
+
+static int wacom_resume(struct device *dev)
+{
+	struct wacom_wez01 *w = dev_get_drvdata(dev);
+	int ret;
+
+	ret = wacom_send(w, COM_SURVEY_EXIT);
+	if (ret)
+		dev_warn(dev, "resume: survey-exit failed: %d\n", ret);
+
+	ret = wacom_send(w, COM_SAMPLERATE_START);
+	if (ret)
+		dev_warn(dev, "resume: samplerate-start failed: %d\n", ret);
+
+	enable_irq(w->client->irq);
+
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(wacom_pm_ops, wacom_suspend, wacom_resume);
+
 static const struct of_device_id wacom_of_match[] = {
 	{ .compatible = "wacom,w90xx" },
 	{ }
@@ -393,6 +451,7 @@ static struct i2c_driver wacom_driver = {
 	.driver = {
 		.name = "wacom-wez01",
 		.of_match_table = wacom_of_match,
+		.pm = pm_sleep_ptr(&wacom_pm_ops),
 	},
 	.probe = wacom_probe,
 	.remove = wacom_remove,
