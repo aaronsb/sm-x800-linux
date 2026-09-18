@@ -11,15 +11,17 @@ codec DAI of an MI2S link and hand it the 48 kHz x 16 bit x 2 channel
 bit clock the BE hw_params fixup pins.
 
 Taken from the Galaxy Tab S9 Ultra port (agcarbajo/postmarketos-galaxy-
-tab-s9-ultra, set-mi2s-codec-dai-format.patch), rebased onto 6.13 where
-sc8280xp_be_ops has more callbacks than the original context.
+tab-s9-ultra, set-mi2s-codec-dai-format.patch), rebased onto v7.2 where
+sc8280xp_be_ops routes hw_params through prepare and the CPU-side MI2S
+format is set in sc8280xp_snd_init(). Obsoleted upstream once the machine
+driver configures codec DAIs on MI2S links itself (not yet, as of 7.2).
 
 diff --git a/sound/soc/qcom/sc8280xp.c b/sound/soc/qcom/sc8280xp.c
-index 0328efedf..81d4fc5b4 100644
+index 98b15a527..f6e4afabd 100644
 --- a/sound/soc/qcom/sc8280xp.c
 +++ b/sound/soc/qcom/sc8280xp.c
-@@ -137,8 +137,59 @@ static int sc8280xp_snd_hw_free(struct snd_pcm_substream *substream)
- 				    &data->stream_prepared[cpu_dai->id]);
+@@ -114,8 +114,59 @@ static int sc8280xp_snd_hw_free(struct snd_pcm_substream *substream)
+ 	return qcom_snd_sdw_hw_free(substream, &data->stream_prepared[cpu_dai->id]);
  }
  
 +/* 48 kHz, 16 bit, 2 channels: the rate the BE hw_params fixup pins. */
@@ -76,6 +78,6 @@ index 0328efedf..81d4fc5b4 100644
  static const struct snd_soc_ops sc8280xp_be_ops = {
 -	.startup = qcom_snd_sdw_startup,
 +	.startup = sc8280xp_snd_startup,
- 	.shutdown = sc8280xp_snd_shutdown,
- 	.hw_params = sc8280xp_snd_hw_params,
+ 	.shutdown = qcom_snd_sdw_shutdown,
  	.hw_free = sc8280xp_snd_hw_free,
+ 	.prepare = sc8280xp_snd_prepare,
