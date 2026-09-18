@@ -14,7 +14,8 @@
  * cold), so no firmware load is needed to read it.
  *
  * Coordinate packet (COM_COORD_NUM = 16 bytes, read 17):
- *   data[0]  header: rdy 0x80 (in range), tip 0x10, side-btn 0x20, eraser 0x40
+ *   data[0]  header: rdy 0x80 (in range), tip 0x10, side-btn 0x20, eraser 0x40;
+ *            low nibble is the packet type (COORD = 1, see PKT_*)
  *   data[1..2]  x   (big-endian)
  *   data[3..4]  y
  *   data[5..6]  pressure  (12-bit: (data[5] & 0x0f) << 8 | data[6])
@@ -63,6 +64,18 @@
 
 /* digitizer density: 100 units/mm across the 12.4" 16:10 active area */
 #define WACOM_RES_UNITS_PER_MM	100
+
+/*
+ * Packet type, low nibble of byte 0 (downstream wacom_dev.h enum; the
+ * irq handler dispatches on it at wacom_i2c.c 1584-1599). Only COORD is
+ * handled here; AOP (screen-off gesture), NOTI (scan-mode change) and
+ * REPLY (command echo) frames must not be parsed as coordinates.
+ */
+#define PKT_ID_MASK		0x0f
+#define PKT_COORD		1
+#define PKT_AOP			3
+#define PKT_NOTI		13
+#define PKT_REPLY		14
 
 /* coord header bits */
 #define HDR_RDY			0x80
@@ -243,6 +256,18 @@ static irqreturn_t wacom_irq(int irq, void *dev_id)
 
 	print_hex_dump_debug("wez01 pkt: ", DUMP_PREFIX_NONE, 16, 1,
 			     data, sizeof(data), false);
+
+	/*
+	 * Only coordinate frames carry pen data. Anything else is logged with
+	 * its type nibble and payload so a device capture can confirm which
+	 * ids this firmware actually emits (enable with dynamic debug:
+	 * `echo 'file wacom-wez01.c +p' > /sys/kernel/debug/dynamic_debug/control`).
+	 */
+	if ((data[0] & PKT_ID_MASK) != PKT_COORD) {
+		dev_dbg(&w->client->dev, "non-coord packet id %u: %*ph\n",
+			data[0] & PKT_ID_MASK, COM_COORD_NUM, data);
+		return IRQ_HANDLED;
+	}
 
 	/* pen out of range: release everything once */
 	if (!(data[0] & HDR_RDY)) {
