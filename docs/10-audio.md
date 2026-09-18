@@ -91,8 +91,11 @@ played on mainline was, at the owner's request, Rick Astley.
   `Qualcomm/sm8450/gts8pwifi/HiFi.conf`. The verb routes MultiMedia1 to
   PRIMARY_MI2S_RX; the Speaker device enables the four amps; the boot
   sequence pins the per-amp volumes and splits stereo (left amps on
-  ASP_RX1, right amps on ASP_RX2). PipeWire creates
-  `alsa_output.platform-sound.HiFi__Speaker__sink` from it with no help.
+  ASP_RX1, right amps on ASP_RX2). PulseAudio, the audio server on this
+  postmarketOS image, creates `alsa_output.platform-sound.HiFi__Speaker__sink`
+  and `alsa_input.platform-sound.HiFi__Mic__source` from it with no help.
+  Inspect with `pactl list cards`; `wpctl` stays empty on purpose, because
+  the `pulseaudio-wireplumber` shim disables WirePlumber's audio profile.
 - Volume is deliberately capped (Digital PCM Volume 420 of 457, about 9 dB
   of headroom). The Cirrus speaker-protection DSP firmware is not loaded, so
   nothing limits excursion in hardware. Raise the cap only with protection.
