@@ -19,9 +19,9 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 KDIR="$REPO/pmaports-overlay/device/testing/linux-postmarketos-qcom-sm8450"
 WORK="$REPO/patch-work"
 
-commit=$(sed -n 's/^_commit="\(.*\)"/\1/p' "$KDIR/APKBUILD")
-tarball="$REPO/pmb-work/cache_distfiles/linux-postmarketos-qcom-sm8450-$commit.tar.gz"
-tree="$WORK/linux-$commit"
+pkgver=$(sed -n 's/^pkgver=\(.*\)/\1/p' "$KDIR/APKBUILD")
+tarball="$REPO/pmb-work/cache_distfiles/linux-$pkgver.tar.xz"
+tree="$WORK/linux-$pkgver"
 
 case "${1:-}" in
 init)
@@ -30,10 +30,10 @@ init)
 		echo ">> $tree already exists; remove it to re-init"; exit 1
 	fi
 	mkdir -p "$WORK"
-	echo ">> extracting pinned tree ($commit)"
-	tar xzf "$tarball" -C "$WORK"
+	echo ">> extracting pinned tree (linux-$pkgver)"
+	tar xJf "$tarball" -C "$WORK"
 	cd "$tree"
-	git init -q && git add -A -f && git commit -q -m "base: $commit"
+	git init -q && git add -A -f && git commit -q -m "base: linux-$pkgver"
 	for p in "$KDIR"/*.patch; do
 		[ -e "$p" ] || continue
 		echo ">> applying $(basename "$p")"

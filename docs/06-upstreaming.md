@@ -17,7 +17,7 @@ strict); the pmaports and uniLoader pieces can go much sooner.
 ## 2. Versioning
 
 **pmaports packages** use Alpine `APKBUILD` conventions:
-- `pkgver` tracks the *upstream* thing (kernel version, e.g. `6.13_rc3`), never our
+- `pkgver` tracks the *upstream* thing (kernel version, e.g. `7.2`), never our
   own changes.
 - `pkgrel` increments on **every** rebuild whose output changes. This is not
   cosmetic — pmbootstrap resolves the highest `pkgver-pkgrel` from its package cache,
@@ -26,14 +26,20 @@ strict); the pmaports and uniLoader pieces can go much sooner.
 - After editing any `source=` file, run `pmbootstrap checksum <pkg>` or the build
   fails with `... is missing in checksums`.
 
-**The kernel tree** is pinned by commit, not branch:
+**The kernel tree** is a vanilla mainline release tarball, pinned by `pkgver`:
 ```sh
-_commit="bf1d29fced6e156dd6090a9b6600a8c44259c114"   # sm8450-mainline/linux next-new
+pkgver=7.2   # https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$pkgver.tar.xz
 ```
-Bumping it is a deliberate act: change `_commit`, `pkgver` if the version moved,
-re-checksum, rebuild, and re-test a boot. Never track a moving branch — this port
-depends on subtle DT/driver behaviour and silent regressions are extremely expensive
-to debug on a device with no console.
+Bumping it is a deliberate act: change `pkgver`, reset `pkgrel=0`, re-checksum,
+re-check every `*.patch` against the new tree (each header names the upstream
+commit that obsoletes it), rebuild, and re-test a boot. Never track a moving
+branch — this port depends on subtle DT/driver behaviour and silent regressions
+are extremely expensive to debug on a device with no console.
+
+Until 2026-09 the package built `sm8450-mainline/linux` at a pinned `next-new`
+commit (6.13-rc3). That fork has been dormant since 2025-08 and mainline never
+gained its `arch/arm64/configs/sm8450.config`, so the fragment is now carried in
+the package directory and staged into the tree by `prepare()`.
 
 ## 3. Commit conventions
 
@@ -44,7 +50,7 @@ feat(dts): enable UFS storage
 fix(dts): correct framebuffer geometry to landscape 2800x1752
 fix(boot): set stock load addresses via bootimg_custom_args
 docs(boot): document the uniLoader requirement
-chore(kernel): bump sm8450-mainline to <sha>
+chore(kernel): bump to v7.3
 ```
 
 Scopes: `dts`, `kernel`, `device`, `uniloader`, `boot`, `docs`, `make`.
@@ -113,7 +119,7 @@ modification takes one of exactly two shapes:
 
 | Component | Pin | Modifications |
 |---|---|---|
-| kernel (sm8450-mainline) | `_commit` in the kernel APKBUILD | whole in-repo files (our drivers, DTS, config) + `*.patch` files |
+| kernel (vanilla mainline) | `pkgver` in the kernel APKBUILD (release tarball) | whole in-repo files (our drivers, DTS, config fragments) + `*.patch` files |
 | uniLoader | `UL_COMMIT` in the Makefile | whole in-repo files (board port) |
 | Alpine/pmOS packages | apk repos (edge) | none — metapackages compose, never fork |
 
