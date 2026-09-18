@@ -170,7 +170,8 @@ static int fts1ba90a_wait_for_ready(struct fts1ba90a *ts)
 		if (ret < 0)
 			return ret;
 
-		if (((data[0] >> 2) & 0xf) == FTS_EVENT_STATUSTYPE_INFO &&
+		if ((data[0] & 0x3) == FTS_STATUS_EVENT &&
+		    ((data[0] >> 2) & 0xf) == FTS_EVENT_STATUSTYPE_INFO &&
 		    data[1] == FTS_INFO_READY_STATUS)
 			return 0;
 
@@ -270,7 +271,7 @@ static int fts1ba90a_read_ids(struct fts1ba90a *ts)
 	if (ret < 0)
 		return ret;
 
-	if (id[2] != FTS_ID0 && id[3] != FTS_ID1) {
+	if (id[2] != FTS_ID0 || id[3] != FTS_ID1) {
 		dev_err(&ts->client->dev, "unexpected chip id: %*ph\n", 5, id);
 		return -ENODEV;
 	}
@@ -468,6 +469,9 @@ static int fts1ba90a_probe(struct i2c_client *client)
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENXIO;
+
+	if (!client->irq)
+		return dev_err_probe(&client->dev, -EINVAL, "no irq specified\n");
 
 	ts = devm_kzalloc(&client->dev, sizeof(*ts), GFP_KERNEL);
 	if (!ts)

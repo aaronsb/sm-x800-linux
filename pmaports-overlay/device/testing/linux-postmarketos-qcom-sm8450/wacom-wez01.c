@@ -94,7 +94,8 @@ struct wacom_wez01 {
 	u16 max_y;
 	u16 max_pressure;
 	u8 max_height;
-	s8 max_tilt;
+	s8 max_tilt_x;
+	s8 max_tilt_y;
 
 	bool prox;	/* pen currently in range (tool reported down) */
 };
@@ -103,7 +104,11 @@ static int wacom_send(struct wacom_wez01 *w, u8 cmd)
 {
 	int ret = i2c_master_send(w->client, &cmd, 1);
 
-	return ret < 0 ? ret : 0;
+	if (ret < 0)
+		return ret;
+	if (ret != 1)
+		return -EIO;
+	return 0;
 }
 
 /*
@@ -159,13 +164,14 @@ static int wacom_query(struct wacom_wez01 *w)
 		w->max_y = ((u16)q[QRY_Y1] << 8) | q[QRY_Y2];
 		w->max_pressure = ((u16)q[QRY_PRESSURE1] << 8) | q[QRY_PRESSURE2];
 		w->max_height = q[QRY_HEIGHT];
-		w->max_tilt = q[QRY_TILT_X];
+		w->max_tilt_x = q[QRY_TILT_X];
+		w->max_tilt_y = q[QRY_TILT_Y];
 
 		dev_info(dev,
-			 "WEZ01 mpu=%02x fw=%02x%02x max_x=%u max_y=%u max_p=%u tilt=%d height=%u\n",
+			 "WEZ01 mpu=%02x fw=%02x%02x max_x=%u max_y=%u max_p=%u tilt=%d/%d height=%u\n",
 			 q[QRY_MPUVER], q[QRY_FWVER1], q[QRY_FWVER2],
 			 w->max_x, w->max_y, w->max_pressure,
-			 w->max_tilt, w->max_height);
+			 w->max_tilt_x, w->max_tilt_y, w->max_height);
 
 		if (q[QRY_MPUVER] != MPU_WEZ01)
 			dev_warn(dev, "unexpected MPU id %02x (want %02x)\n",
@@ -284,8 +290,10 @@ static int wacom_setup_input(struct wacom_wez01 *w)
 	input_set_abs_params(input, ABS_Y, 0, abs_y_max, 4, 0);
 	input_set_abs_params(input, ABS_PRESSURE, 0, w->max_pressure, 0, 0);
 	input_set_abs_params(input, ABS_DISTANCE, 0, w->max_height, 0, 0);
-	input_set_abs_params(input, ABS_TILT_X, -w->max_tilt, w->max_tilt, 0, 0);
-	input_set_abs_params(input, ABS_TILT_Y, -w->max_tilt, w->max_tilt, 0, 0);
+	input_set_abs_params(input, ABS_TILT_X, -w->max_tilt_x, w->max_tilt_x,
+			     0, 0);
+	input_set_abs_params(input, ABS_TILT_Y, -w->max_tilt_y, w->max_tilt_y,
+			     0, 0);
 
 	/*
 	 * libinput refuses a tablet tool that reports no X/Y resolution
@@ -325,7 +333,8 @@ static int wacom_probe(struct i2c_client *client)
 	w->max_y = 13538;
 	w->max_pressure = 4095;
 	w->max_height = 255;
-	w->max_tilt = 63;
+	w->max_tilt_x = 63;
+	w->max_tilt_y = 63;
 
 	w->avdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(w->avdd))
