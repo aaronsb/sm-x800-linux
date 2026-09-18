@@ -13,12 +13,18 @@
 #              [--playback view|tinyplay|manual|skip]
 #              [--i2cdetect] [--no-prompt] [--keep-device-copy]
 #
+# --seconds N: active window. At least 8. At least 300 with --record tinycap:
+# one snapshot takes about five minutes (four CS35L45 regmaps over I2C) and
+# the recording must outlast it. Prompts read /dev/tty, so run from a terminal.
+#
 # Exit codes: 0 done, 1 a step failed (message on stderr), 2 bad usage.
 #
 # Read README.md in this directory first. The mode notes matter: tinycap and
 # tinyplay talk to raw PCM devices and bypass the vendor audio HAL, so they do
-# not exercise the HAL's mic power-up or amplifier bring-up. The HAL-routed
-# modes (voicenote, view) need one tap on the tablet unless --no-prompt is set.
+# not exercise the HAL's mic power-up or amplifier bring-up. On this device
+# tinycap on a backend PCM returns zero frames under AudioReach (2026-09-18),
+# so the raw modes are not a usable control. The HAL-routed modes (voicenote,
+# view) need one tap on the tablet unless --no-prompt is set.
 
 set -u -o pipefail
 
@@ -33,7 +39,7 @@ KEEP_DEVICE_COPY=0
 DEV_BASE="/data/local/tmp/audiocap"
 
 usage() {
-	sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
 	exit 2
 }
 
@@ -62,6 +68,13 @@ if [ "$NO_PROMPT" -eq 1 ]; then
 	[ "$PLAYBACK_MODE" = view ] && PLAYBACK_MODE=tinyplay
 	[ "$RECORD_MODE" = manual ] && { echo "--record manual needs a prompt; drop --no-prompt" >&2; exit 2; }
 	[ "$PLAYBACK_MODE" = manual ] && { echo "--playback manual needs a prompt; drop --no-prompt" >&2; exit 2; }
+fi
+
+# A tinycap window shorter than one snapshot ends before 01-recording is read.
+# One snapshot is about five minutes: four CS35L45 regmaps at ~400 KB over I2C.
+if [ "$RECORD_MODE" = tinycap ] && [ "$SECONDS_ACTIVE" -lt 300 ]; then
+	echo "--seconds must be at least 300 with --record tinycap (one snapshot takes about five minutes)" >&2
+	exit 2
 fi
 
 STAMP=$(date +%Y%m%d-%H%M%S)

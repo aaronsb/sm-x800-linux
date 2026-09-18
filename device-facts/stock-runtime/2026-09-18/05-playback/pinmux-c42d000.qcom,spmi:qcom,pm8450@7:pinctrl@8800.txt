@@ -1,0 +1,6 @@
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+pin 0 (gpio1): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 1 (gpio2): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 2 (gpio3): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 3 (gpio4): (MUX UNCLAIMED) (GPIO UNCLAIMED)

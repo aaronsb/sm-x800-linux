@@ -1,0 +1,4 @@
+Failed to mixer_ctl_get_array
+Failed to mixer_ctl_get_array
+Failed to mixer_ctl_get_array
+Failed to mixer_ctl_get_array

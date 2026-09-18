@@ -1,0 +1,11 @@
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+pin 0 (gpio1): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 1 (gpio2): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 2 (gpio3): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 3 (gpio4): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 4 (gpio5): 61-0066 (GPIO UNCLAIMED) function normal group gpio5
+pin 5 (gpio6): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 6 (gpio7): soc:qcom,dsi-display-primary c42d000.qcom,spmi:qcom,pm8350c@2:pinctrl@8800:284 function normal group gpio7
+pin 7 (gpio8): (MUX UNCLAIMED) (GPIO UNCLAIMED)
+pin 8 (gpio9): (MUX UNCLAIMED) (GPIO UNCLAIMED)

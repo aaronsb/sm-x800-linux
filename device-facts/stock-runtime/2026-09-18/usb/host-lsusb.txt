@@ -1,0 +1,1 @@
+Bus 006 Device 008: ID 04e8:6860 Samsung Electronics Co., Ltd Galaxy series, misc. (MTP mode)

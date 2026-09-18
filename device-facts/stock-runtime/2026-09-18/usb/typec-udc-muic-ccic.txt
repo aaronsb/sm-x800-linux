@@ -1,0 +1,66 @@
+== /sys/class/typec/port0
+data_role=host [device]
+power_role=source [sink]
+port_type=[dual] source sink
+power_operation_mode=usb_power_delivery
+vconn_source=no
+usb_power_delivery_revision=3.0
+data_role
+device
+port0-partner
+port_type
+power
+power_operation_mode
+power_role
+preferred_role
+subsystem
+supported_accessory_modes
+uevent
+usb_power_delivery_revision
+usb_typec_revision
+vconn_source
+== /sys/class/typec/port0-partner
+data_role=
+power_role=
+port_type=
+power_operation_mode=
+vconn_source=
+usb_power_delivery_revision=0.0
+accessory_mode
+device
+power
+subsystem
+supports_usb_power_delivery
+uevent
+usb_power_delivery_revision
+== udc
+/sys/class/udc/a600000.dwc3
+configured
+high-speed
+g1
+/sys/class/udc/dummy_udc.0
+not attached
+UNKNOWN
+== dwc3
+a600000.dwc3
+devices
+uvcvideo
+xhci
+device
+== muic
+uevent=
+== ccic
+acc_device_version=0000
+booting_dry=1
+cc_pin_status=1
+ccic_control_option=
+chip_name=max77705
+control_gpio=0 0
+cur_version=5F.00
+debug_opcode=
+dex_fan_uvdm=
+fw_update=
+fw_update_status=OK
+hmd_power=
+lpm_mode=0
+ovp_ic_shutdown=
