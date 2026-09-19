@@ -252,15 +252,14 @@
 	 *     vol_up { gpios = <0x540 0x06 0x01>; linux,code = <0x73>; }
 	 * where phandle 0x540 is qcom,pm8350-gpio @0x8800 and 0x01 = ACTIVE_LOW.
 	 *
-	 * STATUS: dead, and NOT an index problem. Measured on-device (r38,
-	 * 2026-07-20): with gpio-keys unbound, gpiomon watched every line of
-	 * pm8350/pm8350c/pmk8350 through repeated vol-up presses — zero edges
-	 * anywhere. Line 5 (= this cell 6) idles high like a pulled-up button
-	 * but never drops on press. Stock DTB has exactly one vol-up wiring
-	 * (this one), so the next step is schematic-level: check the pull-up
-	 * power-source rail, or poke the pm8350 gpio6 status register over
-	 * SPMI debugfs while pressing. Do NOT bother permuting cell numbers;
-	 * that experiment is done.
+	 * STATUS (2026-09-19, issue #18): works, intermittently. On three of
+	 * four boots the pad follows the key and gpio-keys emits KEY_VOLUMEUP.
+	 * On one boot the PMIC latched exactly two edges per press while the
+	 * level registers never left high, with every stage from pad to input
+	 * event verified sound. The July r38 gpiomon result was that same dead
+	 * state; gpiomon rides the interrupt path and cannot see the level.
+	 * Not the interrupt chain, not this node, not the pull or its rail. A
+	 * trap service on the tablet records the next occurrence.
 	 */
 	gpio-keys {
 		compatible = "gpio-keys";
@@ -1415,18 +1414,13 @@
 };
 
 /*
- * Buttons. These are the ONLY input devices that work today (no touchscreen
- * driver, pogo keyboard unported, USB dead), and they are free: mainline
- * already has the drivers, pmk8350.dtsi already declares the nodes with the
- * same interrupts the stock DTB uses — they are merely disabled by default.
- *
- * This matters more than it looks: the pmOS initramfs polls
+ * Buttons. Power and volume-down come from the pmk8350 PON block, whose
+ * nodes pmk8350.dtsi already declares with the interrupts the stock DTB
+ * uses; they only need enabling. The pmOS initramfs polls
  *   iskey KEY_LEFTCTRL KEY_VOLUMEDOWN -> debug shell
- * so a working volume-down key gives an interactive boot-time debug shell
- * with no new driver code at all.
+ * so volume-down gives an interactive boot-time debug shell.
  *
- * Volume UP is a separate gpio-keys line on pm8350 gpio6 (stock DTB); not
- * wired up yet since volume-down alone unlocks the debug shell.
+ * Volume up is the gpio-keys line on pm8350 gpio6 declared above.
  */
 /*
  * Software route into Samsung download (Odin) mode: ABL checks the PON
