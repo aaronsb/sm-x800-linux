@@ -1,0 +1,5 @@
+# ffprobe/ffmpeg on the camera-app clip recorded with the SLPI remoteproc offline (clip itself not kept, 55 MB)
+codec_name=aac sample_rate=48000 channels=2 duration=25.727604
+Peak level dB: 0.071748
+RMS level dB: -21.774889
+mean_volume: -21.8 dB  max_volume: -0.0 dB

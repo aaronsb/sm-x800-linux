@@ -1,0 +1,2 @@
+cat: /sys/class/camera/rear/rear_actuator_power: I/O error
+ls: /vendor/etc/camera: No such file or directory

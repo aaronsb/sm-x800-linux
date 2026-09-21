@@ -1,0 +1,2 @@
+/sys/class/camera/flash/rear_flash <- 1
+/sys/class/camera/flash/rear_flash <- 0

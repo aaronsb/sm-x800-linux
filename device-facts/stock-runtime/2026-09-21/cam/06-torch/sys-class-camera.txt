@@ -1,0 +1,57 @@
+/sys/class/camera/flash/rear_flash: 
+/sys/class/camera/flash/uevent: 
+/sys/class/camera/front/front_afcal: 20 
+/sys/class/camera/front/front_camfw: I12EFOIF1MM I12EFOIF1MM 
+/sys/class/camera/front/front_camfw_full: I12EFOIF1MM N I12EFOIF1MM 
+/sys/class/camera/front/front_caminfo: ISP=INT;CALMEM=Y;READVER=SYSFS;COREVOLT=N;UPGRADE=N;FWWRITE=N;FWDUMP=N;CC=N;OIS=N;VALID=Y;DUALOPEN=N;
+/sys/class/camera/front/front_camtype: HYNIX_HI1337 
+/sys/class/camera/front/front_checkfw_factory: NG_VER
+/sys/class/camera/front/front_checkfw_user: NG
+/sys/class/camera/front/front_hwparam: "CAMIF_ID":"MVOLSXX002204","I2CF_AF":"0","I2CF_COM":"0","I2CF_OIS":"0","I2CF_SEN":"0","MIPIF_COM":"0","MIPIF_SEN":"0" 
+/sys/class/camera/front/front_mipi_clock:  
+/sys/class/camera/front/front_moduleid: MVOLS1DDB002204 
+/sys/class/camera/front/front_moduleinfo: SSCAL EI12EFOIF1MM00000003R00M1D01D00S10S00/I12EFOFF0MM00000003R04
+/sys/class/camera/front/front_mtf_exif: 
+/sys/class/camera/front/front_paf_cal_check: FFFFFFFF 
+/sys/class/camera/front/front_sensorid_exif: %
+/sys/class/camera/front/uevent: 
+/sys/class/camera/rear/isp_core:  
+/sys/class/camera/rear/rear2_camfw: R08EFOGW0HM R08EFOGW0HM 
+/sys/class/camera/rear/rear2_camfw_full: R08EFOGW0HM N R08EFOGW0HM 
+/sys/class/camera/rear/rear2_caminfo: ISP=INT;CALMEM=Y;READVER=SYSFS;COREVOLT=N;UPGRADE=N;FWWRITE=N;FWDUMP=N;CC=N;OIS=N;VALID=Y;DUALOPEN=N;
+/sys/class/camera/rear/rear2_camtype: HYNIX_HI847 
+/sys/class/camera/rear/rear2_checkfw_factory: NG_VER
+/sys/class/camera/rear/rear2_checkfw_user: NG
+/sys/class/camera/rear/rear2_dualcal: 
+/sys/class/camera/rear/rear2_dualcal_size: 2060
+/sys/class/camera/rear/rear2_hwparam: "CAMIR2_ID":"HVOLPXX000102","I2CR2_AF":"0","I2CR2_COM":"0","I2CR2_OIS":"0","I2CR2_SEN":"0","MIPIR2_COM":"0","MIPIR2_SEN":"0" 
+/sys/class/camera/rear/rear2_moduleid: HVOLP1DE6000102 
+/sys/class/camera/rear/rear2_moduleinfo: SSCAL ER08EFOGW0HM00000003R00M1D01D00S11S00/R08EFOGW0HM00000003R04
+/sys/class/camera/rear/rear2_mtf_exif: 
+/sys/class/camera/rear/rear2_sensorid_exif: 0716,0ÿÿÿ
+/sys/class/camera/rear/rear2_tilt: 1 0 0 0 0 0 0 0 0 0  
+/sys/class/camera/rear/rear_actuator_power: 
+/sys/class/camera/rear/rear_afcal: 20 582 422
+/sys/class/camera/rear/rear_calcheck: Normal Normal 
+/sys/class/camera/rear/rear_camfw: H13EFOFW0HM H13EFOFW0HM 
+/sys/class/camera/rear/rear_camfw_full: H13EFOFW0HM N H13EFOFW0HM 
+/sys/class/camera/rear/rear_camfw_load: NULL 
+/sys/class/camera/rear/rear_caminfo: ISP=INT;CALMEM=Y;READVER=CAMON;COREVOLT=Y;UPGRADE=CAMON;FWWRITE=ALL;FWDUMP=Y;CC=N;OIS=N;VALID=Y;DUALOPEN=N;
+/sys/class/camera/rear/rear_camtype: HYNIX_HI1337 
+/sys/class/camera/rear/rear_checkfw_factory: NG_VER
+/sys/class/camera/rear/rear_checkfw_user: NG
+/sys/class/camera/rear/rear_f2_paf_cal_check: FFFFFFFF 
+/sys/class/camera/rear/rear_f2_paf_offset_far: 
+/sys/class/camera/rear/rear_f2_paf_offset_mid: 
+/sys/class/camera/rear/rear_hwparam: "CAMIR_ID":"HVOLNXX000D03","I2CR_AF":"0","I2CR_COM":"0","I2CR_OIS":"0","I2CR_SEN":"0","MIPIR_COM":"0","MIPIR_SEN":"0" 
+/sys/class/camera/rear/rear_moduleid: HVOLN09EB000D03 
+/sys/class/camera/rear/rear_moduleinfo: SSCAL PH13EFOFW0HM000000FFR00M8D01D00S3BS00/H13EFOFW0HM000000FFR04
+/sys/class/camera/rear/rear_mtf2_exif: 
+/sys/class/camera/rear/rear_mtf_exif: 
+/sys/class/camera/rear/rear_paf_cal_check: 120400C9 
+/sys/class/camera/rear/rear_paf_offset_far: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20949,3371,-1,-1,422,0,-1,-1,-1,-1,582,0,0,0,0,0,-256,255,0,-256,255,-256,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,12745,-20090,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-3763,-2932,0,0,0,0,0,0,0,0,0,0,0,0,0 
+/sys/class/camera/rear/rear_paf_offset_mid: 115,134,145,133,118,-9,26,0,156,231,216,294,279,221,286,295,167,134,217,0,13667,25406,22856,23897,11875,25187,18728,17460,23383,25443,9315,312,14395,25424,13346,0,20786,17494,16450,15449,21810,23118,23090,23115,12890,21839,12887,23107,23091,12850,23105,0,9748,9811,9906,10020,9707,9773,9824,9652,9633,9756,9629,9548,9675,9636,9565,9600,9722,9561,9490,9692,9571,9470,9646,9589,9522,9622,9649,9540,9601,9725,66,183,193,97,136,95,116,72,128,84,37,137,51,-28,131,76,60,179,97,58,178,150,165,115,191,245,132,283,283,152,0,6,51,9,0 
+/sys/class/camera/rear/rear_sensorid_exif: 1702.;ÿÿÿ
+/sys/class/camera/rear/ssrm_camera_info: 
+/sys/class/camera/rear/supported_cameraIds: 56 58 3 
+/sys/class/camera/rear/uevent: 

@@ -1,0 +1,67 @@
+[   77.310721] (virq:irq_count)- GICv3:IPI(1):485349 GICv3:IPI(6):210220 GICv3:ufshcd(31):193426 GICv3:IPI(2):193268 GICv3:arch_timer(11):94605 GICv3:c263000.thermal-sensor(224):10659 GICv3:i2c_geni(57):9294 GICv3:apps_rsc(36):8146 GICv3:msm_drm(230):7151 GICv3:ipcc_0(28):5550 
+[   79.163210] binder_alloc: 4087: binder_alloc_buf size 1056768 failed, too large size
+[   80.061612] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[   80.067330] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[   80.261257] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[   82.523355] [kworke][0x7561aac7][10:21:12.288457] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[   82.523379] [kworke][0x7561aca9][10:21:12.288482] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[   82.523389] [kworke][0x7561ad70][10:21:12.288492] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[   82.523411] [kworke][0x7561af12][10:21:12.288514] wlan: [39:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[   86.899881] (virq:irq_count)- GICv3:IPI(1):550001 GICv3:IPI(6):247151 GICv3:ufshcd(31):208716 GICv3:IPI(2):207210 GICv3:arch_timer(11):108118 GICv3:c263000.thermal-sensor(224):11405 GICv3:i2c_geni(57):9991 GICv3:apps_rsc(36):8896 GICv3:msm_drm(230):8511 GICv3:ipcc_0(28):5807 
+[   90.302103] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[   90.308001] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[   90.532671] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[   94.947091] [kworke][0x83996f30][10:21:24.712196] wlan: [2515:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[   94.947102] [kworke][0x8399700d][10:21:24.712207] wlan: [2515:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[   94.947107] [kworke][0x83997068][10:21:24.712212] wlan: [2515:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[   94.947119] [kworke][0x8399714a][10:21:24.712224] wlan: [2515:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[   95.220347] msm-usb-hsphy 88e3000.hsphy: msm_hsphy_dpdm_regulator_is_enabled dpdm_enable:0
+[   96.500065] (virq:irq_count)- GICv3:IPI(1):606069 GICv3:IPI(6):269407 GICv3:ufshcd(31):220779 GICv3:IPI(2):219539 GICv3:arch_timer(11):121378 GICv3:c263000.thermal-sensor(224):12102 GICv3:i2c_geni(57):10688 GICv3:msm_drm(230):10386 GICv3:apps_rsc(36):9730 GICv3:ipcc_0(28):5955 
+[  100.573885] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  100.581098] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  100.783007] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  103.620172] !@Sync: 4 heap(MB): 98 / 107 FD: 1030 [2025-04-15 06:21:33.385] softdog disabled
+[  106.100074] (virq:irq_count)- GICv3:IPI(1):664879 GICv3:IPI(6):283738 GICv3:ufshcd(31):232001 GICv3:IPI(2):229769 GICv3:arch_timer(11):132662 GICv3:c263000.thermal-sensor(224):12617 GICv3:msm_drm(230):11748 GICv3:i2c_geni(57):11375 GICv3:apps_rsc(36):10781 GICv3:ipcc_0(28):6084 
+[  110.825655] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  110.832852] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  111.031810] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  115.700127] (virq:irq_count)- GICv3:IPI(1):707755 GICv3:IPI(6):291025 GICv3:ufshcd(31):237232 GICv3:IPI(2):234320 GICv3:arch_timer(11):143746 GICv3:msm_drm(230):13122 GICv3:c263000.thermal-sensor(224):12617 GICv3:i2c_geni(57):12072 GICv3:apps_rsc(36):11991 GICv3:ipcc_0(28):6204 
+[  121.072358] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  121.079255] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  121.292204] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  125.300616] (virq:irq_count)- GICv3:IPI(1):732880 GICv3:IPI(6):295212 GICv3:ufshcd(31):237924 GICv3:IPI(2):235594 GICv3:arch_timer(11):150693 GICv3:msm_drm(230):14384 GICv3:apps_rsc(36):13067 GICv3:i2c_geni(57):12769 GICv3:c263000.thermal-sensor(224):12617 GICv3:ipcc_0(28):6322 
+[  128.848323] sec_direct_chg_set_charging_current: called(8000mA) now_isApdo(0) cable_type(38)
+[  131.342439] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  131.348191] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  131.541342] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  133.631365] !@Sync: 5 heap(MB): 74 / 104 FD: 1004 [2025-04-15 06:22:03.396] softdog disabled
+[  134.903111] (virq:irq_count)- GICv3:IPI(1):757042 GICv3:IPI(6):300760 GICv3:ufshcd(31):239854 GICv3:IPI(2):237353 GICv3:arch_timer(11):158022 GICv3:msm_drm(230):15297 GICv3:apps_rsc(36):14129 GICv3:i2c_geni(57):13552 GICv3:c263000.thermal-sensor(224):12617 GICv3:ipcc_0(28):6443 
+[  134.950143] [kworke][0xb16112e1][10:22:04.715232] wlan: [25:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[  134.950220] [kworke][0xb1611947][10:22:04.715317] wlan: [25:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[  134.950246] [kworke][0xb1611b37][10:22:04.715343] wlan: [25:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[  134.950303] [kworke][0xb1611f85][10:22:04.715400] wlan: [25:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[  136.784399] [VIB] dc_vib: dc_vib_on: regulator on, is_enabled(0)
+[  136.817346] [VIB] dc_vib: dc_vib_off: regulator off, is_enabled(1)
+[  141.580891] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  141.587323] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  141.783412] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  144.509983] (virq:irq_count)- GICv3:IPI(1):787739 GICv3:IPI(6):309873 GICv3:ufshcd(31):244188 GICv3:IPI(2):242561 GICv3:arch_timer(11):165582 GICv3:msm_drm(230):16087 GICv3:apps_rsc(36):15211 GICv3:i2c_geni(57):14249 GICv3:c263000.thermal-sensor(224):12619 GICv3:kgsl_3d0_irq(220):7075 
+[  146.700230] [kworke][0xbed37c3f][10:22:16.465330] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[  146.700260] [kworke][0xbed37e9d][10:22:16.465361] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[  146.700274] [kworke][0xbed37fad][10:22:16.465375] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[  146.700302] [kworke][0xbed381c4][10:22:16.465403] wlan: [39:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[  151.817540] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  151.822002] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  152.032198] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  154.109953] (virq:irq_count)- GICv3:IPI(1):826336 GICv3:IPI(6):315018 GICv3:ufshcd(31):266382 GICv3:IPI(2):247714 GICv3:arch_timer(11):175419 GICv3:msm_drm(230):16271 GICv3:apps_rsc(36):16137 GICv3:i2c_geni(57):14946 GICv3:c263000.thermal-sensor(224):12619 GICv3:kgsl_3d0_irq(220):7225 
+[  162.060876] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  162.065464] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  162.261081] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  163.635149] !@Sync: 6 heap(MB): 74 / 106 FD: 1021 [2025-04-15 06:22:33.400] softdog disabled
+[  163.712651] (virq:irq_count)- GICv3:IPI(1):879908 GICv3:IPI(6):323818 GICv3:ufshcd(31):302340 GICv3:IPI(2):256233 GICv3:arch_timer(11):184543 GICv3:msm_drm(230):17135 GICv3:apps_rsc(36):16963 GICv3:i2c_geni(57):15648 GICv3:c263000.thermal-sensor(224):12619 GICv3:kgsl_3d0_irq(220):8258 
+[  171.297650] [VIB] dc_vib: dc_vib_on: regulator on, is_enabled(0)
+[  171.339432] [VIB] dc_vib: dc_vib_off: regulator off, is_enabled(1)
+[  172.290341] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  172.295234] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  172.481392] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  173.300269] (virq:irq_count)- GICv3:IPI(1):935875 GICv3:ufshcd(31):340262 GICv3:IPI(6):330909 GICv3:IPI(2):275370 GICv3:arch_timer(11):192276 GICv3:msm_drm(230):17806 GICv3:apps_rsc(36):17764 GICv3:i2c_geni(57):16350 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8667 

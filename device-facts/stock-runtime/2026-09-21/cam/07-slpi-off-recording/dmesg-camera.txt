@@ -1,0 +1,254 @@
+[  131.342439] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  131.348191] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  131.541342] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  133.631365] !@Sync: 5 heap(MB): 74 / 104 FD: 1004 [2025-04-15 06:22:03.396] softdog disabled
+[  134.903111] (virq:irq_count)- GICv3:IPI(1):757042 GICv3:IPI(6):300760 GICv3:ufshcd(31):239854 GICv3:IPI(2):237353 GICv3:arch_timer(11):158022 GICv3:msm_drm(230):15297 GICv3:apps_rsc(36):14129 GICv3:i2c_geni(57):13552 GICv3:c263000.thermal-sensor(224):12617 GICv3:ipcc_0(28):6443 
+[  134.950143] [kworke][0xb16112e1][10:22:04.715232] wlan: [25:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[  134.950220] [kworke][0xb1611947][10:22:04.715317] wlan: [25:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[  134.950246] [kworke][0xb1611b37][10:22:04.715343] wlan: [25:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[  134.950303] [kworke][0xb1611f85][10:22:04.715400] wlan: [25:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[  136.784399] [VIB] dc_vib: dc_vib_on: regulator on, is_enabled(0)
+[  136.817346] [VIB] dc_vib: dc_vib_off: regulator off, is_enabled(1)
+[  141.580891] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  141.587323] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  141.783412] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  144.509983] (virq:irq_count)- GICv3:IPI(1):787739 GICv3:IPI(6):309873 GICv3:ufshcd(31):244188 GICv3:IPI(2):242561 GICv3:arch_timer(11):165582 GICv3:msm_drm(230):16087 GICv3:apps_rsc(36):15211 GICv3:i2c_geni(57):14249 GICv3:c263000.thermal-sensor(224):12619 GICv3:kgsl_3d0_irq(220):7075 
+[  146.700230] [kworke][0xbed37c3f][10:22:16.465330] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[  146.700260] [kworke][0xbed37e9d][10:22:16.465361] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[  146.700274] [kworke][0xbed37fad][10:22:16.465375] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[  146.700302] [kworke][0xbed381c4][10:22:16.465403] wlan: [39:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[  151.817540] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  151.822002] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  152.032198] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  154.109953] (virq:irq_count)- GICv3:IPI(1):826336 GICv3:IPI(6):315018 GICv3:ufshcd(31):266382 GICv3:IPI(2):247714 GICv3:arch_timer(11):175419 GICv3:msm_drm(230):16271 GICv3:apps_rsc(36):16137 GICv3:i2c_geni(57):14946 GICv3:c263000.thermal-sensor(224):12619 GICv3:kgsl_3d0_irq(220):7225 
+[  162.060876] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  162.065464] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  162.261081] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  163.635149] !@Sync: 6 heap(MB): 74 / 106 FD: 1021 [2025-04-15 06:22:33.400] softdog disabled
+[  163.712651] (virq:irq_count)- GICv3:IPI(1):879908 GICv3:IPI(6):323818 GICv3:ufshcd(31):302340 GICv3:IPI(2):256233 GICv3:arch_timer(11):184543 GICv3:msm_drm(230):17135 GICv3:apps_rsc(36):16963 GICv3:i2c_geni(57):15648 GICv3:c263000.thermal-sensor(224):12619 GICv3:kgsl_3d0_irq(220):8258 
+[  171.297650] [VIB] dc_vib: dc_vib_on: regulator on, is_enabled(0)
+[  171.339432] [VIB] dc_vib: dc_vib_off: regulator off, is_enabled(1)
+[  172.290341] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  172.295234] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  172.481392] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(70), sleep_mode(0), Cycle(23, 0)
+[  173.300269] (virq:irq_count)- GICv3:IPI(1):935875 GICv3:ufshcd(31):340262 GICv3:IPI(6):330909 GICv3:IPI(2):275370 GICv3:arch_timer(11):192276 GICv3:msm_drm(230):17806 GICv3:apps_rsc(36):17764 GICv3:i2c_geni(57):16350 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8667 
+[  182.519478] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  182.524646] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  182.731184] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  182.910750] (virq:irq_count)- GICv3:IPI(1):957912 GICv3:ufshcd(31):349030 GICv3:IPI(6):334526 GICv3:IPI(2):283410 GICv3:arch_timer(11):197926 GICv3:apps_rsc(36):18461 GICv3:msm_drm(230):17813 GICv3:i2c_geni(57):17083 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8667 
+[  192.503300] (virq:irq_count)- GICv3:IPI(1):963715 GICv3:ufshcd(31):349667 GICv3:IPI(6):335671 GICv3:IPI(2):284128 GICv3:arch_timer(11):201206 GICv3:apps_rsc(36):19141 GICv3:msm_drm(230):18032 GICv3:i2c_geni(57):17098 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8672 
+[  192.776482] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  192.783107] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  192.982705] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  193.650300] !@Sync: 7 heap(MB): 88 / 106 FD: 1023 [2025-04-15 06:23:03.414] softdog disabled
+[  198.508127] CAM_INFO: CAM-FLASH: flash_power_store: 2255 torch value_u32=1
+[  198.508173] CAM_INFO: CAM-FLASH: cam_flash_ops: 619 Led_Torch[0]: Current: 75 max_current 500
+[  198.508213] CAM_INFO: CAM-FLASH: cam_flash_ops: 619 Led_Torch[1]: Current: 75 max_current 500
+[  198.508327] CAM_INFO: CAM-FLASH: flash_power_store: 2282 torch on
+[  202.100556] (virq:irq_count)- GICv3:IPI(1):967453 GICv3:ufshcd(31):349847 GICv3:IPI(6):336722 GICv3:IPI(2):284480 GICv3:arch_timer(11):204783 GICv3:apps_rsc(36):19588 GICv3:msm_drm(230):18032 GICv3:i2c_geni(57):17802 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8672 
+[  203.024233] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  203.030997] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  203.242042] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  205.176465] CAM_INFO: CAM-FLASH: flash_power_store: 2255 torch value_u32=0
+[  205.176649] CAM_INFO: CAM-FLASH: flash_power_store: 2276 torch off
+[  211.700015] (virq:irq_count)- GICv3:IPI(1):974604 GICv3:ufshcd(31):350954 GICv3:IPI(6):338080 GICv3:IPI(2):285398 GICv3:arch_timer(11):208623 GICv3:apps_rsc(36):20093 GICv3:i2c_geni(57):18499 GICv3:msm_drm(230):18032 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8672 
+[  213.303050] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  213.309399] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  213.513588] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  214.913031] [kworke][0x10ce3b3c1][10:23:24.678123] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[  214.913093] [kworke][0x10ce3b8b0][10:23:24.678189] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[  214.913117] [kworke][0x10ce3baa3][10:23:24.678215] wlan: [39:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[  214.913210] [kworke][0x10ce3bea8][10:23:24.678269] wlan: [39:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[  215.201984] CAM_INFO: CAM-FLASH: flash_power_store: 2255 torch value_u32=0
+[  215.201998] CAM_INFO: CAM-FLASH: flash_power_store: 2276 torch off
+[  221.302954] (virq:irq_count)- GICv3:IPI(1):983598 GICv3:ufshcd(31):353296 GICv3:IPI(6):339675 GICv3:IPI(2):287266 GICv3:arch_timer(11):211524 GICv3:apps_rsc(36):20590 GICv3:i2c_geni(57):19196 GICv3:msm_drm(230):18039 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8672 
+[  223.549256] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  223.555378] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  223.663743] !@Sync: 8 heap(MB): 96 / 106 FD: 1026 [2025-04-15 06:23:33.428] softdog disabled
+[  223.775268] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  230.901939] (virq:irq_count)- GICv3:IPI(1):985523 GICv3:ufshcd(31):353388 GICv3:IPI(6):340348 GICv3:IPI(2):287374 GICv3:arch_timer(11):213078 GICv3:apps_rsc(36):20809 GICv3:i2c_geni(57):19893 GICv3:msm_drm(230):18039 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8672 
+[  233.861756] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  233.897600] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  234.103237] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  240.504554] (virq:irq_count)- GICv3:IPI(1):986856 GICv3:ufshcd(31):353462 GICv3:IPI(6):340904 GICv3:IPI(2):287434 GICv3:arch_timer(11):214225 GICv3:apps_rsc(36):20966 GICv3:i2c_geni(57):20590 GICv3:msm_drm(230):18039 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8672 
+[  241.780895] qcom_q6v5_pas 2400000.remoteproc-slpi: failed receiving QMI response
+[  241.786465] adsprpc: fastrpc_pdr_cb: msm/slpi/sensor_pd (sensors_pdr_sdsprpc) is down for PDR on dsps
+[  242.260667] PM: SensorsHAL_WAKEUP: active_count(17), active_time(470), total_time(489)
+[  242.426844] [kworke][0x12c60644c][10:23:52.191944] wlan: [75:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+[  242.426873] [kworke][0x12c60667c][10:23:52.191973] wlan: [75:I:PMO] pmo_core_enable_wow_in_fw: mod DTIM enabled
+[  242.426886] [kworke][0x12c606784][10:23:52.191987] wlan: [75:I:PMO] pmo_core_enable_wow_in_fw: forced DTIM enabled
+[  242.426914] [kworke][0x12c6069ac][10:23:52.192015] wlan: [75:I:WMI] send_wow_enable_cmd_tlv: suspend type: WOW_IFACE_PAUSE_ENABLED flag is 0xd0
+[  244.143542] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  244.149936] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  244.353527] sec_bat_monitor_work: Status(Full), mode(Additional), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  250.110489] (virq:irq_count)- GICv3:IPI(1):992808 GICv3:ufshcd(31):353599 GICv3:IPI(6):342086 GICv3:IPI(2):287771 GICv3:arch_timer(11):218273 GICv3:apps_rsc(36):21441 GICv3:i2c_geni(57):21287 GICv3:msm_drm(230):18039 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8672 
+[  250.899224] !@ Read_top(KB): sensors@2.1-ser(1434) 124 loop12(1199) 76 loop16(1203) 64
+[  253.671357] !@Sync: 9 heap(MB): 96 / 106 FD: 1027 [2025-04-15 06:24:03.435] softdog disabled
+[  254.397174] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  254.403836] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  254.407364] sec_direct_chg_set_charging_current: called(8000mA) now_isApdo(0) cable_type(38)
+[  254.601339] qcom_q6v5_pas 2400000.remoteproc-slpi: disable_regulators_sensor_vdd Regulator disable: slpi 1800000 uV 0 uA
+[  254.601424] qcom_q6v5_pas 2400000.remoteproc-slpi: disable_regulators_sensor_vdd Regulator disable: slpi 3000000 uV 0 uA
+[  254.673138] sec_bat_monitor_work: Status(Full), mode(None), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  259.702118] (virq:irq_count)- GICv3:IPI(1):999378 GICv3:ufshcd(31):353675 GICv3:IPI(6):343331 GICv3:IPI(2):288136 GICv3:arch_timer(11):223065 GICv3:apps_rsc(36):22055 GICv3:i2c_geni(57):22017 GICv3:msm_drm(230):18063 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8677 
+[  262.907127] !@ Read_top(KB): .osp.app.signin(15759) 500 sensors@2.1-ser(1434) 64 c.android.sdhms(5061) 16
+[  269.301345] (virq:irq_count)- GICv3:IPI(1):1005305 GICv3:ufshcd(31):353710 GICv3:IPI(6):344530 GICv3:IPI(2):288460 GICv3:arch_timer(11):227562 GICv3:apps_rsc(36):22533 GICv3:i2c_geni(57):22032 GICv3:msm_drm(230):18063 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8677 
+[  278.901469] (virq:irq_count)- GICv3:IPI(1):1011805 GICv3:ufshcd(31):353817 GICv3:IPI(6):345784 GICv3:IPI(2):288837 GICv3:arch_timer(11):232231 GICv3:apps_rsc(36):23137 GICv3:i2c_geni(57):22047 GICv3:msm_drm(230):18070 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):8677 
+[  282.271799] CAM_INFO: CAM-UTIL: cam_sensor_driver_cmd: 1971 [HWB]sensor_position: 0
+[  282.306377] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  282.306414] CAM_INFO: CAM-SENSOR: cam_sensor_match_id: 1593 hi1337 read id: 0x2000 expected id 0x2000: , rc_val=0
+[  282.306421] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2021 CAM_ACQUIRE_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  282.382051] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 1972 CAM_ACQUIRE_DEV: CSIPHY_IDX: 1
+[  282.387143] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2299 CSID:2 Rx lane param: cfg:12816 type:0 num:4 res_type:16386 res_id: 5
+[  282.387154] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 1 res_id: 0
+[  282.387187] CAM_INFO: CAM-ISP: cam_ife_hw_mgr_print_acquire_info: 1325 10:24:32.152 Acquired Single IFE[2] with [8 pix] [0 pd] [1 rdi] ports for ctx:0
+[  282.387202] CAM_INFO: CAM-ISP: __cam_isp_ctx_acquire_hw_v2: 6327 Acquire success on session_hdl 0x300200 dev_hdl 10223874 ctx_type 3 ctx_id 0 link 0xb60104
+[  282.407819] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.407828] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.407831] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.407833] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.407836] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.409681] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:INCREASE bw_vote:2288619370 req_id:1
+[  282.410956] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 2356 CAM_START_PHYDEV: CSIPHY_IDX: 1, Device_slot: 0, cp_mode: 0, Datarate: 1408000000, Settletime: 5600000000
+[  282.411064] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2202 10:24:32.176 CAM_START_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  282.425413] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: IPP
+[  282.425439] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: RDI_0
+[  282.433777] CAM_WARN: CAM-ISP: __cam_isp_ctx_reg_upd_in_epoch_bubble_state: 2450 ctx_id:0 Unexpected reg update in activated Substate[EPOCH] for frame_id:0
+[  282.433835] CAM_INFO: CAM-ISP: __cam_isp_ctx_sof_in_epoch: 2923 First SOF in EPCR ctx:0 frame_id:1 next substate EPOCH
+[  282.476380] CAM_INFO: CAM-FLASH: cam_flash_driver_cmd: 46 CAM_ACQUIRE_DEV for dev_hdl: 0xffffffff
+[  282.487529] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:1892493700 req_id:7
+[  282.508318] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:0 req_id:-1
+[  282.510840] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  282.510869] CAM_INFO: CAM-SENSOR: cam_sensor_wait_stream_on: 168 [CNT_DBG] sensor 0x2000 : Stream on, Last frame_cnt 0x3
+[  282.514097] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  282.519783] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  282.519823] CAM_INFO: CAM-SENSOR: cam_sensor_wait_stream_off: 199 [CNT_DBG] sensor 0x2000 : Stream off, Last frame_cnt 0x0
+[  282.520878] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2261 10:24:32.285 CAM_STOP_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  282.521950] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 2068 CAM_STOP_PHYDEV: CSIPHY_IDX: 1, Device_slot: 0, Datarate: 1408000000, Settletime: 5600000000
+[  282.522024] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:5 name:IPP] cnt: 1
+[  282.522028] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:0 name:RDI_0] cnt: 0
+[  282.522036] CAM_INFO: CAM-ISP: cam_ife_mgr_release_hw: 6931 10:24:32.287 Release HW success ctx id: 0
+[  282.568422] CAM_INFO: CAM-CTXT: cam_context_allocate_mem_hw_entries: 85 cam-icp[0] num: max_hw 20 in_map 20 out_map 20 req 40
+[  282.570372] CAM_INFO: CAM-CTXT: cam_context_allocate_mem_hw_entries: 85 cam-icp[1] num: max_hw 20 in_map 20 out_map 20 req 40
+[  282.591967] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2299 CSID:2 Rx lane param: cfg:12816 type:0 num:4 res_type:16386 res_id: 5
+[  282.591980] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 1 res_id: 1
+[  282.592007] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 2 res_id: 0
+[  282.592012] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 3 res_id: 6
+[  282.592030] CAM_INFO: CAM-ISP: cam_ife_hw_mgr_print_acquire_info: 1325 10:24:32.357 Acquired Single IFE[2] with [13 pix] [1 pd] [2 rdi] ports for ctx:1
+[  282.592044] CAM_INFO: CAM-ISP: __cam_isp_ctx_acquire_hw_v2: 6327 Acquire success on session_hdl 0x300200 dev_hdl 15532298 ctx_type 3 ctx_id 1 link 0x8c010d
+[  282.601203] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.601217] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.601225] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.601232] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.601239] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  282.603227] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:INCREASE bw_vote:5646736620 req_id:9
+[  282.605077] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 2356 CAM_START_PHYDEV: CSIPHY_IDX: 1, Device_slot: 0, cp_mode: 0, Datarate: 1408000000, Settletime: 5600000000
+[  282.605207] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2202 10:24:32.370 CAM_START_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  282.605226] CAM_INFO: CAM-FLASH: cam_flash_driver_cmd: 167 CAM_START_DEV for dev_hdl: 0xdb0108
+[  282.617634] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: IPP
+[  282.617656] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: RDI_1
+[  282.617756] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: RDI_0
+[  282.617766] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: PPP
+[  282.651018] CAM_WARN: CAM-ISP: __cam_isp_ctx_reg_upd_in_epoch_bubble_state: 2450 ctx_id:1 Unexpected reg update in activated Substate[EPOCH] for frame_id:0
+[  282.651067] CAM_INFO: CAM-ISP: __cam_isp_ctx_sof_in_epoch: 2923 First SOF in EPCR ctx:1 frame_id:1 next substate EPOCH
+[  282.866438] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:5460114015 req_id:15
+[  283.133502] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:1092022803 req_id:23
+[  283.674372] !@Sync: 10 heap(MB): 102 / 106 FD: 1041 [2025-04-15 06:24:33.439] softdog disabled
+[  284.706329] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  284.902214] sec_bat_monitor_work: Status(Full), mode(None), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
+[  288.500575] (virq:irq_count)- GICv3:IPI(1):1049587 GICv3:ufshcd(31):357037 GICv3:IPI(6):353652 GICv3:IPI(2):292961 GICv3:arch_timer(11):241894 GICv3:apps_rsc(36):24054 GICv3:i2c_geni(57):22694 GICv3:msm_drm(230):19053 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):10187 
+[  292.164547] CAM_INFO: CAM-CRM: cam_req_mgr_process_flush_req: 2823 Last request id to flush is 297
+[  292.164673] CAM_INFO: CAM-ISP: __cam_isp_ctx_flush_req_in_top_state: 4583 Last request id to flush is 297, ctx_id:1
+[  292.164991] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:0 req_id:-1
+[  292.165019] CAM_INFO: CAM-ISP: __cam_isp_ctx_flush_req_in_top_state: 4600 Stop HW complete. Reset HW next.
+[  292.172074] CAM_INFO: CAM-CRM: cam_req_mgr_process_flush_req: 2823 Last request id to flush is 297
+[  297.198054] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  297.198094] CAM_INFO: CAM-SENSOR: cam_sensor_wait_stream_on: 168 [CNT_DBG] sensor 0x2000 : Stream on, Last frame_cnt 0x3
+[  297.201500] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  297.206864] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  297.212985] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  297.213020] CAM_INFO: CAM-SENSOR: cam_sensor_wait_stream_off: 199 [CNT_DBG] sensor 0x2000 : Stream off, Last frame_cnt 0x0
+[  297.214140] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2261 10:24:46.979 CAM_STOP_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  297.214485] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 2068 CAM_STOP_PHYDEV: CSIPHY_IDX: 1, Device_slot: 0, Datarate: 1408000000, Settletime: 5600000000
+[  297.214498] CAM_INFO: CAM-FLASH: cam_flash_driver_cmd: 182 CAM_STOP_DEV ENTER for dev_hdl: 0xdb0108
+[  297.214610] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:5 name:IPP] cnt: 3
+[  297.214613] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:1 name:RDI_1] cnt: 2
+[  297.214615] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:0 name:RDI_0] cnt: 1
+[  297.214617] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:6 name:PPP] cnt: 0
+[  297.214625] CAM_INFO: CAM-ISP: cam_ife_mgr_release_hw: 6931 10:24:46.979 Release HW success ctx id: 1
+[  297.224175] CAM_INFO: CAM-ICP: cam_icp_mgr_release_hw: 5775 Release done for ctx_id 1
+[  297.226421] CAM_INFO: CAM-ICP: cam_icp_mgr_release_hw: 5775 Release done for ctx_id 0
+[  297.336298] CAM_INFO: CAM-CTXT: cam_context_allocate_mem_hw_entries: 85 cam-icp[2] num: max_hw 20 in_map 20 out_map 20 req 40
+[  297.342063] CAM_INFO: CAM-CTXT: cam_context_allocate_mem_hw_entries: 85 cam-icp[3] num: max_hw 20 in_map 20 out_map 20 req 40
+[  297.352283] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2299 CSID:2 Rx lane param: cfg:12816 type:0 num:4 res_type:16386 res_id: 5
+[  297.352293] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 1 res_id: 1
+[  297.352323] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 2 res_id: 0
+[  297.352328] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 3 res_id: 6
+[  297.352347] CAM_INFO: CAM-ISP: cam_ife_hw_mgr_print_acquire_info: 1325 10:24:47.117 Acquired Single IFE[2] with [13 pix] [1 pd] [2 rdi] ports for ctx:2
+[  297.352361] CAM_INFO: CAM-ISP: __cam_isp_ctx_acquire_hw_v2: 6327 Acquire success on session_hdl 0x300200 dev_hdl 13173002 ctx_type 3 ctx_id 2 link 0x82010d
+[  297.359218] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  297.359226] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  297.359228] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  297.359231] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  297.359233] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  297.361303] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:INCREASE bw_vote:5646736620 req_id:298
+[  297.362805] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 2356 CAM_START_PHYDEV: CSIPHY_IDX: 1, Device_slot: 0, cp_mode: 0, Datarate: 1408000000, Settletime: 5600000000
+[  297.362927] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2202 10:24:47.128 CAM_START_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  297.362940] CAM_INFO: CAM-FLASH: cam_flash_driver_cmd: 167 CAM_START_DEV for dev_hdl: 0xdb0108
+[  297.385384] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: IPP
+[  297.385408] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: RDI_1
+[  297.385506] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: RDI_0
+[  297.385516] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: PPP
+[  297.427093] CAM_WARN: CAM-ISP: __cam_isp_ctx_reg_upd_in_epoch_bubble_state: 2450 ctx_id:2 Unexpected reg update in activated Substate[EPOCH] for frame_id:0
+[  297.427146] CAM_INFO: CAM-ISP: __cam_isp_ctx_sof_in_epoch: 2923 First SOF in EPCR ctx:2 frame_id:1 next substate EPOCH
+[  297.692710] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:5460114015 req_id:304
+[  297.726149] CAM_INFO: CAM-CRM: cam_req_mgr_process_flush_req: 2823 Last request id to flush is 308
+[  297.726323] CAM_INFO: CAM-ISP: __cam_isp_ctx_flush_req_in_top_state: 4583 Last request id to flush is 308, ctx_id:2
+[  297.726603] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:0 req_id:-1
+[  297.726629] CAM_INFO: CAM-ISP: __cam_isp_ctx_flush_req_in_top_state: 4600 Stop HW complete. Reset HW next.
+[  297.732883] CAM_INFO: CAM-CRM: cam_req_mgr_process_flush_req: 2823 Last request id to flush is 308
+[  298.099779] (virq:irq_count)- GICv3:IPI(1):1078369 GICv3:ufshcd(31):359405 GICv3:IPI(6):359402 GICv3:IPI(2):296059 GICv3:arch_timer(11):252435 GICv3:apps_rsc(36):24672 GICv3:i2c_geni(57):22709 GICv3:msm_drm(230):19886 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):11039 
+[  299.622824] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  299.622891] CAM_INFO: CAM-SENSOR: cam_sensor_wait_stream_on: 168 [CNT_DBG] sensor 0x2000 : Stream on, Last frame_cnt 0x3
+[  299.625136] CAM_INFO: CAM-CCI: cam_cci_irq: 121 ##### irq_status0 stauts:0x1000, m1 rd done:0x1000
+[  299.625165] CAM_INFO: CAM-SENSOR: cam_sensor_wait_stream_off: 199 [CNT_DBG] sensor 0x2000 : Stream off, Last frame_cnt 0x0
+[  299.626194] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2261 10:24:49.391 CAM_STOP_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  299.626476] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 2068 CAM_STOP_PHYDEV: CSIPHY_IDX: 1, Device_slot: 0, Datarate: 1408000000, Settletime: 5600000000
+[  299.626488] CAM_INFO: CAM-FLASH: cam_flash_driver_cmd: 182 CAM_STOP_DEV ENTER for dev_hdl: 0xdb0108
+[  299.626566] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:5 name:IPP] cnt: 3
+[  299.626568] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:1 name:RDI_1] cnt: 2
+[  299.626570] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:0 name:RDI_0] cnt: 1
+[  299.626572] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_release: 2593 CSID:2 res type :3 Resource [id:6 name:PPP] cnt: 0
+[  299.626577] CAM_INFO: CAM-ISP: cam_ife_mgr_release_hw: 6931 10:24:49.391 Release HW success ctx id: 2
+[  299.633202] CAM_INFO: CAM-ICP: cam_icp_mgr_release_hw: 5775 Release done for ctx_id 1
+[  299.635461] CAM_INFO: CAM-ICP: cam_icp_mgr_release_hw: 5775 Release done for ctx_id 0
+[  299.704037] CAM_INFO: CAM-CTXT: cam_context_allocate_mem_hw_entries: 85 cam-icp[4] num: max_hw 20 in_map 20 out_map 20 req 40
+[  299.704615] CAM_INFO: CAM-CTXT: cam_context_allocate_mem_hw_entries: 85 cam-icp[5] num: max_hw 20 in_map 20 out_map 20 req 40
+[  299.705150] CAM_INFO: CAM-CTXT: cam_context_allocate_mem_hw_entries: 85 cam-icp[6] num: max_hw 20 in_map 20 out_map 20 req 40
+[  299.736693] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2299 CSID:2 Rx lane param: cfg:12816 type:0 num:4 res_type:16386 res_id: 5
+[  299.736717] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 1 res_id: 1
+[  299.736771] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 2 res_id: 0
+[  299.736781] CAM_INFO: CAM-ISP: cam_ife_csid_hw_ver2_config_rx: 2253 CSID 2 Rx already reserved cnt 3 res_id: 6
+[  299.736814] CAM_INFO: CAM-ISP: cam_ife_hw_mgr_print_acquire_info: 1325 10:24:49.501 Acquired Single IFE[2] with [13 pix] [1 pd] [2 rdi] ports for ctx:3
+[  299.736842] CAM_INFO: CAM-ISP: __cam_isp_ctx_acquire_hw_v2: 6327 Acquire success on session_hdl 0x300200 dev_hdl 721158 ctx_type 3 ctx_id 3 link 0xb0010d
+[  299.751046] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  299.751057] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  299.751064] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  299.751071] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  299.751078] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_set_debug: 127 debug_info_rx: 0x0
+[  299.753220] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:INCREASE bw_vote:6142739025 req_id:309
+[  299.755307] CAM_INFO: CAM-CSIPHY: cam_csiphy_core_cfg: 2356 CAM_START_PHYDEV: CSIPHY_IDX: 1, Device_slot: 0, cp_mode: 0, Datarate: 1408000000, Settletime: 5600000000
+[  299.755451] CAM_INFO: CAM-SENSOR: cam_sensor_driver_cmd: 2202 10:24:49.520 CAM_START_DEV Success for hi1337 sensor_id:0x2000,sensor_slave_addr:0x42
+[  299.755467] CAM_INFO: CAM-FLASH: cam_flash_driver_cmd: 167 CAM_START_DEV for dev_hdl: 0xdb0108
+[  299.777877] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: IPP
+[  299.777898] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: RDI_1
+[  299.777999] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: RDI_0
+[  299.778009] CAM_INFO: CAM-ISP: cam_ife_csid_ver2_discard_sof_top_half: 474 CSID: 2 status: 0x1000 for res: PPP
+[  299.811275] CAM_WARN: CAM-ISP: __cam_isp_ctx_reg_upd_in_epoch_bubble_state: 2450 ctx_id:3 Unexpected reg update in activated Substate[EPOCH] for frame_id:0
+[  299.811348] CAM_INFO: CAM-ISP: __cam_isp_ctx_sof_in_epoch: 2923 First SOF in EPCR ctx:3 frame_id:1 next substate EPOCH
+[  300.026680] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:2298322820 req_id:315
+[  300.293277] CAM_INFO: CAM-PERF: cam_vfe_top_set_axi_bw_vote: 36 VFE:2 Sending final BW to cpas bw_state:DECREASE bw_vote:459664564 req_id:323
+[  307.701166] (virq:irq_count)- GICv3:IPI(1):1129664 GICv3:IPI(6):366993 GICv3:ufshcd(31):360663 GICv3:IPI(2):298425 GICv3:arch_timer(11):264960 GICv3:apps_rsc(36):25345 GICv3:i2c_geni(57):22724 GICv3:msm_drm(230):20805 GICv3:c263000.thermal-sensor(224):12646 GICv3:kgsl_3d0_irq(220):11989 
+[  313.686333] !@Sync: 11 heap(MB): 61 / 103 FD: 1029 [2025-04-15 06:25:03.450] softdog disabled
+[  314.945138] max77705_fg_get_scaled_capacity : capacity_max (1000) scaled capacity(100.0), raw_soc(100.0)
+[  315.141900] sec_bat_monitor_work: Status(Full), mode(None), Health(Good), Cable(PDIC_APDO, PDIC_APDO, 0, 1), rp(3), HV(PDIC_FIXED), flash(0), mst(0), lcd(1), slate(0), store(0), siop_level(100), sleep_mode(0), Cycle(23, 0)
