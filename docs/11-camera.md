@@ -128,6 +128,12 @@ ops. With it, five consecutive sessions on VFE0 and VFE1 stream at 30 fps
 and the RCG CFG words read 0 after each session. Stock never hit this
 because its 5.10 clock framework parks RCGs on disable.
 
+![The operator, from the rear ultrawide, sixth session since boot](media/camera-uw-first-portrait.jpg)
+
+*The sixth session of that boot: the operator at the desk, taken through
+the stack on the day it came together. Default exposure, so dark; the
+controls exist and libcamera is where they get driven.*
+
 Two lessons carried into the invariants. Kernel module changes need the
 kernel apk installed on the rootfs; boot.img alone does not carry them.
 Skipping a clock in a bisect can hang the SoC when a register in that
