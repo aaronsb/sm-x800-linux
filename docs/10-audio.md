@@ -103,13 +103,14 @@ played on mainline was, at the owner's request, Rick Astley.
   suspend: after a hibernate cycle the driver trusts its cached PLL config
   while the part came back with it cleared, and stays silent.
 
-## Microphones: wired, silent, and what is known
+## Microphones: wired, silent for months, powered from L12C
 
 The capture side is described and probes: three DMIC pairs on LPI gpio6/7,
 8/9 and 12/13 (stock `cdc-dmic01/23/45`, mainline functions `dmic1..3`),
 the VA macro enabled with those pin states, and an "Internal DMIC Capture"
 link from `VA_CODEC_DMA_TX_0` to `<&vamacro 0>`. `arecord -D hw:0,2`
-streams, and every recording is exact digital zeros.
+streamed exact digital zeros until 2026-09-21, when declaring L12C
+always-on brought all three microphones up.
 
 What was established, in order:
 
@@ -165,13 +166,28 @@ What was established, in order:
   runs the TX macro from TX_CORE_MCLK at 19.2 MHz, the same PRM clock
   mainline's VA macro holds.
 
-What would settle it: the mic supply net from the schematic or a scope on
-it, or a stock session that stops the SLPI and records, which says whether
-the sensor hub is involved at all. Stock's VA macro node carries no `micb`
-supply, unlike the Tab S9 Ultra's, and neither the stock DT, the vendor
-init scripts, nor the mixer paths name anything that powers or gates the
-microphones. Whatever enables them is not a PMIC rail or a GPIO the AP
-drives. Issue #7 holds the measurements.
+- A second rooted stock session (`device-facts/stock-runtime/2026-09-21/`)
+  ruled the sensor hub out: with the SLPI remoteproc stopped, the camera
+  app still records sound. During that recording all four pads 171 to
+  174 toggle, L2C and L13C drop a use count when the SLPI stops (they
+  are sensor rails), and no PMIC rail or GPIO changes for recording.
+  Stock captures `TX DMIC MUX0 = DMIC3`, `TX DMIC MUX1 = DMIC1`.
+- `tools/padfreq.c` samples one pad at about 1 MS/s. On the clock pad it
+  counts 0.75 transitions per read at a 0.999 µs period, which fits a
+  2.4 MHz square wave and nothing slower; the DMIC clock rate was right.
+- L7B (2.504 V, UFS VCC on stock, disabled on mainline) always-on: data
+  pads flat. Reverted.
+- L12C always-on: pads 172 and 174 toggle with their clocks and the
+  capture carries the room. L12C is stock's only `regulator-always-on`
+  LDO. Issue #7 had argued that the bootloader's vote keeps it on under
+  mainline; the pad says the rail was off until the DTS declared it.
+- Mic map, one `VA DMIC MUXn` input at a time: DMIC0 empty, DMIC1
+  (bottom), DMIC2 and DMIC3 (back) carry microphones. The UCM `Mic`
+  device captures DMIC1/DMIC3, stock's stereo pair.
+
+The DTS declares `vreg_l12c_1p8` always-on and names it as the VA macro's
+`vdd-micb`; the supply widget is unrouted in 7.2, so the flag does the
+work. Issue #7 holds the measurements.
 
 Speaker-protection firmware for the follow-up sits in the vendor
 partition of the super dump: `/vendor/firmware/cs35l45-dsp1-spk-prot.wmfw`,
