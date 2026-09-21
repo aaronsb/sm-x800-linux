@@ -20,6 +20,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/leds/common.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
 
@@ -809,6 +810,29 @@
  *     pins = "gpio6"; function = "normal";
  *     input-enable; bias-pull-up; power-source = <1>;
  */
+/*
+ * Rear flash LED: the PM8350C flash module (issue #26). Stock binds the
+ * rear light to flash_0 + flash_1 (torch_0 + torch_1, switch_2) and lights
+ * both channels from one write, 75 mA each for torch; channels 3 and 4
+ * have no consumer. Limits from the stock DT: 500 mA torch and 1500 mA
+ * flash per channel, 1280 ms flash duration. Mainline strobes from
+ * software; stock's hw-strobe on PM8350C GPIO 1 is unused. Two sources
+ * share led-max-microamp, so 500 mA here is 250 mA per channel at full
+ * torch brightness.
+ */
+&pm8350c_flash {
+	status = "okay";
+
+	led-0 {
+		function = LED_FUNCTION_FLASH;
+		color = <LED_COLOR_ID_WHITE>;
+		led-sources = <1>, <2>;
+		led-max-microamp = <500000>;
+		flash-max-microamp = <1500000>;
+		flash-max-timeout-us = <1280000>;
+	};
+};
+
 &pm8350_gpios {
 	vol_up_default: vol-up-default-state {
 		pins = "gpio6";

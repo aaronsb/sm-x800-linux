@@ -50,6 +50,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Plasma Desktop 6 (KWin Wayland) | ✅ working — full KDE 6.7 desktop, KWin composited on the Adreno, Plasma Login Manager autostart; one command on a fresh install: `sudo gts8pwifi-setup plasma`. Polish gaps: tear bands under fast motion (panel idles at ~24 Hz LFD), no runtime 120 Hz switching yet |
 | Login experience | ✅ quiet boot (`loglevel=4`), generated `/etc/issue` banner with live IP (agetty needs `--issue-file` on Alpine), UTF-8 locale, keyboard autorepeat (kernel r42) |
 | Audio | ✅ working — four CS35L45 amps on Primary MI2S from the ADSP (AudioReach), stereo playback through PulseAudio/UCM; volume capped (no speaker-protection DSP yet). Three DMICs through the VA macro, powered from L12C (found 2026-09-21 with a pad probe); stereo capture of the bottom and back mics through UCM. Story: docs/10-audio.md |
+| Rear flash LED | ✅ working — PM8350C flash module, two channels as one white LED at `/sys/class/leds/white:flash` (kernel r12). Torch: `brightness` 0..255 for 0..500 mA total, stock's level is 77 (150 mA). Flash: `flash_brightness` up to 1.5 A, hardware timeout up to 1280 ms, fired with `flash_strobe`; the timer ends the pulse and `flash_fault` then reads `flash-timeout-exceeded`, which is the normal end of a strobe |
 | Sensors (incl. auto-rotate) | ❌ SLPI boots (stock image, 7.2-r8) but exposes nothing: the sensors wait for the registry stock feeds over QMI |
 
 ![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
