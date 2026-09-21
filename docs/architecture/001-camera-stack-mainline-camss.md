@@ -26,11 +26,13 @@ receive chain (CSIPHY, CSID, VFE) and delivers raw Bayer frames on V4L2
 video nodes through the VFE's RDI path; it does not drive the VFE's image
 processing pipeline. Sensors are ordinary V4L2 subdevice drivers, and
 libcamera supplies image processing in userspace for devices whose ISP has
-no kernel driver. SM8450 is not in CAMSS upstream: its blocks are
-csiphy-v2.1.0, csid680 and vfe680/vfe-lite680, one generation before the
-SM8550's 780 tables that mainline has. Samsung's GPL 5.10 kernel source
-for the SM-X800 carries the downstream driver for these blocks and serves
-as the register reference. The Hi847 has an ACPI-only driver in mainline;
+no kernel driver. SM8450 is not in CAMSS upstream. Its blocks are
+csiphy-v2.1.0, csid680 and vfe680/vfe-lite680. Mainline 7.2 already drives
+csid680 and vfe680 for the SA8775P (camss-csid-680.c, camss-vfe-680.c), so
+the SM8450 work is a SoC resource table, a CAMSS_8450 version and the
+csiphy-v2.1.0 lane setup, checked against the downstream source. Samsung's
+GPL 5.10 kernel source for the SM-X800 carries the downstream driver for
+these blocks and serves as the register reference. The Hi847 has an ACPI-only driver in mainline;
 the Hi1337 and DW9808 have out-of-tree drivers in the Tab S9 ports
 (nacht20-de/gts9wifi-fedora, `kernel/files/hi1337_gts9u.c` and
 `dw9808_vcm.c`), which run the same sensors on the same SoC family.
@@ -100,9 +102,9 @@ delivering a frame is the milestone that graduates it.
 
 ### Negative
 
-- The SM8450 CAMSS tables have to be written from the downstream source by
-  this project; there is no upstream work to build on, and the C-PHY
-  series in flight may change the driver underneath.
+- The SM8450 CAMSS resource table and csiphy-v2.1.0 setup have to be
+  written from the downstream source by this project, and the C-PHY series
+  in flight may change the driver underneath.
 - Image quality and CPU cost are set by a software ISP. The VFE's
   processing hardware and the ICP go unused, so stock's image quality is
   not a target and battery cost per frame is higher.
