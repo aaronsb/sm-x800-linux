@@ -1,0 +1,31 @@
+/data/vendor/camera:
+total 81
+drwxrwx---  3 camera       system  3452 1970-01-19 10:04 .
+drwxrwx--x 56 root         root    3452 1970-01-19 10:04 ..
+-rw-------  1 cameraserver audio  23044 1970-01-19 10:04 ChiNodeGPU.cl.bin.B8097883
+-rw-rw-r--  1 cameraserver audio  14234 1970-01-19 10:04 camera_config_dump.bin
+-rw-------  1 cameraserver audio    541 1970-01-19 10:04 customInfo_hi1337_otp.bin
+-rw-------  1 cameraserver audio    541 1970-01-19 10:04 customInfo_hi847_uw_otp.bin
+-rw-------  1 cameraserver audio    628 1970-01-19 10:04 customInfo_p24c256f_hi1337.bin
+-rw-------  1 cameraserver audio   2016 1970-01-19 10:04 eeprom_hi1337_otp.bin
+-rw-------  1 cameraserver audio   2080 1970-01-19 10:04 eeprom_hi847_uw_otp.bin
+-rw-------  1 cameraserver audio  11024 1970-01-19 10:04 eeprom_p24c256f_hi1337.bin
+drwxrwx---  4 camera       system  3452 1970-01-19 10:04 logdump
+
+/data/vendor/camera/logdump:
+total 12
+drwxrwx--- 4 camera       system 3452 1970-01-19 10:04 .
+drwxrwx--- 3 camera       system 3452 1970-01-19 10:04 ..
+drwxrwxr-x 2 cameraserver audio  3452 1970-01-19 10:04 coredump
+drwxrwxr-x 2 cameraserver audio  3452 1970-01-19 10:04 metadata
+
+/data/vendor/camera/logdump/coredump:
+total 6
+drwxrwxr-x 2 cameraserver audio  3452 1970-01-19 10:04 .
+drwxrwx--- 4 camera       system 3452 1970-01-19 10:04 ..
+
+/data/vendor/camera/logdump/metadata:
+total 154
+drwxrwxr-x 2 cameraserver audio    3452 1970-01-19 10:04 .
+drwxrwx--- 4 camera       system   3452 1970-01-19 10:04 ..
+-rw-rw-r-- 1 cameraserver audio  150507 1970-01-19 10:04 metadatatable.txt

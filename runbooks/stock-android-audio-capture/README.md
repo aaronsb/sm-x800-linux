@@ -2,7 +2,7 @@
 
 Device: SM-X800 (gts8pwifi), SM8450. Host: Arch, `odin4`, `adb`, artifacts in `root-build/`.
 
-One flash round trip: pmOS off, rooted stock Android on, run `capture.sh`, pmOS back.
+One flash round trip: pmOS off, rooted stock Android on, run the snapshot scripts (`fastsnap.sh`, `camsnap.sh`, `tlmmsample.sh`, or the scripted `capture.sh`), pmOS back.
 The session answers two questions the mainline port cannot answer from its own side.
 
 1. What powers or gates the microphones. Which regulator, GPIO or clock changes when stock records.
@@ -39,7 +39,7 @@ Host:
 | `root-build/combined.img` | pmOS rootfs GPT image (built 2026-07-20) |
 | `root-build/pmos_userdata_sparse.tar` | sparse form of the above, what `make flash-all` writes |
 
-- KernelSU manager APK. `docs/01` step 7 names tiann KernelSU v1.0.5. Fetch it with `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`. The pmOS user home may also hold a copy (see the backup list).
+- KernelSU manager APK. `docs/01` step 7 names tiann KernelSU v1.0.5. Fetch it with `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`. It installs with `adb install` (step 4). The pmOS user home may also hold a copy (see the backup list).
 
 Device:
 
@@ -54,7 +54,7 @@ Knowledge:
 
 ## Irreversible points
 
-- **Stock Android cannot use the pmOS userdata.** userdata holds the combined pmOS GPT image (`docs/05` §8b). Stock expects an f2fs `/data`. Whether stock formats it on first boot or stops in recovery asking for a factory reset: not found in repo, confirm on device. Either way the pmOS rootfs is gone.
+- **Stock Android cannot use the pmOS userdata.** userdata holds the combined pmOS GPT image (`docs/05` §8b). Stock expects an f2fs `/data`. Stock does not format it on its own: it stops in recovery with a corrupt-data prompt, and the factory reset it offers is the userdata wipe (confirmed 2026-09-21). Either way the pmOS rootfs is gone.
 - **Do not let stock Android OTA.** The unit runs One UI 7, `X800XXU9DYDC` (device-facts). A newer bootloader raises anti-rollback and can lock out the current boot images. Skip Wi-Fi in the setup wizard, or decline every update prompt.
 - **Never flash `xbl`, `abl`, `aop`, `tz`, `pmic`.** Only `boot`, `vendor_boot`, `vbmeta`, `userdata` are written here. Download mode is the only recovery floor.
 
@@ -120,7 +120,7 @@ The tar pairs the KernelSU boot with the stock vendor_boot and the verity-off vb
 
 Then Vol-Down + Power to leave download mode. Stock boots.
 
-If stock stops in recovery about corrupt data, take the factory reset. That is the userdata wipe from "Irreversible points".
+Stock stops in recovery with a corrupt-data prompt. Take the factory reset. That is the userdata wipe from "Irreversible points". Stock then boots into the setup wizard.
 
 Unrooted alternative: `make restore-android`, then a second download-mode entry and `odin4 -a root-build/kernelsu_boot.tar`. Two sessions, same result.
 
@@ -129,25 +129,37 @@ Unrooted alternative: `make restore-android`, then a second download-mode entry 
 1. Setup wizard: skip Wi-Fi and accounts. Decline updates.
 2. Settings, About tablet, Software information, tap Build number seven times. Developer options, enable USB debugging.
 3. Plug in, accept the RSA prompt on the tablet. `adb devices` shows `device`.
-4. `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`, then `adb install KernelSU_*.apk`. Open it once. Grant root to Shell (docs/01 step 7).
+4. `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`, then `adb install KernelSU_*.apk`. Open the manager once. In its Superuser tab, find Shell (`com.android.shell`) and grant root (docs/01 step 7).
 5. Check: `adb shell su -c id` prints `uid=0`. `adb root` will not work on a production build. The script tries both.
 
 ## Step 5: run the capture
 
-Two paths. The manual fast-state path is what produced `device-facts/stock-runtime/2026-09-18/`. The `capture.sh` path is the scripted version and has two constraints learned on the first run, listed below.
+Two paths. The manual fast-state path is what produced `device-facts/stock-runtime/2026-09-18/` and `2026-09-21/`. The `capture.sh` path is the scripted version and has two constraints learned on the first run, listed below.
 
-### 5a. Manual fast-state procedure (used 2026-09-18)
+### 5a. Manual fast-state procedure (used 2026-09-18 and 2026-09-21)
 
-`fastsnap.sh` reads regulator, GPIO, pinctrl, clock, the audio regmaps, `tinymix` and `/proc/interrupts` in a few seconds. It skips the four CS35L45 regmaps, which are the slow part of `capture.sh`.
+Three on-device scripts, all `#!/system/bin/sh`, all run as root through `su -c`:
+
+| Script | What it does | Output |
+|---|---|---|
+| `fastsnap.sh NAME` | regulator, GPIO, pinctrl, clock, the audio regmaps, `tinymix`, `/proc/interrupts`, audio and media processes. A few seconds. Skips the four CS35L45 regmaps, which are the slow part of `capture.sh`. | `/data/local/tmp/audiocap/hal/NAME/` |
+| `camsnap.sh NAME [torch]` | Samsung camera sysfs (`/sys/class/camera`), LED class, `dumpsys media.camera`, vendor camera file lists, `/data/vendor/camera`, camera getprops, camera dmesg lines, I2C devices, remoteproc states, audio, camera, media and sensor processes. With `torch` it writes `1` to `/sys/class/camera/flash/rear_flash` before the reads and `0` after, and logs the writes to `torch.txt`. Everything else is a read. | `/data/local/tmp/audiocap/cam/NAME/` |
+| `tlmmsample.sh [SECONDS]` | samples TLMM `gpio171` to `gpio174` (the TLMM view of LPI `gpio6` to `gpio9`, the DMIC pads) from `/sys/kernel/debug/gpio` for SECONDS (default 5) and prints per pad the low and high counts, the transitions and the rounds. | stdout, save it by hand |
+
+`fastsnap.sh` and `camsnap.sh` take a state name and are run once per state. `tlmmsample.sh` is run while a state holds.
 
 ```sh
 cd runbooks/stock-android-audio-capture
-adb push fastsnap.sh /data/local/tmp/
+adb push fastsnap.sh camsnap.sh tlmmsample.sh /data/local/tmp/
 adb shell su -c 'sh /data/local/tmp/fastsnap.sh 00-idle'
+adb shell su -c 'sh /data/local/tmp/camsnap.sh 00-idle'
 # put the tablet in the next state, then:
 adb shell su -c 'sh /data/local/tmp/fastsnap.sh 01-video-recording'
 # ... one call per state ...
+adb shell su -c 'sh /data/local/tmp/camsnap.sh 06-torch torch'
+adb shell su -c 'sh /data/local/tmp/tlmmsample.sh 8' | tee out/tlmmsample-recording.txt   # while recording
 adb pull /data/local/tmp/audiocap/hal ./out/hal
+adb pull /data/local/tmp/audiocap/cam ./out/cam
 ```
 
 States used on 2026-09-18, in order:
@@ -160,6 +172,18 @@ States used on 2026-09-18, in order:
 | `03-back-camera` | back camera preview | camera app, switch sensor |
 | `04-idle-after` | camera app closed | none |
 | `05-playback` | Gallery playing the recorded clip | open the clip from step 01 |
+
+States added on 2026-09-21 (`device-facts/stock-runtime/2026-09-21/`). The numbering continues so the two sessions do not collide:
+
+| Name | State | How |
+|---|---|---|
+| `00-idle` | home screen, SLPI running | `fastsnap.sh` and `camsnap.sh` |
+| `06-torch` | rear torch on | `camsnap.sh 06-torch torch` |
+| `07-slpi-off-recording` | SLPI stopped, camera app recording video | `echo stop > /sys/class/remoteproc/remoteproc3/state` (about 13 s, check `cat .../state` reads `offline`), then camera app, video mode, Record. `fastsnap.sh`, `camsnap.sh` and `tlmmsample.sh 8` while it records. |
+
+Stopping the SLPI is reversible with `echo start` to the same file, or a reboot. It takes the sensors (accelerometer, gyro, magnetometer, light) with it while stopped.
+
+Keep the ffprobe or `ffmpeg -af volumedetect` summary of any clip recorded, not the clip. The 2026-09-21 clip was 55 MB.
 
 For `05-playback` also dump one or more amps by hand while the clip plays. Each dump is about 400 KB and takes over a minute:
 
@@ -213,13 +237,16 @@ The regmap filter matches CS35L45 instances (`*-0030` to `*-0033` on whatever bu
 ```sh
 D=device-facts/stock-runtime/$(date +%F)
 mkdir -p "$D"
-cp -r runbooks/stock-android-audio-capture/out/hal/* "$D/"      # fast-state set
+cp -r runbooks/stock-android-audio-capture/out/hal "$D/"        # fastsnap.sh set
+cp -r runbooks/stock-android-audio-capture/out/cam "$D/"        # camsnap.sh set, if any
+cp runbooks/stock-android-audio-capture/out/tlmmsample-*.txt "$D/"  # tlmmsample.sh output, if any
 cp -r runbooks/stock-android-audio-capture/out/<stamp>/* "$D/"  # capture.sh set, if any
 ```
 
 Before committing:
 
-- Scrub the device serial everywhere: `grep -rl <serial> "$D" | xargs sed -i 's/<serial>/SERIAL-REDACTED/g'`. On 2026-09-18 it appeared only in `usb/host-lsusb-v.txt` (`iSerial`). `getprop.txt` and `dmesg.txt` also carry it when `capture.sh` is used. The repo already keeps `device-facts/getprop-full.txt` out of git for that reason.
+- Scrub the camera module IDs from `cam/*/sys-class-camera.txt`: the `*_moduleid` attributes and the `CAMI*_ID` fields in `*_hwparam`. Replace each with `MODULEID-REDACTED`. That file holds raw bytes from the `sensorid_exif` attributes, so `grep` treats it as binary and prints nothing without `-a`: `grep -rn -a -o -E '[HM]VOL[A-Z0-9]{9,11}' "$D"`. On 2026-09-21 there were six per file, three module IDs and their three hwparam copies.
+- Scrub the device serial everywhere, also with `grep -a`: `grep -rla <serial> "$D" | xargs sed -i 's/<serial>/SERIAL-REDACTED/g'`. On 2026-09-18 it appeared only in `usb/host-lsusb-v.txt` (`iSerial`). `getprop.txt` and `dmesg.txt` also carry it when `capture.sh` is used. The repo already keeps `device-facts/getprop-full.txt` out of git for that reason.
 - Drop files over 1 MB unless one is the point of the capture. A CS35L45 register dump is about 400 KB and stays.
 - The vendor `*.xml` copies are Samsung's files. The repo's rule is that Samsung's bytes stay local. Keep the file names and the `sha256` list in git, and keep the copies out.
 - Write `$D/README.md`: what was captured, how, the findings with file and line evidence, and what the set does not show. `device-facts/stock-runtime/2026-09-18/README.md` is the template.
@@ -285,7 +312,9 @@ What is lost regardless: everything on the pmOS rootfs that step 1 did not copy.
 
 If the HAL-routed recording pass shows no regulator, GPIO or clock change and `device/notes.txt` shows debugfs was present, the mic supply is not visible to the AP. Candidates are a fixed regulator, a PMIC-internal path, or something the ADSP or the sensor hub drives. Software state cannot go further.
 
-Next step is a scope on LPI `gpio6` (DMIC clock) and `gpio7` (data) during `arecord` on mainline, then the same pins during a stock recording. The device is glued shut. `docs/10-audio.md` calls this the last resort. Open a note on issue #7 with the capture path and the null result before starting it.
+Before the scope, sample the pads in software. TLMM `gpio171` to `gpio174` are the TLMM view of LPI `gpio6` to `gpio9`. Stock has no `/dev/mem` (`CONFIG_DEVMEM` unset), so the GPIO registers cannot be mapped from user space; `tlmmsample.sh` reads `/sys/kernel/debug/gpio` in a loop instead, about 21 rounds per second. That is enough to tell a toggling pad from a flat one, not enough to measure a clock. On 2026-09-21 all four pads toggled during a stock recording and were flat low at idle (`device-facts/stock-runtime/2026-09-21/tlmmsample-recording.txt`). Run the same on mainline for the comparison (issue #7, comments of 2026-09-21).
+
+Next step after that is a scope on LPI `gpio6` (DMIC clock) and `gpio7` (data) during `arecord` on mainline, then the same pins during a stock recording. The device is glued shut. `docs/10-audio.md` calls this the last resort. Open a note on issue #7 with the capture path and the null result before starting it.
 
 If debugfs was not available on the stock kernel (`notes.txt` says so), the sysfs fallbacks in `regulators/sysfs-class-regulator.tsv` still show regulator state, but GPIO, pinctrl, clock and regmap data are absent. Then the session did not answer the question. Options: a userdebug or engineering kernel for `X800XXU9DYDC`, or the scope.
 
@@ -299,7 +328,14 @@ Confirmed on 2026-09-18 (`device-facts/stock-runtime/2026-09-18/`):
 - Stock regmap directory names: the amps are `18-0030` to `18-0033` (I2C bus 18). The codec is one regmap, `soc:spf_core_platform:lpass-cdc`. No separate `*macro*` regmap exists.
 - KernelSU manager APK: `gh release download v1.0.5 -R tiann/KernelSU -p 'KernelSU_*.apk'`.
 
+Confirmed on 2026-09-21 (`device-facts/stock-runtime/2026-09-21/`):
+
+- Stock does not format the pmOS userdata. It stops in recovery with a corrupt-data prompt. The factory reset it offers is the userdata wipe.
+- The KernelSU manager v1.0.5 APK installs with `adb install`. Root for `adb shell su` is granted to Shell (`com.android.shell`) from the manager's Superuser tab.
+- Stock has no `/dev/mem`; `CONFIG_DEVMEM` is unset. Pad-level sampling on stock is the debugfs loop in `tlmmsample.sh`, about 21 rounds per second.
+- `/sys/class/remoteproc/remoteproc3` is the SLPI. `echo stop` to its `state` works from a root shell and the microphones keep recording with it offline.
+- `/sys/class/camera/flash/rear_flash` drives both torch LEDs (`led:torch_0` and `led:torch_1`, 75 of 500) from one write. `rear_torch_flash` does not exist.
+
 Still not confirmed:
 
-- Whether stock formats userdata itself or stops in recovery.
 - Whether `tinyplay` ships. It was not tried; playback used the Gallery app.

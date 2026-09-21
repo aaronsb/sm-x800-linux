@@ -1,0 +1,19 @@
+  816 [uaudio_svc]                [uaudio_svc]
+  964 [sdm_dp_audio_no]           [sdm_dp_audio_no]
+ 1420 android.hardware.audio.service_64 android.hardware.audio.service_64
+ 1448 samsung.software.media.c2@1.0-service samsung.software.media.c2@1.0-service
+ 1449 secaudiohalaidl             secaudiohalaidl
+ 1483 media.hwcodec               media.hwcodec /vendor.qti.media.c2@1.0-service
+ 1486 media.audio.qc.codec        media.audio.qc.codec .qti.media.c2audio@1.0-service
+ 1487 vendor.samsung.hardware.camera.provider@4.0-service_64 vendor.samsung.hardware.camera.provider@4.0-service_64
+ 1488 vendor.samsung.hardware.media.converter@1.0-service vendor.samsung.hardware.media.converter@1.0-service
+ 1533 audioserver                 audioserver
+ 1843 cameraserver                cameraserver
+ 1869 media.extractor             media.extractor aextractor
+ 1874 media.metrics               media.metrics diametrics
+ 1876 mediaserver32               mediaserver32
+ 1889 media.codec                 media.codec hw/android.hardware.media.omx@1.0-service
+ 1896 audioadsprpcd               audioadsprpcd audiopd
+ 1904 media.swcodec               media.swcodec oid.media.swcodec/bin/mediaswcodec
+ 4953 android.process.media       android.process.media
+ 4975 com.google.android.providers.media.module com.google.android.providers.media.module

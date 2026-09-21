@@ -1,0 +1,5 @@
+remoteproc0 188101c.remoteproc-spss running
+remoteproc1 3000000.remoteproc-adsp running
+remoteproc2 32300000.remoteproc-cdsp running
+remoteproc3 2400000.remoteproc-slpi running
+remoteproc4 4080000.remoteproc-mss running

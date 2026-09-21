@@ -1,0 +1,11 @@
+# sh /data/local/tmp/tlmmsample.sh 8  during camera-app video recording, SLPI offline
+# TLMM GPIO_IN_OUT level of the egpio pads 171-174 (TLMM view of LPI gpio6-9), ~21 rounds/s
+tlmm171: low=80 high=89 transitions=76 rounds=169
+tlmm172: low=78 high=91 transitions=84 rounds=169
+tlmm173: low=93 high=76 transitions=77 rounds=169
+tlmm174: low=96 high=73 transitions=80 rounds=169
+# idle baseline, 3 s:
+tlmm171: low=15 high=0 transitions=0 rounds=15
+tlmm172: low=15 high=0 transitions=0 rounds=15
+tlmm173: low=15 high=0 transitions=0 rounds=15
+tlmm174: low=15 high=0 transitions=0 rounds=15
