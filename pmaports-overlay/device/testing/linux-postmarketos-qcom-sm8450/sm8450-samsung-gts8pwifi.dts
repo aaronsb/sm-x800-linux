@@ -521,6 +521,22 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
+		/*
+		 * Microphone supply. Stock's only regulator-always-on LDO (1.8 V,
+		 * max 1.968 V, panel I/O in the stock DT's dsi-display nodes, no
+		 * kernel consumer at stock idle). Mainline never declared it and
+		 * the bootloader's vote did not carry into Linux: undeclared, both
+		 * DMIC data pads stayed flat; always-on, they toggle and capture
+		 * works (issue #7, 2026-09-21). Parent vdd-l1-l12 is vreg_bob.
+		 */
+		vreg_l12c_1p8: ldo12 {
+			regulator-name = "vreg_l12c_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1968000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-always-on;
+		};
+
 		/* WCN6855 rfa 1.9 V rail (stock vdd-wlan-rfa1) */
 		vreg_s1c_1p86: smps1 {
 			regulator-name = "vreg_s1c_1p86";
@@ -1523,13 +1539,17 @@
  * two pin states, the third is ours. Stock records through the TX macro at
  * 2.4 MHz (qcom,tx-dmic-sample-rate = 0x249f00) with the VA block's DMIC
  * clock registers; the VA path here uses the same TX core clock and the
- * same divider. vdd-micb is S10B 1.8 V as on the HDK.
+ * same divider.
  *
- * State 2026-09-21 (issue #7): the DMIC clock reaches the pad (TLMM 171,
- * the TLMM view of LPI gpio6, toggles during capture) and the data pad
- * (TLMM 172) never moves. Every rail stock holds on at idle, the grip LDO
- * enable, the sensor-hub pads and the sensor hub itself were tried. The
- * mic enable is not reachable from the AP side with what is known.
+ * The mics are powered from L12C (1.8 V), stock's only
+ * regulator-always-on LDO, declared always-on above. Found 2026-09-21
+ * (issue #7): the pad probe (tools/padfreq.c) showed both DMIC clocks at
+ * the pads (TLMM 171 and 173, the TLMM view of LPI gpio6 and gpio8) and
+ * both data pads (172, 174) flat until L12C came up. Three mics answer:
+ * DMIC1 (bottom), DMIC3 (back) and DMIC2; DMIC0 is empty. The UCM
+ * captures DMIC1/DMIC3, stock's stereo pair. vdd-micb names L12C as
+ * well; the VA macro's supply widget is not routed in 7.2, so the
+ * always-on flag does the work.
  */
 &lpass_tlmm {
 	dmic45_default: dmic45-default-state {
@@ -1552,7 +1572,7 @@
 &vamacro {
 	pinctrl-0 = <&dmic01_default>, <&dmic23_default>, <&dmic45_default>;
 	pinctrl-names = "default";
-	vdd-micb-supply = <&vreg_s10b_1p8>;
+	vdd-micb-supply = <&vreg_l12c_1p8>;
 	qcom,dmic-sample-rate = <2400000>;
 	status = "okay";
 };
