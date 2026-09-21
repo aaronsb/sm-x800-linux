@@ -1520,6 +1520,23 @@
 };
 
 /*
+ * Sensor hub (SLPI), issue #7 experiment. Stock runs it and a block of
+ * island pads (TLMM 184, 185, 188, 189, 202) reads high there and low here
+ * with nothing on the AP driving them. Every PMIC rail stock holds on is
+ * on here and the DMIC data pad stays flat, so whatever enables the mics
+ * is not visible from the AP. Firmware staged from apnhlos/image/slpi.*;
+ * carve-out is stock's (0x1700000), sm8450.dtsi's is 2 MiB larger.
+ */
+&remoteproc_slpi {
+	firmware-name = "qcom/sm8450/gts8pwifi/slpi.mdt";
+	status = "okay";
+};
+
+&slpi_mem {
+	reg = <0x0 0x88000000 0x0 0x1700000>;
+};
+
+/*
  * Samsung's ADSP image is 59 MiB of relocatable segments and its firmware
  * (and TrustZone's PAS checks) expect the stock carve-out, not the 33 MiB
  * region sm8450.dtsi reserves for the QRD/HDK image: with the dtsi value the
