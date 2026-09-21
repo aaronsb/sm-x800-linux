@@ -1,0 +1,384 @@
+media: i2c: hi847: add device tree support with regulators, reset and MCLK
+
+The mainline Hi847 driver is ACPI-only and lets ACPI power resources
+handle the sensor's rails, clock and reset. On the Galaxy Tab S8+ the
+Hi847 is the rear ultrawide sensor on CCI0 (7-bit 0x21) with externally
+switched LDOs, a reset line and MCLK1 from camcc, so it needs the same
+OF plumbing hi846.c has: compatible hynix,hi847, vddio/vdda/vddd
+regulators, optional reset-gpios and shutdown-gpios, and runtime PM
+power on/off around the clock.
+
+Power-up follows the stock CamX sequence for this module: rails on,
+5 ms, MCLK on at 19.2 MHz, 8 ms, reset released, 11 ms. Power-down
+reverses it. With no GPIOs and dummy regulators the ACPI path behaves
+as before. The clock helper does not set a rate on DT, so probe sets
+19.2 MHz and fails if the clock cannot deliver it.
+
+Binding Documentation/devicetree/bindings/media/i2c/hynix,hi847.yaml
+follows hynix,hi846.yaml with four data lanes. The driver's hardware
+check requires both 400 MHz and 200 MHz in link-frequencies.
+
+Register tables are untouched. Comparison against the stock module's
+CamX tables is recorded in issue #27 (stage 2 comment).
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/hynix,hi847.yaml b/Documentation/devicetree/bindings/media/i2c/hynix,hi847.yaml
+new file mode 100644
+index 000000000..04f36eecb
+--- /dev/null
++++ b/Documentation/devicetree/bindings/media/i2c/hynix,hi847.yaml
+@@ -0,0 +1,112 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/media/i2c/hynix,hi847.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: SK Hynix Hi-847 8M Pixel MIPI CSI-2 sensor
++
++maintainers:
++  - Aaron Bockelie <aaronsb@gmail.com>
++
++description: |-
++  The Hi-847 is a raw image sensor with a 4-lane MIPI CSI-2 image data
++  interface and CCI (I2C compatible) control bus. The output format
++  is raw Bayer. It is driven by a 19.2 MHz external clock.
++
++allOf:
++  - $ref: /schemas/media/video-interface-devices.yaml#
++
++properties:
++  compatible:
++    const: hynix,hi847
++
++  reg:
++    maxItems: 1
++
++  clocks:
++    items:
++      - description: Reference to the 19.2 MHz mclk clock.
++
++  reset-gpios:
++    description: Reference to the GPIO connected to the XSHUTDOWN pin. Active low.
++    maxItems: 1
++
++  shutdown-gpios:
++    description: Reference to the GPIO gating the sensor supplies. Active low.
++    maxItems: 1
++
++  vddio-supply:
++    description: Definition of the regulator used for the VDDIO power supply.
++
++  vdda-supply:
++    description: Definition of the regulator used for the VDDA power supply.
++
++  vddd-supply:
++    description: Definition of the regulator used for the VDDD power supply.
++
++  port:
++    $ref: /schemas/graph.yaml#/$defs/port-base
++    unevaluatedProperties: false
++
++    properties:
++      endpoint:
++        $ref: /schemas/media/video-interfaces.yaml#
++        unevaluatedProperties: false
++
++        properties:
++          data-lanes:
++            items:
++              - const: 1
++              - const: 2
++              - const: 3
++              - const: 4
++
++          link-frequencies: true
++
++        required:
++          - data-lanes
++          - link-frequencies
++
++required:
++  - compatible
++  - reg
++  - clocks
++  - vddio-supply
++  - vdda-supply
++  - vddd-supply
++  - port
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/gpio/gpio.h>
++
++    i2c {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        camera@21 {
++            compatible = "hynix,hi847";
++            reg = <0x21>;
++            clocks = <&camcc 42>;
++            vddio-supply = <&reg_camera_vddio>;
++            vdda-supply = <&reg_camera_vdda>;
++            vddd-supply = <&reg_camera_vddd>;
++            reset-gpios = <&tlmm 100 GPIO_ACTIVE_LOW>;
++            orientation = <0>;
++            rotation = <0>;
++
++            port {
++                endpoint {
++                    remote-endpoint = <&csiphy2_ep>;
++                    link-frequencies = /bits/ 64
++                        <400000000 200000000>;
++                    data-lanes = <1 2 3 4>;
++                };
++            };
++        };
++    };
++
++...
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 8014b9f82..bbb6ea863 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -12072,6 +12072,7 @@ HYNIX HI847 SENSOR DRIVER
+ M:	Sakari Ailus <sakari.ailus@linux.intel.com>
+ L:	linux-media@vger.kernel.org
+ S:	Maintained
++F:	Documentation/devicetree/bindings/media/i2c/hynix,hi847.yaml
+ F:	drivers/media/i2c/hi847.c
+ 
+ Hyper-V/Azure CORE AND DRIVERS
+diff --git a/drivers/media/i2c/hi847.c b/drivers/media/i2c/hi847.c
+index def01aa07..a9bb3d589 100644
+--- a/drivers/media/i2c/hi847.c
++++ b/drivers/media/i2c/hi847.c
+@@ -4,9 +4,11 @@
+ #include <linux/acpi.h>
+ #include <linux/clk.h>
+ #include <linux/delay.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+ #include <linux/module.h>
+ #include <linux/pm_runtime.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/unaligned.h>
+ 
+ #include <media/v4l2-ctrls.h>
+@@ -2167,9 +2169,20 @@ static const struct hi847_mode supported_modes[] = {
+ 	}
+ };
+ 
++static const char * const hi847_supply_names[] = {
++	"vddio", /* Digital I/O */
++	"vdda", /* Analog */
++	"vddd", /* Digital core */
++};
++
++#define HI847_NUM_SUPPLIES ARRAY_SIZE(hi847_supply_names)
++
+ struct hi847 {
+ 	struct device *dev;
+ 	struct clk *clk;
++	struct gpio_desc *reset_gpio;
++	struct gpio_desc *shutdown_gpio;
++	struct regulator_bulk_data supplies[HI847_NUM_SUPPLIES];
+ 
+ 	struct v4l2_subdev sd;
+ 	struct media_pad pad;
+@@ -2765,6 +2778,101 @@ static const struct v4l2_subdev_internal_ops hi847_internal_ops = {
+ 	.open = hi847_open,
+ };
+ 
++/*
++ * Power-up order and delays follow the module vendor's sequence:
++ * supplies, 5 ms, MCLK, 8 ms, reset release, 11 ms. On ACPI platforms the
++ * supplies are dummy regulators, the clock is a fixed-rate stub and the
++ * GPIOs are absent, so only the delays remain.
++ */
++static int hi847_power_on(struct hi847 *hi847)
++{
++	int ret;
++
++	ret = regulator_bulk_enable(HI847_NUM_SUPPLIES, hi847->supplies);
++	if (ret < 0)
++		return ret;
++
++	usleep_range(5000, 6000);
++
++	ret = clk_prepare_enable(hi847->clk);
++	if (ret < 0)
++		goto err_reg;
++
++	usleep_range(8000, 9000);
++
++	if (hi847->shutdown_gpio || hi847->reset_gpio) {
++		gpiod_set_value_cansleep(hi847->shutdown_gpio, 0);
++		gpiod_set_value_cansleep(hi847->reset_gpio, 0);
++		usleep_range(11000, 12000);
++	}
++
++	return 0;
++
++err_reg:
++	regulator_bulk_disable(HI847_NUM_SUPPLIES, hi847->supplies);
++
++	return ret;
++}
++
++static int hi847_power_off(struct hi847 *hi847)
++{
++	if (hi847->shutdown_gpio || hi847->reset_gpio) {
++		gpiod_set_value_cansleep(hi847->reset_gpio, 1);
++		gpiod_set_value_cansleep(hi847->shutdown_gpio, 1);
++		usleep_range(1000, 2000);
++	}
++
++	clk_disable_unprepare(hi847->clk);
++	usleep_range(1000, 2000);
++
++	return regulator_bulk_disable(HI847_NUM_SUPPLIES, hi847->supplies);
++}
++
++static int hi847_runtime_suspend(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct hi847 *hi847 = to_hi847(sd);
++
++	return hi847_power_off(hi847);
++}
++
++static int hi847_runtime_resume(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct hi847 *hi847 = to_hi847(sd);
++
++	return hi847_power_on(hi847);
++}
++
++static int hi847_get_power_resources(struct hi847 *hi847)
++{
++	struct device *dev = hi847->dev;
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < HI847_NUM_SUPPLIES; i++)
++		hi847->supplies[i].supply = hi847_supply_names[i];
++
++	ret = devm_regulator_bulk_get(dev, HI847_NUM_SUPPLIES, hi847->supplies);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to get regulators\n");
++
++	/* Both pins are active-low; logical 1 holds the sensor down. */
++	hi847->reset_gpio = devm_gpiod_get_optional(dev, "reset",
++						    GPIOD_OUT_HIGH);
++	if (IS_ERR(hi847->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(hi847->reset_gpio),
++				     "failed to get reset gpio\n");
++
++	hi847->shutdown_gpio = devm_gpiod_get_optional(dev, "shutdown",
++						       GPIOD_OUT_HIGH);
++	if (IS_ERR(hi847->shutdown_gpio))
++		return dev_err_probe(dev, PTR_ERR(hi847->shutdown_gpio),
++				     "failed to get shutdown gpio\n");
++
++	return 0;
++}
++
+ static int hi847_identify_module(struct hi847 *hi847)
+ {
+ 	int ret;
+@@ -2848,7 +2956,12 @@ static void hi847_remove(struct i2c_client *client)
+ 	v4l2_async_unregister_subdev(sd);
+ 	media_entity_cleanup(&sd->entity);
+ 	v4l2_ctrl_handler_free(sd->ctrl_handler);
++
+ 	pm_runtime_disable(hi847->dev);
++	if (!pm_runtime_status_suspended(hi847->dev))
++		hi847_power_off(hi847);
++	pm_runtime_set_suspended(hi847->dev);
++
+ 	mutex_destroy(&hi847->mutex);
+ }
+ 
+@@ -2870,6 +2983,13 @@ static int hi847_probe(struct i2c_client *client)
+ 				     "failed to get clock\n");
+ 
+ 	freq = clk_get_rate(hi847->clk);
++	if (freq != HI847_MCLK) {
++		ret = clk_set_rate(hi847->clk, HI847_MCLK);
++		if (ret)
++			return dev_err_probe(hi847->dev, ret,
++					     "failed to set clock rate\n");
++		freq = clk_get_rate(hi847->clk);
++	}
+ 	if (freq != HI847_MCLK)
+ 		return dev_err_probe(hi847->dev, -EINVAL,
+ 				     "external clock %lu is not supported\n",
+@@ -2882,14 +3002,25 @@ static int hi847_probe(struct i2c_client *client)
+ 		return ret;
+ 	}
+ 
++	ret = hi847_get_power_resources(hi847);
++	if (ret)
++		return ret;
++
+ 	v4l2_i2c_subdev_init(&hi847->sd, client, &hi847_subdev_ops);
++	mutex_init(&hi847->mutex);
++
++	ret = hi847_power_on(hi847);
++	if (ret) {
++		dev_err(hi847->dev, "failed to power on: %d", ret);
++		goto probe_error_mutex_destroy;
++	}
++
+ 	ret = hi847_identify_module(hi847);
+ 	if (ret) {
+ 		dev_err(hi847->dev, "failed to find sensor: %d", ret);
+-		return ret;
++		goto probe_error_power_off;
+ 	}
+ 
+-	mutex_init(&hi847->mutex);
+ 	hi847->cur_mode = &supported_modes[0];
+ 	ret = hi847_init_controls(hi847);
+ 	if (ret) {
+@@ -2926,11 +3057,26 @@ static int hi847_probe(struct i2c_client *client)
+ 
+ probe_error_v4l2_ctrl_handler_free:
+ 	v4l2_ctrl_handler_free(hi847->sd.ctrl_handler);
++
++probe_error_power_off:
++	hi847_power_off(hi847);
++
++probe_error_mutex_destroy:
+ 	mutex_destroy(&hi847->mutex);
+ 
+ 	return ret;
+ }
+ 
++static const struct dev_pm_ops hi847_pm_ops = {
++	RUNTIME_PM_OPS(hi847_runtime_suspend, hi847_runtime_resume, NULL)
++};
++
++static const struct of_device_id hi847_of_match[] = {
++	{ .compatible = "hynix,hi847" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, hi847_of_match);
++
+ #ifdef CONFIG_ACPI
+ static const struct acpi_device_id hi847_acpi_ids[] = {
+ 	{"HYV0847"},
+@@ -2943,7 +3089,9 @@ MODULE_DEVICE_TABLE(acpi, hi847_acpi_ids);
+ static struct i2c_driver hi847_i2c_driver = {
+ 	.driver = {
+ 		.name = "hi847",
++		.pm = pm_ptr(&hi847_pm_ops),
+ 		.acpi_match_table = ACPI_PTR(hi847_acpi_ids),
++		.of_match_table = hi847_of_match,
+ 	},
+ 	.probe = hi847_probe,
+ 	.remove = hi847_remove,

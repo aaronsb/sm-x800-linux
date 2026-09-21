@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=13
+pkgrel=23
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -44,6 +44,9 @@ source="
 	panel-samsung-s6tuum1.c
 	sc8280xp-mi2s-codec-fmt-sysclk.patch
 	sm8450-camss.patch
+	hi847-of.patch
+	camcc-sm8450-retain-ff.patch
+	camcc-sm8450-shared-rcg.patch
 "
 builddir="$srcdir/linux-$pkgver"
 

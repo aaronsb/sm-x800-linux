@@ -1,0 +1,98 @@
+clk: qcom: camcc-sm8450: set RETAIN_FF_ENABLE on the camera GDSCs
+
+On the Galaxy Tab S8+ the first camera stream through CAMSS works and
+TITAN_TOP collapses cleanly afterwards. The second stream fails with
+"titan_top_gdsc status stuck at 'off'": GDSCR reads 0x68282000 and
+CFG_GDSCR 0x010e0000, the power-up state machine started and never
+reached power-up-complete.
+
+The stock SM8450 device tree marks every camcc GDSC qcom,retain-regs,
+which the downstream gdsc driver turns into GDSC_RETAIN_FF_ENABLE, and
+the SM8550 camcc sets RETAIN_FF_ENABLE on all of its GDSCs. The SM8450
+camcc sets it on none. Add it to all nine, matching stock.
+
+diff --git a/drivers/clk/qcom/camcc-sm8450.c b/drivers/clk/qcom/camcc-sm8450.c
+index 4025db23d..d7c99e4b5 100644
+--- a/drivers/clk/qcom/camcc-sm8450.c
++++ b/drivers/clk/qcom/camcc-sm8450.c
+@@ -2933,7 +2933,7 @@ static struct gdsc bps_gdsc = {
+ 	.pd = {
+ 		.name = "bps_gdsc",
+ 	},
+-	.flags = HW_CTRL | POLL_CFG_GDSCR,
++	.flags = HW_CTRL | POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2943,7 +2943,7 @@ static struct gdsc ipe_0_gdsc = {
+ 	.pd = {
+ 		.name = "ipe_0_gdsc",
+ 	},
+-	.flags = HW_CTRL | POLL_CFG_GDSCR,
++	.flags = HW_CTRL | POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2953,7 +2953,7 @@ static struct gdsc sbi_gdsc = {
+ 	.pd = {
+ 		.name = "sbi_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2963,7 +2963,7 @@ static struct gdsc ife_0_gdsc = {
+ 	.pd = {
+ 		.name = "ife_0_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2973,7 +2973,7 @@ static struct gdsc ife_1_gdsc = {
+ 	.pd = {
+ 		.name = "ife_1_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2983,7 +2983,7 @@ static struct gdsc ife_2_gdsc = {
+ 	.pd = {
+ 		.name = "ife_2_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2993,7 +2993,7 @@ static struct gdsc sfe_0_gdsc = {
+ 	.pd = {
+ 		.name = "sfe_0_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -3003,7 +3003,7 @@ static struct gdsc sfe_1_gdsc = {
+ 	.pd = {
+ 		.name = "sfe_1_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -3013,7 +3013,7 @@ static struct gdsc titan_top_gdsc = {
+ 	.pd = {
+ 		.name = "titan_top_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+ 

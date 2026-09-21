@@ -21,6 +21,7 @@
 #include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/leds/common.h>
+#include <dt-bindings/media/video-interfaces.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
 
@@ -227,6 +228,33 @@
 		enable-active-high;
 		regulator-always-on;
 		regulator-boot-on;
+	};
+
+	/*
+	 * Camera sensor rails. Stock switches them with TLMM pins, one shared
+	 * I/O LDO enable (gpio117, CAM_IO_LDO_EN, 1.8 V) for all three sensors
+	 * and one enable per module for its analog and core rails (ultrawide:
+	 * gpio109 CAM_LDO_EN2, 2.8 V and 1.2 V behind one enable). The CamX
+	 * power-up order is I/O LDO, then module LDO after 1 ms, then MCLK,
+	 * then reset; vin-supply makes the shared rail come up first.
+	 */
+	cam_io_ldo: regulator-cam-io-ldo {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_io_ldo";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&tlmm 117 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <1000>;
+	};
+
+	cam_uw_ldo: regulator-cam-uw-ldo {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_uw_ldo";
+		gpio = <&tlmm 109 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <5000>;
+		vin-supply = <&cam_io_ldo>;
 	};
 
 	/*
@@ -607,6 +635,14 @@
 		"",						/* 98 */
 		"pogo-stm32-swclk";				/* 99 */
 
+	/* Camera MCLK1 to the rear ultrawide sensor (stock cam_sensor_mclk1_active). */
+	cam_mclk1_default: cam-mclk1-default-state {
+		pins = "gpio101";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
 	/*
 	 * Pogo pinctrl, transcribed from the stock DTB (nodes attn_irq,
 	 * conn_irq, nrst_gpio — all tlmm, all drive-strength 2, bias-disable).
@@ -838,14 +874,67 @@
  * The camss node lives in sm8450.dtsi via our sm8450-camss kernel patch;
  * this fragment supplies the two CSIPHY rails and enables it. Stock names
  * them csi-vdd-0p9 (pm8350 L5B, 0.88 V) and csi-vdd-1p2 (pm8350 L6B,
- * 1.2 V); both are already on for UFS, USB, DSI and PCIe. Sensors, their
- * external LDOs (TLMM 107/109/25, shared 117), resets and MCLKs are the
- * later stages and are not declared yet, so the CSIPHY ports stay empty.
+ * 1.2 V); both are already on for UFS, USB, DSI and PCIe. Sensors hang
+ * off the CSIPHY ports below as their stages land (ADR-001 sequencing).
  */
 &camss {
 	vdda-phy-supply = <&vreg_l5b_0p88>;
 	vdda-pll-supply = <&vreg_l6b_1p2>;
 	status = "okay";
+
+	ports {
+		/* Rear ultrawide Hi847, stock csiphy-sd-index 2 */
+		port@2 {
+			csiphy2_ep: endpoint {
+				clock-lanes = <7>;
+				data-lanes = <0 1 2 3>;
+				bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+				remote-endpoint = <&cam_uw_ep>;
+			};
+		};
+	};
+};
+
+/*
+ * Rear ultrawide: Hynix Hi847 (stock qcom,cam-sensor2). CCI0 master 0 at
+ * 7-bit 0x21, four D-PHY lanes into CSIPHY2, MCLK1 on gpio101 at 19.2 MHz,
+ * reset on gpio106 (active low). The chip is 3264x2448; stock reads a
+ * 2896x2176 window from it, the mainline driver its own modes. Chip ID
+ * 0x0847 at 0x0716. Facts from the stock DT and the CamX sensormodule
+ * decode, recorded in issue #27.
+ */
+&cci0 {
+	status = "okay";
+};
+
+&cci0_i2c0 {
+	camera@21 {
+		compatible = "hynix,hi847";
+		reg = <0x21>;
+
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		assigned-clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 106 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam_mclk1_default>;
+		pinctrl-names = "default";
+
+		vddio-supply = <&cam_io_ldo>;
+		vdda-supply = <&cam_uw_ldo>;
+		vddd-supply = <&cam_uw_ldo>;
+
+		orientation = <1>;
+		rotation = <0>;
+
+		port {
+			cam_uw_ep: endpoint {
+				data-lanes = <1 2 3 4>;
+				link-frequencies = /bits/ 64 <400000000 200000000>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
 };
 
 &pm8350_gpios {
