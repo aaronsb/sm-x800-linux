@@ -19,6 +19,7 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 | `pogo-stm32-dump.sh` | Dump the MCU's application flash, 256 bytes per pulse. |
 | `pogo-status.sh` | Quick pogo state readout: dock, conn edges, gpio levels, rail, pin mux, 0x2a. |
 | `padsample.py` | Sample the TLMM view of egpio pads through /dev/mem; shows whether a DMIC clock or data pad moves during capture. Runs on the tablet as root. |
+| `mictest.sh` | Mainline mic probe: apply the UCM Mic route, record hw:0,2, sample the four DMIC pads with padfreq during the capture, print sample statistics. Copy to /home/user with padfreq beside it. |
 
 ## After any userdata/rootfs flash
 
