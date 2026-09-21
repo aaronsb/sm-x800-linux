@@ -1,0 +1,32 @@
+camcc register block 0xade0000 + offset, 32-bit words; kernel r16 (7.2, sm8450-camss + hi847-of + retain-ff + camnoc-idle)
+A = after boot, sensor probed over CCI, TITAN_TOP collapsed; B = after one 5-frame RDI stream and collapse; C = after the failed second power-up
+
+offset   A        B        C        name (camcc-sm8450.c)
+0x00000  00000104 00000004 00000004 cam_cc_pll0 MODE (bit 8 PCAL_NOT_DONE)
+0x00008  00000000 00000100 00000100 cam_cc_pll0 +0x8
+0x03000  00000104 00000004 00000004 cam_cc_pll3 MODE
+0x03008  00000000 00000100 00000100 cam_cc_pll3 +0x8
+0x10018  80000000 80000000 00000000 cam_cc_fast_ahb_clk_src CMD
+0x11004  00282001 00282801 00282801 ife_0_gdsc GDSCR
+0x11008  00088000 00008000 00088000 ife_0_gdsc CFG_GDSCR
+0x1101c  00000000 00000601 00000601 cam_cc_ife_0_clk_src CFG
+0x11034  02010000 04010c00 02010c00 cam_cc_ife_0_clk CBCR+4 (read-only status)
+0x11050  00000000 00000105 00000105 cam_cc_cphy_rx_clk_src CFG
+0x13000  80000000 80000000 00000000 cam_cc_ife_lite_clk_src CMD
+0x1301c  02010000 02010000 07010000 ife_lite_clk CBCR+4
+0x13024  80000000 80000000 00000000 cam_cc_ife_lite_csid_clk_src CMD
+0x13040  02010000 02010000 07010000 ife_lite_csid CBCR+4
+0x130dc  80000000 80000000 00000000 cam_cc_jpeg_clk_src CMD
+0x130f8  02010000 02010000 07010000 jpeg CBCR+4
+0x13108  80000000 80000000 00000000 cam_cc_icp_clk_src CMD
+0x13124  02010000 02010000 07010000 icp CBCR+4
+0x13168  02010000 02010000 00010c00 cci_1 CBCR+4
+0x13170  02010000 02010000 07010000 cci_1 +0x28
+0x13178  00000000 00000105 00000105 cam_cc_csid_clk_src CFG
+0x13190  02010000 04010c00 06010c00 cam_cc_csid_clk CBCR+4
+0x13198  00000000 00000203 00000203 cam_cc_camnoc_axi_clk_src CFG
+0x131b0  02010000 04010c00 06010c00 cam_cc_camnoc_axi_clk CBCR+4
+0x131dc  00282801 00282801 68282800 titan_top_gdsc GDSCR
+0x131e0  00088000 00008000 010e0000 titan_top_gdsc CFG_GDSCR
+0x15128  00000000 00000301 00000301 cam_cc_csi2phytimer_clk_src CFG
+0x1601c  00000000 00000000 80000000 unnamed (max_register)

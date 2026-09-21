@@ -51,7 +51,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Login experience | ✅ quiet boot (`loglevel=4`), generated `/etc/issue` banner with live IP (agetty needs `--issue-file` on Alpine), UTF-8 locale, keyboard autorepeat (kernel r42) |
 | Audio | ✅ working — four CS35L45 amps on Primary MI2S from the ADSP (AudioReach), stereo playback through PulseAudio/UCM; volume capped (no speaker-protection DSP yet). Three DMICs through the VA macro, powered from L12C (found 2026-09-21 with a pad probe); stereo capture of the bottom and back mics through UCM. Story: docs/10-audio.md |
 | Rear flash LED | ✅ working — PM8350C flash module, two channels as one white LED at `/sys/class/leds/white:flash` (kernel r12). Torch: `brightness` 0..255 for 0..500 mA total, stock's level is 77 (150 mA). Flash: `flash_brightness` up to 1.5 A, hardware timeout up to 1280 ms, fired with `flash_strobe`; the timer ends the pulse and `flash_fault` then reads `flash-timeout-exceeded`, which is the normal end of a strobe |
-| Cameras | 🟡 receive chain probes — mainline CAMSS on SM8450 (kernel r13, `sm8450-camss.patch`): 6 CSIPHY, 3+2 CSID, 3+2 VFE on `/dev/media0`, 17 raw video nodes, driver autoloads. No sensor is driven yet; Hi1337 rear/front, Hi847 ultrawide and the DW9808 lens are the next stages (ADR-001, issue #27) |
+| Cameras | 🟡 rear ultrawide streams, session after session — mainline CAMSS on SM8450, the Hi847 driver converted to device tree, and a camcc fix that parks the camera RCGs on XO when idle (kernel r23; without it only the first session per boot worked). `tools/camtest.sh uw` captures 3264x2448 RAW10 at 30 fps, first frame in `docs/media/camera-uw-first-frame.jpg`. Rear main and front Hi1337 and the DW9808 lens are next (ADR-001, issue #27). Story: docs/11-camera.md |
 | Sensors (incl. auto-rotate) | ❌ SLPI boots (stock image, 7.2-r8) but exposes nothing: the sensors wait for the registry stock feeds over QMI |
 
 ![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
@@ -217,6 +217,11 @@ These cost us many cycles — see `docs/05` §5:
   `/lib/modules` is whatever kernel apk the rootfs has installed. A patch that
   changes a module (camss, r13) needs `apk add --allow-untrusted linux-postmarketos-qcom-sm8450-7.2-rN.apk`
   on the tablet as well, or the old `.ko` stays and the new compatible never binds.
+- **A camera register touched without its clock hangs the SoC.** Skipping the CPAS
+  fast AHB or the VFE core clock in a power-cycle bisect froze the tablet (no ping)
+  the moment a VFE register or its interrupt handler ran. Recovery is the Vol Down
+  + Power reset. Reading camcc (0xade0000) is safe; the camera blocks under
+  TITAN_TOP are not while their domain or clock is off.
 - **Flash multiple partitions in one `odin4` invocation** (`-a` and `-u` together,
   as `make flash-all` does) rather than calling odin twice — that is what caused the
   reboot between writes. `--reboot` is opt-in, and `--redownload` returns the device
