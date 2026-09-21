@@ -833,6 +833,21 @@
 	};
 };
 
+/*
+ * Cameras, stage 1 (ADR-001, issue #27): the CAMSS receive chain only.
+ * The camss node lives in sm8450.dtsi via our sm8450-camss kernel patch;
+ * this fragment supplies the two CSIPHY rails and enables it. Stock names
+ * them csi-vdd-0p9 (pm8350 L5B, 0.88 V) and csi-vdd-1p2 (pm8350 L6B,
+ * 1.2 V); both are already on for UFS, USB, DSI and PCIe. Sensors, their
+ * external LDOs (TLMM 107/109/25, shared 117), resets and MCLKs are the
+ * later stages and are not declared yet, so the CSIPHY ports stay empty.
+ */
+&camss {
+	vdda-phy-supply = <&vreg_l5b_0p88>;
+	vdda-pll-supply = <&vreg_l6b_1p2>;
+	status = "okay";
+};
+
 &pm8350_gpios {
 	vol_up_default: vol-up-default-state {
 		pins = "gpio6";
