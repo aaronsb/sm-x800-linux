@@ -521,34 +521,6 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
-		/*
-		 * Microphone supply experiment (issue #7). Stock holds L13C at
-		 * 3.0 V as the SLPI's sensor_vddio; mainline does not boot the
-		 * SLPI, so the rail sits where the bootloader left it. Pad
-		 * sampling on 2026-09-21 showed the DMIC clock toggling at the
-		 * pad (TLMM 171) with the data pad (TLMM 172) flat, so the mic
-		 * side is unpowered. L13C is the last stock-on rail in the
-		 * 1.7-3.0 V range not yet tried.
-		 */
-		vreg_l13c_3p0: ldo13 {
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-always-on;
-		};
-
-		/*
-		 * Same experiment, second rail: stock's SLPI sensor_vdd (L2C,
-		 * 1.8 V). Tried alone in July on 6.13 with only the sample
-		 * count as the criterion; retried with the pad probe.
-		 */
-		vreg_l2c_1p8: ldo2 {
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-always-on;
-		};
-
 		/* WCN6855 rfa 1.9 V rail (stock vdd-wlan-rfa1) */
 		vreg_s1c_1p86: smps1 {
 			regulator-name = "vreg_s1c_1p86";
@@ -586,20 +558,6 @@
 			regulator-name = "vreg_s2e_0p85";
 			regulator-min-microvolt = <500000>;
 			regulator-max-microvolt = <1040000>;
-		};
-
-		/*
-		 * Microphone supply experiment, third rail (issue #7): stock
-		 * holds L7E at 2.8 V for the WCN6855 antenna switch (bt-vdd-asd,
-		 * wlan-ant-switch). Last rail stock has on at idle that mainline
-		 * never declared. L13C and L2C left the DMIC data pad flat.
-		 */
-		vreg_l7e_2p8: ldo7 {
-			regulator-name = "vreg_l7e_2p8";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-always-on;
 		};
 	};
 };
@@ -1520,12 +1478,13 @@
 };
 
 /*
- * Sensor hub (SLPI), issue #7 experiment. Stock runs it and a block of
- * island pads (TLMM 184, 185, 188, 189, 202) reads high there and low here
- * with nothing on the AP driving them. Every PMIC rail stock holds on is
- * on here and the DMIC data pad stays flat, so whatever enables the mics
- * is not visible from the AP. Firmware staged from apnhlos/image/slpi.*;
- * carve-out is stock's (0x1700000), sm8450.dtsi's is 2 MiB larger.
+ * Sensor hub (SLPI). Stock image from apnhlos/image/slpi.*, stock carve-out
+ * (sm8450.dtsi's is 2 MiB larger). It boots and stays up; the sensors
+ * themselves wait for a registry the stock sensor daemon feeds over QMI,
+ * so nothing is exposed yet. Booting it needs uniLoader to move the DTB
+ * out of 0x88000000 first (CONFIG_DTB_RELOCATE in the uniloader-port).
+ * Brought up for issue #7 to test whether the hub enables the mic supply:
+ * it does not, on its own.
  */
 &remoteproc_slpi {
 	firmware-name = "qcom/sm8450/gts8pwifi/slpi.mdt";
@@ -1561,12 +1520,16 @@
  * and no SoundWire on this board (stock qcom,wcd-disabled). Stock
  * cdc-dmic01/23/45 gpios: LPI gpio6/7, gpio8/9, gpio12/13 (mainline
  * function names dmic1/dmic2/dmic3 clk+data); sm8450.dtsi carries the first
- * two pin states, the third is ours. Stock's qcom,va-dmic-sample-rate is
- * 600 kHz (0x927c0), which the downstream driver treats as the *sample*
- * rate. Stock's regular-capture path (TX macro) clocks the mics at
- * 2.4 MHz (qcom,tx-dmic-sample-rate = 0x249f00); 600 kHz and 4.8 MHz were
- * both tried on the VA macro and captured silence. Stock's micbias is
- * 1.8 V; the rail is the same S10B 1.8 V the HDK uses for vdd-micb.
+ * two pin states, the third is ours. Stock records through the TX macro at
+ * 2.4 MHz (qcom,tx-dmic-sample-rate = 0x249f00) with the VA block's DMIC
+ * clock registers; the VA path here uses the same TX core clock and the
+ * same divider. vdd-micb is S10B 1.8 V as on the HDK.
+ *
+ * State 2026-09-21 (issue #7): the DMIC clock reaches the pad (TLMM 171,
+ * the TLMM view of LPI gpio6, toggles during capture) and the data pad
+ * (TLMM 172) never moves. Every rail stock holds on at idle, the grip LDO
+ * enable, the sensor-hub pads and the sensor hub itself were tried. The
+ * mic enable is not reachable from the AP side with what is known.
  */
 &lpass_tlmm {
 	dmic45_default: dmic45-default-state {
