@@ -1,0 +1,49 @@
+diff --git a/Kconfig b/Kconfig
+index be6c890..bcc80a2 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -66,6 +66,21 @@ menu "Building options"
+ 		help
+ 		  Select this if the bootloader copies the ramdisk itself
+ 
++	config DTB_RELOCATE
++		bool "Copy the device tree out of the uniLoader image"
++		depends on EMBED_LINUX
++		default n
++		help
++		  The embedded DTB is normally handed to the kernel where it sits
++		  inside the uniLoader image. Select this to copy it to DTB_ENTRY
++		  first, for boards where the loader image lands inside memory the
++		  kernel must reserve for a remote processor.
++
++	config DTB_ENTRY
++		hex "Address to copy the device tree to"
++		depends on DTB_RELOCATE
++		default 0x0
++
+ endmenu
+ 
+ source "drivers/Kconfig"
+diff --git a/arch/aarch64/load-kernel.c b/arch/aarch64/load-kernel.c
+index 8eee041..df85567 100644
+--- a/arch/aarch64/load-kernel.c
++++ b/arch/aarch64/load-kernel.c
+@@ -10,6 +10,18 @@
+ void arch_load_kernel(void* kernel, void* dt, void* ramdisk)
+ {
+ 	memcpy((void*)CONFIG_PAYLOAD_ENTRY, kernel, (unsigned long) &kernel_size);
++#ifdef CONFIG_DTB_RELOCATE
++	{
++		/* FDT header: totalsize is a big-endian u32 at offset 4 */
++		const unsigned char *h = dt;
++		unsigned long dtb_size = ((unsigned long)h[4] << 24) |
++					 ((unsigned long)h[5] << 16) |
++					 ((unsigned long)h[6] << 8) | h[7];
++
++		memcpy((void*)CONFIG_DTB_ENTRY, dt, dtb_size);
++		dt = (void*)CONFIG_DTB_ENTRY;
++	}
++#endif
+ #ifndef CONFIG_RAMDISK_NO_COPY
+ 	__optimized_memcpy((void*)CONFIG_RAMDISK_ENTRY, ramdisk, (unsigned long) &ramdisk_size);
+ #endif
