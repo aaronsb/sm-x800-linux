@@ -28,7 +28,7 @@ processing pipeline. Sensors are ordinary V4L2 subdevice drivers, and
 libcamera supplies image processing in userspace for devices whose ISP has
 no kernel driver. SM8450 is not in CAMSS upstream. Its blocks are
 csiphy-v2.1.0, csid680 and vfe680/vfe-lite680. Mainline 7.2 already drives
-csid680 and vfe680 for the SA8775P (camss-csid-680.c, camss-vfe-680.c), so
+csid680 and vfe680 for the X1E80100 (camss-csid-680.c, camss-vfe-680.c), so
 the SM8450 work is a SoC resource table, a CAMSS_8450 version and the
 csiphy-v2.1.0 lane setup, checked against the downstream source. Samsung's
 GPL 5.10 kernel source for the SM-X800 carries the downstream driver for
