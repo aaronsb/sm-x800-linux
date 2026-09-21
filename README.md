@@ -51,6 +51,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Login experience | ✅ quiet boot (`loglevel=4`), generated `/etc/issue` banner with live IP (agetty needs `--issue-file` on Alpine), UTF-8 locale, keyboard autorepeat (kernel r42) |
 | Audio | ✅ working — four CS35L45 amps on Primary MI2S from the ADSP (AudioReach), stereo playback through PulseAudio/UCM; volume capped (no speaker-protection DSP yet). Three DMICs through the VA macro, powered from L12C (found 2026-09-21 with a pad probe); stereo capture of the bottom and back mics through UCM. Story: docs/10-audio.md |
 | Rear flash LED | ✅ working — PM8350C flash module, two channels as one white LED at `/sys/class/leds/white:flash` (kernel r12). Torch: `brightness` 0..255 for 0..500 mA total, stock's level is 77 (150 mA). Flash: `flash_brightness` up to 1.5 A, hardware timeout up to 1280 ms, fired with `flash_strobe`; the timer ends the pulse and `flash_fault` then reads `flash-timeout-exceeded`, which is the normal end of a strobe |
+| Cameras | 🟡 receive chain probes — mainline CAMSS on SM8450 (kernel r13, `sm8450-camss.patch`): 6 CSIPHY, 3+2 CSID, 3+2 VFE on `/dev/media0`, 17 raw video nodes, driver autoloads. No sensor is driven yet; Hi1337 rear/front, Hi847 ultrawide and the DW9808 lens are the next stages (ADR-001, issue #27) |
 | Sensors (incl. auto-rotate) | ❌ SLPI boots (stock image, 7.2-r8) but exposes nothing: the sensors wait for the registry stock feeds over QMI |
 
 ![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
@@ -211,6 +212,11 @@ These cost us many cycles — see `docs/05` §5:
   and stage-1 stalls forever in `wait_boot_partition`. See `docs/05` §8b.
 - **Press Power** at the "press power button to confirm unverified firmware boot"
   prompt or the kernel never runs.
+- **Kernel modules live in the rootfs, not in boot.img.** The fast path (`dd` the
+  new boot.img to the boot partition) replaces kernel, DTB and initramfs only;
+  `/lib/modules` is whatever kernel apk the rootfs has installed. A patch that
+  changes a module (camss, r13) needs `apk add --allow-untrusted linux-postmarketos-qcom-sm8450-7.2-rN.apk`
+  on the tablet as well, or the old `.ko` stays and the new compatible never binds.
 - **Flash multiple partitions in one `odin4` invocation** (`-a` and `-u` together,
   as `make flash-all` does) rather than calling odin twice — that is what caused the
   reboot between writes. `--reboot` is opt-in, and `--redownload` returns the device
