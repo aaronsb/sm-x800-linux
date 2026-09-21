@@ -21,6 +21,7 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 | `padsample.py` | Sample the TLMM view of egpio pads through /dev/mem; shows whether a DMIC clock or data pad moves during capture. Runs on the tablet as root. |
 | `padfreq.c` | Fast C replacement for `padsample.py`'s single-pin case: estimates a TLMM pad's toggle frequency by polling GPIO_IN_OUT through /dev/mem in a tight loop. `padfreq PIN [SECONDS]`. Build: `cc -O2 -static -o padfreq padfreq.c`. Runs on the tablet as root. |
 | `mictest.sh` | Mainline mic probe: apply the UCM Mic route, record hw:0,2, sample the four DMIC pads with padfreq during the capture, print sample statistics. Copy to /home/user with padfreq beside it. |
+| `flashtest.sh` | Rear flash LED demo: torch 5 s at a given brightness (0..255 = 0..500 mA), off, then one 300 mA strobe with a 200 ms hardware timeout. `sh flashtest.sh [brightness]` on the tablet. |
 
 ## After any userdata/rootfs flash
 
