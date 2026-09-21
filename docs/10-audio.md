@@ -147,18 +147,31 @@ What was established, in order:
   right to leave it.
 - The mainline TX macro takes DMICs only over SoundWire, so stock's
   regular-capture path (TX macro at 2.4 MHz) has no mainline equivalent.
-- The decimator's HPF turns a flat PDM line into exact zeros, so "zeros"
-  does not separate an unpowered mic from a clock that never leaves the
-  pad. The LPI debugfs shows mux and direction only, and `/dev/mem` reads
-  of the LPI value registers return nothing, so the pad level could not
-  be observed from software.
+- The pad level is observable after all. The LPI pads are egpio pads
+  shared with the TLMM, and the TLMM's GPIO_IN_OUT register of TLMM 171
+  (LPI gpio6, pair 1 clock) and 172 (LPI gpio7, pair 1 data) reads the
+  live pad. `tools/padsample.py` samples it. During capture 171 toggles
+  at 50/50 duty and 172 never moves (2026-09-21). The clock leaves the
+  SoC; the mic sends nothing.
+- With that probe as the criterion: every rail stock holds on at idle
+  and mainline did not declare (L13C 3.0 V, L2C 1.8 V, L7E 2.8 V) was
+  made always-on, the grip-sensor LDO enable (TLMM 180) and the five
+  island pads the stock sensor hub drives (184, 185, 188, 189, 202) were
+  driven high, and the SLPI itself was booted. The data pad stayed flat
+  through all of it. The declarations were removed again; the SLPI stays
+  enabled.
+- The VA clock mux at 0x3420000 is not a difference: downstream only
+  writes it when it requests the VA core clock, and stock's recording
+  runs the TX macro from TX_CORE_MCLK at 19.2 MHz, the same PRM clock
+  mainline's VA macro holds.
 
-What would settle it: a scope on LPI gpio6 (DMIC clock) and gpio7 (data)
-during `arecord`, or the mic supply net from the schematic. Stock's VA
-macro node carries no `micb` supply at all, unlike the Tab S9 Ultra's,
-and neither the stock DT, the vendor init scripts, nor the mixer paths
-name anything that powers or gates the microphones. Whatever rail it is,
-it is not L2C, L4C, L5C, S10B or anything else this DTS declares.
+What would settle it: the mic supply net from the schematic or a scope on
+it, or a stock session that stops the SLPI and records, which says whether
+the sensor hub is involved at all. Stock's VA macro node carries no `micb`
+supply, unlike the Tab S9 Ultra's, and neither the stock DT, the vendor
+init scripts, nor the mixer paths name anything that powers or gates the
+microphones. Whatever enables them is not a PMIC rail or a GPIO the AP
+drives. Issue #7 holds the measurements.
 
 Speaker-protection firmware for the follow-up sits in the vendor
 partition of the super dump: `/vendor/firmware/cs35l45-dsp1-spk-prot.wmfw`,

@@ -18,6 +18,7 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 | `pogo-stm32-info.sh` | Pulse the pogo MCU into ROM bootloader and interrogate it. |
 | `pogo-stm32-dump.sh` | Dump the MCU's application flash, 256 bytes per pulse. |
 | `pogo-status.sh` | Quick pogo state readout: dock, conn edges, gpio levels, rail, pin mux, 0x2a. |
+| `padsample.py` | Sample the TLMM view of egpio pads through /dev/mem; shows whether a DMIC clock or data pad moves during capture. Runs on the tablet as root. |
 
 ## After any userdata/rootfs flash
 

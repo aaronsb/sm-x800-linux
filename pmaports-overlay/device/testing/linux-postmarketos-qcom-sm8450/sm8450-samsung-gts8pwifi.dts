@@ -1478,6 +1478,24 @@
 };
 
 /*
+ * Sensor hub (SLPI). Stock image from apnhlos/image/slpi.*, stock carve-out
+ * (sm8450.dtsi's is 2 MiB larger). It boots and stays up; the sensors
+ * themselves wait for a registry the stock sensor daemon feeds over QMI,
+ * so nothing is exposed yet. Booting it needs uniLoader to move the DTB
+ * out of 0x88000000 first (CONFIG_DTB_RELOCATE in the uniloader-port).
+ * Brought up for issue #7 to test whether the hub enables the mic supply:
+ * it does not, on its own.
+ */
+&remoteproc_slpi {
+	firmware-name = "qcom/sm8450/gts8pwifi/slpi.mdt";
+	status = "okay";
+};
+
+&slpi_mem {
+	reg = <0x0 0x88000000 0x0 0x1700000>;
+};
+
+/*
  * Samsung's ADSP image is 59 MiB of relocatable segments and its firmware
  * (and TrustZone's PAS checks) expect the stock carve-out, not the 33 MiB
  * region sm8450.dtsi reserves for the QRD/HDK image: with the dtsi value the
@@ -1502,12 +1520,16 @@
  * and no SoundWire on this board (stock qcom,wcd-disabled). Stock
  * cdc-dmic01/23/45 gpios: LPI gpio6/7, gpio8/9, gpio12/13 (mainline
  * function names dmic1/dmic2/dmic3 clk+data); sm8450.dtsi carries the first
- * two pin states, the third is ours. Stock's qcom,va-dmic-sample-rate is
- * 600 kHz (0x927c0), which the downstream driver treats as the *sample*
- * rate. Stock's regular-capture path (TX macro) clocks the mics at
- * 2.4 MHz (qcom,tx-dmic-sample-rate = 0x249f00); 600 kHz and 4.8 MHz were
- * both tried on the VA macro and captured silence. Stock's micbias is
- * 1.8 V; the rail is the same S10B 1.8 V the HDK uses for vdd-micb.
+ * two pin states, the third is ours. Stock records through the TX macro at
+ * 2.4 MHz (qcom,tx-dmic-sample-rate = 0x249f00) with the VA block's DMIC
+ * clock registers; the VA path here uses the same TX core clock and the
+ * same divider. vdd-micb is S10B 1.8 V as on the HDK.
+ *
+ * State 2026-09-21 (issue #7): the DMIC clock reaches the pad (TLMM 171,
+ * the TLMM view of LPI gpio6, toggles during capture) and the data pad
+ * (TLMM 172) never moves. Every rail stock holds on at idle, the grip LDO
+ * enable, the sensor-hub pads and the sensor hub itself were tried. The
+ * mic enable is not reachable from the AP side with what is known.
  */
 &lpass_tlmm {
 	dmic45_default: dmic45-default-state {

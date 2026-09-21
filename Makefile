@@ -64,6 +64,12 @@ deps: ## One-time setup: clone uniLoader (pinned), install chroot toolchain
 	    $(UL_SRC)/board/samsung/board-gts8pwifi.c
 	install -Dm644 pmaports-overlay/uniloader-port/configs/gts8pwifi_defconfig \
 	    $(UL_SRC)/configs/gts8pwifi_defconfig
+	@# generic uniLoader changes travel as git-generated patches; skip ones already in
+	@for p in pmaports-overlay/uniloader-port/patches/*.patch; do \
+	    [ -e "$$p" ] || continue; \
+	    git -C $(UL_SRC) apply --check "$$p" 2>/dev/null && git -C $(UL_SRC) apply "$$p" \
+	        && echo ">> uniLoader: applied $$(basename $$p)" || true; \
+	done
 	@grep -q GTS8PWIFI $(UL_SRC)/board/Makefile || \
 	    echo 'lib-$$(CONFIG_SAMSUNG_GTS8PWIFI) += samsung/board-gts8pwifi.o' \
 	      >> $(UL_SRC)/board/Makefile

@@ -4,7 +4,7 @@
 #
 # The cartridge-dump model: this port's repo and packages ship only OPEN or
 # redistributable content. Blobs that are Samsung-signed for THIS device
-# (the a730 GPU zap shader and the audio DSP image, which TrustZone will only
+# (the a730 GPU zap shader, the audio DSP and sensor hub images, which TrustZone will only
 # accept with Samsung's signature) are extracted at setup time from partitions the device
 # already carries — nothing copyrighted is ever distributed by us.
 #
@@ -44,6 +44,16 @@ fi
 cp "$MNT"/image/adsp.mdt "$MNT"/image/adsp.b* "$FWDIR"/
 cp "$MNT"/image/adspua.jsn "$MNT"/image/adspr.jsn "$FWDIR"/ 2>/dev/null || true
 echo "   adsp.mdt + $(ls "$FWDIR"/adsp.b* | wc -l) segments -> $FWDIR/"
+
+# Sensor hub: split slpi.mdt + slpi.bNN, same loader. Loaded from the rootfs
+# after boot, so it does not need to ride in the initramfs.
+echo ">> staging sensor hub image"
+if [ ! -f "$MNT/image/slpi.mdt" ]; then
+	echo "!! slpi.mdt not found in apnhlos/image" >&2
+	exit 1
+fi
+cp "$MNT"/image/slpi.mdt "$MNT"/image/slpi.b* "$FWDIR"/
+echo "   slpi.mdt + $(ls "$FWDIR"/slpi.b* | wc -l) segments -> $FWDIR/"
 
 echo ">> regenerating initramfs (a7xx needs GPU firmware at bind time)"
 mkinitfs
