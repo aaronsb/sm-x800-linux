@@ -22,7 +22,7 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 | `padfreq.c` | Fast C replacement for `padsample.py`'s single-pin case: estimates a TLMM pad's toggle frequency by polling GPIO_IN_OUT through /dev/mem in a tight loop. `padfreq PIN [SECONDS]`. Build: `cc -O2 -static -o padfreq padfreq.c`. Runs on the tablet as root. |
 | `mictest.sh` | Mainline mic probe: apply the UCM Mic route, record hw:0,2, sample the four DMIC pads with padfreq during the capture, print sample statistics. Copy to /home/user with padfreq beside it. |
 | `flashtest.sh` | Rear flash LED demo: torch 5 s at a given brightness (0..255 = 0..500 mA), off, then one 300 mA strobe with a 200 ms hardware timeout. `sh flashtest.sh [brightness]` on the tablet. |
-| `camtest.sh` | Stream raw frames from a camera through CAMSS: links sensor -> csiphy -> csid0 -> vfe0_rdi0, sets the native format on every pad, captures N packed 10-bit Bayer frames with v4l2-ctl. `sh camtest.sh uw [COUNT] [OUT]` on the tablet (needs v4l-utils); `VFE=N CSID=N` pick the pair (CSID N feeds IFE N only). |
+| `camtest.sh` | Stream raw frames from a camera through CAMSS: links sensor -> csiphy -> csidN -> vfeN_rdi0, sets the native format on every pad, captures N packed 10-bit Bayer frames with v4l2-ctl. `sh camtest.sh uw|front|frontfull [COUNT] [OUT]` on the tablet (needs v4l-utils); each camera has a default CSID/VFE pair (uw 0, front 1; CSID N feeds IFE N only), `VFE=N CSID=N` override it. |
 | `raw2png.py` | Decode a `camtest.sh` capture (V4L2 SGRBG10P) into a quarter-size stretched PNG on the host and print raw statistics. `python3 raw2png.py IN.raw W H OUT.png [FRAME]`. |
 
 ## After any userdata/rootfs flash

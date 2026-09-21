@@ -257,6 +257,26 @@
 		vin-supply = <&cam_io_ldo>;
 	};
 
+	/* Front module LDO enable (gpio25, CAM_LDO_EN1): 1.1 V core and 2.8 V analog. */
+	cam_front_ldo: regulator-cam-front-ldo {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_front_ldo";
+		gpio = <&tlmm 25 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <1000>;
+		vin-supply = <&cam_io_ldo>;
+	};
+
+	/* Rear main module LDO enable (gpio107, CAM_LDO_EN): 1.1 V core, 2.8 V analog, 3.3 V lens. */
+	cam_main_ldo: regulator-cam-main-ldo {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_main_ldo";
+		gpio = <&tlmm 107 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <5000>;
+		vin-supply = <&cam_io_ldo>;
+	};
+
 	/*
 	 * Manual switch for tablet-sourced USB VBUS (the MAX77705 OTG boost,
 	 * see charger@69). regulator-output is the mainline convention for a
@@ -643,6 +663,22 @@
 		bias-disable;
 	};
 
+	/* Camera MCLK4 to the front sensor (stock cam_sensor_mclk4_active). */
+	cam_mclk4_default: cam-mclk4-default-state {
+		pins = "gpio104";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	/* Camera MCLK3 to the rear main sensor (stock cam_sensor_mclk3_active). */
+	cam_mclk3_default: cam-mclk3-default-state {
+		pins = "gpio103";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
 	/*
 	 * Pogo pinctrl, transcribed from the stock DTB (nodes attn_irq,
 	 * conn_irq, nrst_gpio — all tlmm, all drive-strength 2, bias-disable).
@@ -883,6 +919,16 @@
 	status = "okay";
 
 	ports {
+		/* Rear main Hi1337, stock csiphy-sd-index 1 */
+		port@1 {
+			csiphy1_ep: endpoint {
+				clock-lanes = <7>;
+				data-lanes = <0 1 2 3>;
+				bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+				remote-endpoint = <&cam_main_ep>;
+			};
+		};
+
 		/* Rear ultrawide Hi847, stock csiphy-sd-index 2 */
 		port@2 {
 			csiphy2_ep: endpoint {
@@ -890,6 +936,16 @@
 				data-lanes = <0 1 2 3>;
 				bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
 				remote-endpoint = <&cam_uw_ep>;
+			};
+		};
+
+		/* Front Hi1337, stock csiphy-sd-index 4 */
+		port@4 {
+			csiphy4_ep: endpoint {
+				clock-lanes = <7>;
+				data-lanes = <0 1 2 3>;
+				bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+				remote-endpoint = <&cam_front_ep>;
 			};
 		};
 	};
@@ -932,6 +988,85 @@
 				data-lanes = <1 2 3 4>;
 				link-frequencies = /bits/ 64 <400000000 200000000>;
 				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+};
+
+/*
+ * Rear main: Hynix Hi1337 (stock qcom,cam-sensor0). CCI0 master 1 at 7-bit
+ * 0x21, four D-PHY lanes into CSIPHY1, MCLK3 on gpio103 at 19.2 MHz, reset
+ * on gpio120 (active low), module LDO enable on gpio107 (5 ms on stock).
+ * 4128x3096 on the same 704 MHz link. The DW9808 lens and the module EEPROM
+ * sit on GENI I2C2, not on CCI, and follow later.
+ */
+&cci0_i2c1 {
+	camera@21 {
+		compatible = "hynix,hi1337";
+		reg = <0x21>;
+
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		assigned-clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 120 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam_mclk3_default>;
+		pinctrl-names = "default";
+
+		vddio-supply = <&cam_io_ldo>;
+		vdda-supply = <&cam_main_ldo>;
+		vddd-supply = <&cam_main_ldo>;
+
+		orientation = <1>;
+		rotation = <0>;
+
+		port {
+			cam_main_ep: endpoint {
+				data-lanes = <1 2 3 4>;
+				link-frequencies = /bits/ 64 <704000000>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+};
+
+/*
+ * Front: Hynix Hi1337 (stock qcom,cam-sensor1). CCI1 master 1 at 7-bit
+ * 0x21, four D-PHY lanes into CSIPHY4, MCLK4 on gpio104 at 19.2 MHz,
+ * reset on gpio24 (active low), module LDO enable on gpio25. Register
+ * tables and the 704 MHz link come from the stock CamX configuration for
+ * this module (issue #27). Stock power order: I/O LDO, module LDO, MCLK,
+ * reset, with 1/1/10/12 ms delays; the regulators carry the first two.
+ */
+&cci1 {
+	status = "okay";
+};
+
+&cci1_i2c1 {
+	camera@21 {
+		compatible = "hynix,hi1337";
+		reg = <0x21>;
+
+		clocks = <&camcc CAM_CC_MCLK4_CLK>;
+		assigned-clocks = <&camcc CAM_CC_MCLK4_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
+		pinctrl-0 = <&cam_mclk4_default>;
+		pinctrl-names = "default";
+
+		vddio-supply = <&cam_io_ldo>;
+		vdda-supply = <&cam_front_ldo>;
+		vddd-supply = <&cam_front_ldo>;
+
+		orientation = <0>;
+		rotation = <0>;
+
+		port {
+			cam_front_ep: endpoint {
+				data-lanes = <1 2 3 4>;
+				link-frequencies = /bits/ 64 <704000000>;
+				remote-endpoint = <&csiphy4_ep>;
 			};
 		};
 	};

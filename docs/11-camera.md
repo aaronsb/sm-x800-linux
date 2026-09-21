@@ -2,7 +2,7 @@
 
 Decision record: `docs/architecture/001-camera-stack-mainline-camss.md`.
 Measurement record: issue #27. This page is the story of stage 1 and
-stage 2, kernels r13 to r23 on 2026-09-21.
+stage 2 and stage 3, kernels r13 to r25 on 2026-09-21.
 
 ## The hardware
 
@@ -140,12 +140,57 @@ Skipping a clock in a bisect can hang the SoC when a register in that
 domain is touched; the two hangs in this hunt came from skipping the CPAS
 fast AHB and the VFE core clock while the IFE interrupt handler still ran.
 
+## Stage 3: both Hi1337 modules stream (r24, r25)
+
+Mainline has no Hi1337 driver. The Tab S9 port carries an out-of-tree
+one (nacht20-de/gts9wifi-fedora, `hi1337_gts9u.c`), so the first
+question was whether its register tables fit this tablet's modules. They
+do not: the S9 init table shares 14% of its entries with the stock S8+
+init table, the difference being the sensor MCU firmware in the 0x2000
+region, and the S9 modules run a 360 MHz link where CamX drives these at
+563.2 Mpixel/s, a 704 MHz link. So `hi1337.patch` is a new driver on the
+hi847.c structure with tables generated from the stock CamX sensor
+modules by `tools/hi1337-tables.py`. The three S8+ modules share one
+init table byte for byte; the mode tables are 2032x1524 binned and
+4000x3000 for the front, 4128x3096 for the rear main, all 30 fps.
+
+Two facts from the decode drove the driver. CamX verifies the sensor by
+reading 0x2000 at register 0x0714, so probe checks that and logs the
+model ID at 0x0716 alongside; both modules answer 0x2000 / 0x1337. The
+power order is the same as the ultrawide's with the module LDO on its
+own enable pin, so the DTS adds two more GPIO-switched regulators
+(gpio25 front with a 1 ms settle, gpio107 rear with 5 ms), both fed
+from the shared I/O LDO.
+
+The front sensor sits on CCI1 master 1 with MCLK4 on gpio104 and reset
+on gpio24, into CSIPHY4; the rear main on CCI0 master 1 with MCLK3 on
+gpio103 and reset on gpio120, into CSIPHY1. Each camera gets its own
+CSID/VFE pair because CSID N feeds IFE N only: ultrawide on 0, front on
+1, rear main on 2. `tools/camtest.sh front|frontfull|rear` links them.
+
+Both probed and streamed on the first flash of each: front 2032x1524
+and 4000x3000, rear 4128x3096, all at 30 fps, back to back with the
+ultrawide in one boot, RCG selectors back on XO after every session.
+The rear frame is soft because the DW9808 lens is unpowered and at rest.
+
+![First frame from the front camera](media/camera-front-first-frame.jpg)
+
+*Front camera, binned mode: the operator in profile under the ceiling
+joists. The tablet lies landscape in the keyboard dock, buttons up, so
+the native readout is upright and rotation stays 0.*
+
+![First frame from the rear main](media/camera-rear-first-frame.jpg)
+
+*Rear main, full resolution, quarter size: the desk, lens at its resting
+position.*
+
 ## Next
 
-The lite path (csid3 to vfe3) is untested on the fixed kernel; it hung
-the tablet once on the experimental r22 build. Stage 3 is the Hi1337 rear
-and front sensors and the DW9808 lens, ported from the Tab S9 out-of-tree
-drivers, plus enabling GENI i2c2 for the lens and EEPROM. Stage 4 is libcamera with its software ISP and a Hynix sensor
-helper. Open items to confirm while streaming: the vfe_lite register
-windows, the interconnect bandwidth values, and which SMMU stream IDs
-belong to the SFEs.
+The DW9808 lens actuator (0x0c) and the module EEPROM (0x58) sit on GENI
+I2C2 at 0x988000, which is not enabled yet; mainline has `dw9807-vcm`,
+and the DW9808 is register-compatible enough to try first. The lite path
+(csid3 to vfe3) is untested on the fixed kernel; it hung the tablet once
+on the experimental r22 build. Stage 4 is libcamera with its software
+ISP and a Hynix sensor helper. Open items to confirm while streaming:
+the vfe_lite register windows, the interconnect bandwidth values, and
+which SMMU stream IDs belong to the SFEs.
