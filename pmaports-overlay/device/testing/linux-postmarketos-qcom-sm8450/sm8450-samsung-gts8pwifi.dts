@@ -521,6 +521,22 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
+		/*
+		 * Microphone supply experiment (issue #7). Stock holds L13C at
+		 * 3.0 V as the SLPI's sensor_vddio; mainline does not boot the
+		 * SLPI, so the rail sits where the bootloader left it. Pad
+		 * sampling on 2026-09-21 showed the DMIC clock toggling at the
+		 * pad (TLMM 171) with the data pad (TLMM 172) flat, so the mic
+		 * side is unpowered. L13C is the last stock-on rail in the
+		 * 1.7-3.0 V range not yet tried.
+		 */
+		vreg_l13c_3p0: ldo13 {
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-always-on;
+		};
+
 		/* WCN6855 rfa 1.9 V rail (stock vdd-wlan-rfa1) */
 		vreg_s1c_1p86: smps1 {
 			regulator-name = "vreg_s1c_1p86";
