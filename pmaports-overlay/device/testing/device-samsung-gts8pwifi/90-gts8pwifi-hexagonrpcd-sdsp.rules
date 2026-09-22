@@ -1,0 +1,10 @@
+# Start hexagonrpcd for the SLPI when its FastRPC node appears.
+#
+# hexagonrpcd-sdsp.service carries ConditionPathExists=/dev/fastrpc-sdsp
+# and is wanted by multi-user.target. The SLPI boots from firmware in the
+# rootfs, so the node shows up seconds after multi-user.target and the
+# condition has already failed once; a failed condition is not retried by
+# Restart=. Pull the unit in from udev instead, the way the Bluetooth
+# address unit is pulled in when hci0 appears.
+
+SUBSYSTEM=="misc", KERNEL=="fastrpc-sdsp", ACTION=="add", TAG+="systemd", ENV{SYSTEMD_WANTS}+="hexagonrpcd-sdsp.service"

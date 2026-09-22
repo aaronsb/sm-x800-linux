@@ -24,12 +24,13 @@ if [ "$1" = "plasma" ]; then
 	apk add postmarketos-ui-plasma-desktop
 fi
 
-echo ">> extracting device-signed GPU firmware (zap) from apnhlos"
+echo ">> extracting device-signed firmware (apnhlos) and the sensor registry configs (super)"
 gts8pwifi-fw-extract
 
 cat <<'EOF'
 >> done. Remaining manual bits:
    - WiFi profile (lost with userdata):
        nmcli dev wifi connect <ssid> password <pw>
-   - reboot to pick up the initramfs with GPU firmware
+   - reboot to pick up the initramfs with GPU firmware and let the
+     sensor hub read its registry (ssccli --sensor accelerometer to check)
 EOF

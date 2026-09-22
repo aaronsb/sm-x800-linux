@@ -1,0 +1,404 @@
+From 79d1bedce11d2c075f5e3ab945f34e279e416ee0 Mon Sep 17 00:00:00 2001
+From: Fady <me@fadyackad.dev>
+Date: Sun, 20 Sep 2026 16:09:14 +0200
+Subject: [PATCH 5/7] hexagonrpcd: fix descriptor lifetimes and the write paths
+ added for the registry
+
+hexagonfs_openat hands out a second file number when a name's directory part resolves to an already-assigned descriptor (".", "..", "/"), so the close in create/unlink/rename freed one still held elsewhere; hexagonfs_close now destroys only on the last reference, and fastrpc_apps_std_deinit closes descendants before the root. mapped_or_empty pointed write and truncate at implementations that dereference a NULL context for an absent directory. outbufs_calculate_size padded zero-length buffers outbufs_encode never writes, and alloc_outbufs4 did not skip the method id extended methods carry in the first primitive word. A '+' mode no longer implies O_CREAT and falls back to a read-only open on an unwritable tree, stat reports the write bit only when the backing file has it, mapped writes loop until done, and the persist layout is probed at DIR/sensors/persist/registry rather than its parent.
+---
+ hexagonrpcd/apps_std.c         | 37 +++++++++++++++------
+ hexagonrpcd/hexagonfs.c        | 20 ++++++++----
+ hexagonrpcd/hexagonfs.h        |  3 +-
+ hexagonrpcd/hexagonfs_mapped.c | 60 +++++++++++++++++++++++++++++-----
+ hexagonrpcd/iobuffer.c         | 12 +++++--
+ hexagonrpcd/listener.c         | 19 +++++++----
+ hexagonrpcd/rpcd_builder.c     | 39 ++++++++++++++--------
+ 7 files changed, 139 insertions(+), 51 deletions(-)
+
+diff --git a/hexagonrpcd/apps_std.c b/hexagonrpcd/apps_std.c
+index c1a8cb8..f5aeaba 100644
+--- a/hexagonrpcd/apps_std.c
++++ b/hexagonrpcd/apps_std.c
+@@ -153,11 +153,9 @@ static uint32_t apps_std_fseek(void *data,
+ }
+ 
+ /*
+- * Open NAME below DIRFD the way fopen(3) would for MODE: read-only for "r",
+- * otherwise (w, a, +) read-write, created if absent, truncated for "w",
+- * appended for "a". The sensor framework of the Snapdragon Sensor Core
+- * writes into its registry directory while it initialises and aborts the
+- * whole DSP when that is refused.
++ * Open NAME below DIRFD as fopen(3) would for MODE. The Snapdragon Sensor
++ * Core writes into its registry while it initialises and takes the whole DSP
++ * down when that is refused.
+  */
+ static int apps_std_open_mode(struct apps_std_ctx *ctx, int dirfd,
+ 			      const char *name, const char *mode)
+@@ -165,16 +163,17 @@ static int apps_std_open_mode(struct apps_std_ctx *ctx, int dirfd,
+ 	const char *m;
+ 	bool writing = false;
+ 	int flags = 0;
++	int ret;
+ 
+ 	for (m = mode; *m != '\0'; m++) {
+ 		switch (*m) {
+ 			case 'w':
+ 				writing = true;
+-				flags |= O_TRUNC;
++				flags |= O_CREAT | O_TRUNC;
+ 				break;
+ 			case 'a':
+ 				writing = true;
+-				flags |= O_APPEND;
++				flags |= O_CREAT | O_APPEND;
+ 				break;
+ 			case '+':
+ 				writing = true;
+@@ -187,7 +186,17 @@ static int apps_std_open_mode(struct apps_std_ctx *ctx, int dirfd,
+ 	if (!writing)
+ 		return hexagonfs_openat(ctx->fds, ctx->rootfd, dirfd, name);
+ 
+-	return hexagonfs_create(ctx->fds, ctx->rootfd, dirfd, name, flags);
++	ret = hexagonfs_create(ctx->fds, ctx->rootfd, dirfd, name, flags);
++
++	/*
++	 * "r+" must not create the file, and on a read-only tree the DSP is
++	 * normally only going to read it.
++	 */
++	if (ret < 0 && !(flags & O_CREAT)
++	 && (ret == -EACCES || ret == -EROFS || ret == -ENOSYS))
++		ret = hexagonfs_openat(ctx->fds, ctx->rootfd, dirfd, name);
++
++	return ret;
+ }
+ 
+ static uint32_t apps_std_fopen(void *data,
+@@ -593,11 +602,19 @@ void fastrpc_apps_std_deinit(struct fastrpc_interface *iface)
+ 	struct apps_std_ctx *ctx = iface->data;
+ 	int i;
+ 
+-	for (i = 0; i < HEXAGONFS_MAX_FD; i++) {
+-		if (ctx->fds[i] != NULL)
++	/*
++	 * Destroying a descriptor walks its ->up chain, so close descendants
++	 * before the root rather than ascending from it.
++	 */
++	for (i = HEXAGONFS_MAX_FD - 1; i >= 0; i--) {
++		if (i != ctx->rootfd && ctx->fds[i] != NULL)
+ 			hexagonfs_close(ctx->fds, i);
+ 	}
+ 
++	if (ctx->rootfd >= 0 && ctx->rootfd < HEXAGONFS_MAX_FD
++	 && ctx->fds[ctx->rootfd] != NULL)
++		hexagonfs_close(ctx->fds, ctx->rootfd);
++
+ 	free(iface->data);
+ 	free(iface);
+ }
+diff --git a/hexagonrpcd/hexagonfs.c b/hexagonrpcd/hexagonfs.c
+index da0c95f..603a40a 100644
+--- a/hexagonrpcd/hexagonfs.c
++++ b/hexagonrpcd/hexagonfs.c
+@@ -194,6 +194,7 @@ err:
+ int hexagonfs_close(struct hexagonfs_fd **fds, int fileno)
+ {
+ 	struct hexagonfs_fd *fd;
++	size_t i;
+ 
+ 	if (fileno < 0 || fileno >= HEXAGONFS_MAX_FD)
+ 		return -EBADF;
+@@ -202,11 +203,20 @@ int hexagonfs_close(struct hexagonfs_fd **fds, int fileno)
+ 	if (fd == NULL || fd->ops == NULL)
+ 		return -EBADF;
+ 
++	fds[fileno] = NULL;
++
++	/*
++	 * ".", ".." and the search directory itself can be handed out under a
++	 * second file number: only the last reference may destroy it.
++	 */
++	for (i = 0; i < HEXAGONFS_MAX_FD; i++) {
++		if (fds[i] == fd)
++			return 0;
++	}
++
+ 	fd->is_assigned = false;
+ 	destroy_file_descriptor(fd);
+ 
+-	fds[fileno] = NULL;
+-
+ 	return 0;
+ }
+ 
+@@ -279,10 +289,8 @@ int hexagonfs_fstat(struct hexagonfs_fd **fds, int fileno, struct stat *stats)
+ }
+ 
+ /*
+- * Resolve the directory part of NAME for the operations that act on a name inside a directory (create,
+- * unlink, rename). Returns the file number of that directory and sets *BASE to the final component. When
+- * NAME has no directory part, DIRFD itself is returned and *OWNED stays false; otherwise the directory was
+- * opened here and the caller closes it.
++ * Resolve the directory part of NAME, setting *BASE to the final component.
++ * *OWNED is true when the directory was opened here and the caller closes it.
+  */
+ static int resolve_parent(struct hexagonfs_fd **fds, int rootfd, int dirfd,
+ 			  const char *name, const char **base, bool *owned)
+diff --git a/hexagonrpcd/hexagonfs.h b/hexagonrpcd/hexagonfs.h
+index b655f3d..e24b4b5 100644
+--- a/hexagonrpcd/hexagonfs.h
++++ b/hexagonrpcd/hexagonfs.h
+@@ -42,8 +42,7 @@ struct hexagonfs_file_ops {
+ 	ssize_t (*read)(struct hexagonfs_fd *fd, size_t size, void *ptr);
+ 	int (*stat)(struct hexagonfs_fd *fd, struct stat *stats);
+ 	int (*seek)(struct hexagonfs_fd *fd, off_t off, int whence);
+-	/* Writable backends only (physical directories): create/open NAME for reading and writing below DIR
+-	 * (FLAGS: O_TRUNC, O_APPEND), write, truncate, unlink, rename within the same backend. */
++	/* Writable backends only; NULL here is reported as ENOSYS. */
+ 	int (*create)(struct hexagonfs_fd *dir,
+ 		      const char *name,
+ 		      int flags,
+diff --git a/hexagonrpcd/hexagonfs_mapped.c b/hexagonrpcd/hexagonfs_mapped.c
+index 9804527..400800f 100644
+--- a/hexagonrpcd/hexagonfs_mapped.c
++++ b/hexagonrpcd/hexagonfs_mapped.c
+@@ -162,7 +162,8 @@ static int mapped_create(struct hexagonfs_fd *dir,
+ 	}
+ 
+ 	ctx->fd = openat(dir_ctx->fd, name,
+-			 O_RDWR | O_CREAT | O_CLOEXEC | (flags & (O_TRUNC | O_APPEND)),
++			 O_RDWR | O_CLOEXEC
++			 | (flags & (O_CREAT | O_TRUNC | O_APPEND)),
+ 			 0644);
+ 	if (ctx->fd == -1) {
+ 		ret = -errno;
+@@ -190,13 +191,30 @@ err:
+ static ssize_t mapped_write(struct hexagonfs_fd *fd, size_t size, const void *in)
+ {
+ 	struct mapped_ctx *ctx = fd->data;
++	const char *buf = in;
++	size_t done = 0;
+ 	ssize_t ret;
+ 
+-	ret = write(ctx->fd, in, size);
+-	if (ret < 0)
+-		return -errno;
++	/*
++	 * A short write reported as success lets the DSP rename a truncated
++	 * file into place.
++	 */
++	while (done < size) {
++		ret = write(ctx->fd, &buf[done], size - done);
++		if (ret < 0) {
++			if (errno == EINTR)
++				continue;
+ 
+-	return ret;
++			return done ? (ssize_t) done : -errno;
++		}
++
++		if (ret == 0)
++			break;
++
++		done += ret;
++	}
++
++	return done;
+ }
+ 
+ static int mapped_truncate(struct hexagonfs_fd *fd, off_t len)
+@@ -310,13 +328,20 @@ static int mapped_stat(struct hexagonfs_fd *fd, struct stat *stats)
+ 
+ 	if (phys.st_mode & S_IFDIR) {
+ 		stats->st_mode = S_IFDIR
+-			       | S_IRUSR | S_IWUSR | S_IXUSR
++			       | S_IRUSR | S_IXUSR
+ 			       | S_IRGRP | S_IXGRP
+ 			       | S_IROTH | S_IXOTH;
+ 	} else {
+-		stats->st_mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
++		stats->st_mode = S_IFREG | S_IRUSR | S_IRGRP | S_IROTH;
+ 	}
+ 
++	/*
++	 * Claiming a write bit the backing file lacks makes the DSP take a
++	 * write path that can only fail.
++	 */
++	if (phys.st_mode & S_IWUSR)
++		stats->st_mode |= S_IWUSR;
++
+ 	stats->st_atim.tv_sec = phys.st_atim.tv_sec;
+ 	stats->st_atim.tv_nsec = phys.st_atim.tv_nsec;
+ 	stats->st_ctim.tv_sec = phys.st_ctim.tv_sec;
+@@ -403,6 +428,23 @@ static int mapped_or_empty_rename(struct hexagonfs_fd *dir, const char *name,
+ 		return -ENOENT;
+ }
+ 
++static ssize_t mapped_or_empty_write(struct hexagonfs_fd *fd, size_t size,
++				     const void *in)
++{
++	if (fd->data)
++		return mapped_write(fd, size, in);
++	else
++		return -ENOENT;
++}
++
++static int mapped_or_empty_truncate(struct hexagonfs_fd *fd, off_t len)
++{
++	if (fd->data)
++		return mapped_truncate(fd, len);
++	else
++		return -ENOENT;
++}
++
+ static int mapped_or_empty_seek(struct hexagonfs_fd *fd, off_t off, int whence)
+ {
+ 	if (fd->data)
+@@ -485,8 +527,8 @@ struct hexagonfs_file_ops hexagonfs_mapped_or_empty_ops = {
+ 	.seek = mapped_or_empty_seek,
+ 	.stat = mapped_or_empty_stat,
+ 	.create = mapped_or_empty_create,
+-	.write = mapped_write,
+-	.truncate = mapped_truncate,
++	.write = mapped_or_empty_write,
++	.truncate = mapped_or_empty_truncate,
+ 	.unlink = mapped_or_empty_unlink,
+ 	.rename = mapped_or_empty_rename,
+ };
+diff --git a/hexagonrpcd/iobuffer.c b/hexagonrpcd/iobuffer.c
+index 0c36df6..b4769b6 100644
+--- a/hexagonrpcd/iobuffer.c
++++ b/hexagonrpcd/iobuffer.c
+@@ -199,9 +199,15 @@ size_t outbufs_calculate_size(size_t n_outbufs, const struct fastrpc_io_buffer *
+ 	for (i = 0; i < n_outbufs; i++) {
+ 		size += 4;
+ 
+-		if (size & 0x7)
+-			size += 8 - (size & 0x7);
+-		size += outbufs[i].s;
++		/*
++		 * outbufs_encode pads only when there is a payload; padding
++		 * an empty buffer would ship uninitialised bytes.
++		 */
++		if (outbufs[i].s) {
++			if (size & 0x7)
++				size += 8 - (size & 0x7);
++			size += outbufs[i].s;
++		}
+ 	}
+ 
+ 	return size;
+diff --git a/hexagonrpcd/listener.c b/hexagonrpcd/listener.c
+index 8912849..5b3ba6e 100644
+--- a/hexagonrpcd/listener.c
++++ b/hexagonrpcd/listener.c
+@@ -299,6 +299,13 @@ static struct fastrpc_io_buffer *alloc_outbufs4(const struct hrpc_method_def_int
+ 	if (out == NULL)
+ 		return NULL;
+ 
++	/*
++	 * Extended methods carry their id in the first primitive word; step
++	 * over it as count_sizes4 does.
++	 */
++	if (def->msg_id > 30)
++		prim_in = (const uint32_t *) prim_in + 1;
++
+ 	for (i = 0; i < def->n_args; i++) {
+ 		if (def->args[i].t == HRPC_ARG_OUT_BLOB
+ 		 || def->args[i].t == HRPC_ARG_OUT_TYPE) {
+@@ -419,10 +426,9 @@ err:
+ }
+ 
+ /*
+- * adsp_listener_next2 inlines at most this many bytes of a request's input
+- * buffers and reports the full length. A longer request (the sensor
+- * framework writing a file of tens of kilobytes) is completed with
+- * adsp_listener_get_in_bufs2 from that offset, as Qualcomm's listener does.
++ * adsp_listener_next2 inlines at most this many bytes and reports the full
++ * length; the rest is fetched with adsp_listener_get_in_bufs2, as Qualcomm's
++ * listener does.
+  */
+ #define LISTENER_INLINE_INBUFS 256
+ #define LISTENER_MAX_INBUFS (16 * 1024 * 1024)
+@@ -550,9 +556,8 @@ err_free_outbufs:
+ /*
+  * A request this server cannot serve is answered with an error and empty
+  * output buffers, so that the DSP sees a failed call rather than a vanished
+- * listener; the DSP-side sensor framework retries or continues on an error
+- * but aborts without the answer. Returns 1 only when even that answer cannot
+- * be built.
++ * listener: the sensor framework retries or continues on an error but aborts
++ * without the answer.
+  */
+ static int decline_request(uint32_t sc, uint32_t error, uint32_t *result,
+ 			   struct fastrpc_io_buffer **returned)
+diff --git a/hexagonrpcd/rpcd_builder.c b/hexagonrpcd/rpcd_builder.c
+index 0d720b3..58a4fad 100644
+--- a/hexagonrpcd/rpcd_builder.c
++++ b/hexagonrpcd/rpcd_builder.c
+@@ -110,38 +110,49 @@ static struct hexagonfs_dirent *hfs_map_or_empty(const char *name, const char *p
+  * TODO: Make this free()-able with reference counts
+  */
+ #define SENSORS_PERSIST		"/sensors/persist/"
++#define SENSORS_PERSIST_REG	"/sensors/persist/registry"
+ 
+ /*
+- * The sensor framework does not only read its registry: while it initialises
+- * it removes and rewrites entries below /persist/sensors/registry/registry
+- * and writes a temporary file next to that directory
+- * (/persist/sensors/registry/fstempfile, renamed into the registry). With
+- * PREFIX/sensors/persist/ present, that directory backs the whole of
+- * /persist/sensors/registry, its registry/ subdirectory being the registry;
+- * otherwise the parent stays virtual and PREFIX/sensors/registry/ is the
+- * registry, as before.
++ * The framework rewrites entries below /persist/sensors/registry/registry and
++ * renames a temporary file into it, so that tree has to be physical. When
++ * DIR/sensors/persist/registry exists it backs the whole of
++ * /persist/sensors/registry; otherwise the layout is as before.
+  */
+ static struct hexagonfs_dirent *build_persist_dir(const char *prefix,
+ 						  const char *sns_reg)
+ {
+ 	struct stat st;
+-	char *sns_persist;
++	char *sns_persist, *probe;
++	size_t n_prefix = strlen(prefix);
+ 
+-	sns_persist = malloc(strlen(prefix) + strlen(SENSORS_PERSIST) + 1);
+-	if (sns_persist != NULL) {
++	sns_persist = malloc(n_prefix + strlen(SENSORS_PERSIST) + 1);
++	probe = malloc(n_prefix + strlen(SENSORS_PERSIST_REG) + 1);
++
++	if (sns_persist != NULL && probe != NULL) {
+ 		strcpy(sns_persist, prefix);
+ 		strcat(sns_persist, SENSORS_PERSIST);
++		strcpy(probe, prefix);
++		strcat(probe, SENSORS_PERSIST_REG);
++
++		/*
++		 * The registry itself has to be there, not just its parent:
++		 * mapping a persist directory that does not contain one hides
++		 * the packaged registry, and nothing can create it at runtime.
++		 */
++		if (stat(probe, &st) == 0 && S_ISDIR(st.st_mode)) {
++			free(probe);
+ 
+-		if (stat(sns_persist, &st) == 0 && S_ISDIR(st.st_mode))
+ 			return hfs_mkdir("persist", 1,
+ 					hfs_mkdir("sensors", 1,
+ 						hfs_map("registry", sns_persist)
+ 					)
+ 				);
+-
+-		free(sns_persist);
++		}
+ 	}
+ 
++	free(probe);
++	free(sns_persist);
++
+ 	return hfs_mkdir("persist", 1,
+ 			hfs_mkdir("sensors", 1,
+ 				hfs_mkdir("registry", 1,
+-- 
+2.55.0
+

@@ -1,0 +1,4 @@
+# iio-sensor-proxy with libssc: accelerometer mount matrix. The panel scans out
+# landscape-native (2800x1752), so landscape with the camera edge up is "normal".
+# Measured 2026-09-22: raw +X = camera edge up, raw +Y = camera edge right, +Z = screen up.
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", ENV{ACCEL_MOUNT_MATRIX}+="0, 1, 0; -1, 0, 0; 0, 0, 1"

@@ -1,0 +1,25 @@
+#!/sbin/openrc-run
+
+supervisor=supervise-daemon
+name="Hexagonrpcd ADSP SensorPD"
+description="Daemon to support Qualcomm Hexagon ADSP virtual filesystem for SensorPD"
+
+command=/usr/bin/hexagonrpcd
+command_user=fastrpc:fastrpc
+
+# Implement some conf loading heirarchy where the fw path is loaded from these
+# locations in order of precedence:
+# 1) /etc/conf.d/$RC_SVCNAME
+# 2) /usr/share/hexagonrpcd/$RC_SVCNAME".conf
+# If neither sets hexagonrpcd_fw_dir, leave it unset and let hexagonrpcd guess
+# the firmware directory path.
+if [ -z "$hexagonrpcd_fw_dir" ]; then
+	# note: /etc/conf.d is sourced automatically by openrc, so if the var is empty
+	# here then that conf doesn't exist
+	[ -f "/usr/share/hexagonrpcd/$RC_SVCNAME".conf ] && . "/usr/share/hexagonrpcd/$RC_SVCNAME".conf
+fi
+
+command_args="-f /dev/fastrpc-adsp -d adsp -s"
+if [ -n "$hexagonrpcd_fw_dir" ]; then
+    command_args="$command_args -R ${hexagonrpcd_fw_dir}"
+fi

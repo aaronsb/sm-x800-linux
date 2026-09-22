@@ -11,7 +11,7 @@
 #   name     stable handle for the blob (also the harvest --only selector)
 #   source   which dumped partition/logical-image the blob lives in:
 #              apnhlos = plain vfat partition (mount -o ro)
-#              vendor  = EROFS logical image inside `super` (lpunpack + mount)
+#              vendor  = F2FS (LZ4) logical image inside `super` (lpunpack + mount)
 #   src_glob path (glob ok) of the blob(s) WITHIN that source root
 #   dest_dir destination under /lib/firmware (. = the /lib/firmware root)
 #   tier     initramfs = must ride in the first-stage initramfs (loaded at

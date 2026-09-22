@@ -1,0 +1,83 @@
+# Forked from Alpine (community/hexagonrpcd 0.4.0-r3) as a git snapshot of
+# upstream main plus seven patches. The Snapdragon Sensor Core on the
+# SM8450 rewrites its registry during initialisation; 0.4.0 serves the
+# registry read-only and lacks the sns_registry local interface, so the
+# sensor core fails at boot. The patches are queued for upstream
+# (https://github.com/linux-msm/hexagonrpc/issues/19); this package goes
+# away when a release carries them. Same pkgname and a higher version, so
+# apk prefers it over Alpine's build.
+#
+# Extras over Alpine's aport: sscregistrygen (upstream tools/, needs json-c)
+# is installed so gts8pwifi-fw-extract can pre-populate the registry.
+maintainer="Aaron <aaronsb@gmail.com>"
+pkgname=hexagonrpcd
+pkgver=0.5.0_git20260824
+pkgrel=0
+_commit=598b591ae9da6a6cfe2ca5ea78998019ca6395ea
+pkgdesc="Qualcomm HexagonFS daemon (git snapshot with sensor registry write support)"
+url="https://github.com/linux-msm/hexagonrpc"
+# s390x: fails on 1 test. Hexagonrpcd is specific to Qualcomm ARM SoCs, so let's ignore it for now.
+arch="all !s390x"
+license="GPL-3.0-or-later"
+makedepends="json-c-dev linux-headers meson"
+install="$pkgname.pre-install"
+subpackages="$pkgname-doc $pkgname-openrc $pkgname-systemd $pkgname-udev"
+
+source="$pkgname-$_commit.tar.gz::https://github.com/linux-msm/hexagonrpc/archive/$_commit.tar.gz
+	10-fastrpc.rules
+	$pkgname-adsp-rootpd.initd
+	$pkgname-adsp-sensorspd.initd
+	$pkgname-sdsp.initd
+	0001-hexagonfs-add-create-write-truncate-unlink-and-renam.patch
+	0002-apps_std-serve-fopen-fwrite-fsync-fremove-ftrunc-and.patch
+	0003-listener-answer-unsupported-requests-and-fetch-input.patch
+	0004-rpcd_builder-map-the-registry-s-parent-directory-whe.patch
+	0005-hexagonrpcd-fix-descriptor-lifetimes-and-the-write-p.patch
+	0006-hexagonrpcd-serve-the-sns_registry-interface-with-a-.patch
+	0007-hexagonrpcd-line-buffer-stdout.patch
+	"
+builddir="$srcdir/hexagonrpc-$_commit"
+
+build() {
+	# hexagonrpcd_verbose prints every remote method call; off for the
+	# package, as upstream's default.
+	abuild-meson \
+		-Db_lto=true \
+		-Dhexagonrpcd_verbose=false \
+		. output
+	meson compile -C output
+}
+
+check() {
+	meson test -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+
+	# Upstream builds sscregistrygen when json-c is present and does not
+	# install it. It turns the vendor sensor configs into registry files.
+	install -Dm755 output/tools/sscregistrygen "$pkgdir"/usr/bin/sscregistrygen
+
+	# Allow access for FastRPC node for FastRPC user/group
+	install -Dm644 "$srcdir"/10-fastrpc.rules -t "$pkgdir"/usr/lib/udev/rules.d/
+
+	install -Dm755 "$srcdir"/$pkgname-adsp-rootpd.initd "$pkgdir"/etc/init.d/$pkgname-adsp-rootpd
+	install -Dm755 "$srcdir"/$pkgname-adsp-sensorspd.initd "$pkgdir"/etc/init.d/$pkgname-adsp-sensorspd
+	install -Dm755 "$srcdir"/$pkgname-sdsp.initd "$pkgdir"/etc/init.d/$pkgname-sdsp
+}
+
+sha512sums="
+80dadc220a1bf90e33aa081a6218794487edad1dd560d0848530495a823fcf4e6057e59dc8ab4f2e05fb0c078dcf32e4f4651de4c19a63bea1881ac4c0202313  hexagonrpcd-598b591ae9da6a6cfe2ca5ea78998019ca6395ea.tar.gz
+f931cf5f901a7c17ffb0eb194b5de2c532fd238692898bf264c484b13b93119c9727bd8f8daf6a7d1668cc9108a9a0662231d300c6f1376e3e4edd3ce41d235d  10-fastrpc.rules
+934fda348f8b8896d15fa892e81e6dea022144c9bfcb557c0938898ac452ee3ab6a39f7ceaa54ede2ea78711f3516375c01746f8c55d1acec5ec1f1d9c9f816b  hexagonrpcd-adsp-rootpd.initd
+429f4f76e527b4289f95628603e4cee8b8d048d9a2a594ee367e5765b7554f494848c1f1aa0a7da84c193a698cd885e9325323fb6239293f1718775015cd3df0  hexagonrpcd-adsp-sensorspd.initd
+c88d3a813aa92298c3585c33111389c7175c67240497f2aeeb413228ccd8b991ed2e5edd2ffd4603389cfc9c8af6dfc5cd4c94c9979919e3efdd5bd5f547c9bd  hexagonrpcd-sdsp.initd
+ddb125ea0fb4a613f40975c431730cb3ac8420fb42f99af9a1ed91a1e133915ae32beae96e8c4a948151e82e98d5325ae19323dba9a165a6186b6d344495ba7e  0001-hexagonfs-add-create-write-truncate-unlink-and-renam.patch
+f0bdb943d748dfd6ccd7d657310cf97c912bf9f7558c8405937f0d5e4bfdd614b75bb1ba3b1647f5c81ba176736306dead1b2ed4c2d73f68143b6843d09caa2b  0002-apps_std-serve-fopen-fwrite-fsync-fremove-ftrunc-and.patch
+96713996332136dd40ca23a4256c965d2af0ade094b84f11b202761c1f2074aa79d80a60eb85f50b30789cb89e679c275a99f2959f67ba4d1650219412c7ce15  0003-listener-answer-unsupported-requests-and-fetch-input.patch
+497afc3d26c96d05f04f835395bb5d99f059660eb96b6a69704213637780937a735e600faf4d219d2948265647e4f6d4218e66e6f7a6e737157a145aacef1fd4  0004-rpcd_builder-map-the-registry-s-parent-directory-whe.patch
+3270e02ce2169454b9f65c53ccf2423f5e628a4e3ab7b0491b5893c1af334fabc50c3e69702df9c0463828b2bc46b98369096192caff09edd037445603c4c7d6  0005-hexagonrpcd-fix-descriptor-lifetimes-and-the-write-p.patch
+fffc63f3dc801510857f8afd1f4b08e24dce1d18ca3955cc3b9eb8bec638ca2d7ea06a53733f48a51fa718e2fed27e7390831b93dbca19fb917c13119977e236  0006-hexagonrpcd-serve-the-sns_registry-interface-with-a-.patch
+90f784dc191219e06c84c8190fc686e39b5b48135860b5d1cdb725890f13701b1b21ae3e875657e3ba9bcdcc47de41daa5cfc4bf9d6e75589928854aab713904  0007-hexagonrpcd-line-buffer-stdout.patch
+"

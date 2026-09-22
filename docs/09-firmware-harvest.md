@@ -30,9 +30,9 @@ or incomplete harvest is caught while the tablet is still trivially recoverable.
    **`apnhlos`** (the zap) and **`super`** (everything else) at minimum.
 3. **Turn the raw images into source roots** on the host:
    - `apnhlos` — plain vfat: `mount -o ro,loop apnhlos.img /mnt/apnhlos`
-   - `vendor`  — EROFS logical image inside `super`:
+   - `vendor`  — F2FS (LZ4-compressed) logical image inside `super`:
      `lpunpack --partition vendor super.img . && mount -o ro,loop vendor.img /mnt/vendor`
-   (`tools/fw-harvest.sh --from-dumps DIR` does both when erofs/lp tooling is present.)
+   (`tools/fw-harvest.sh --from-dumps DIR` does both when lp tooling and F2FS support are present.)
 4. **Harvest, offline, at leisure** — before flashing:
    ```sh
    tools/fw-harvest.sh --apnhlos /mnt/apnhlos --vendor /mnt/vendor \
