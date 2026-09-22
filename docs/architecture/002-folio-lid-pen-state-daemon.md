@@ -85,7 +85,7 @@ magnetometer would keep that going for the life of the boot.
 Light. The ambient light sensor on the front face is read through the
 same SLPI path, `ssccli --sensor light`. On 2026-09-22 in one room light
 it read 5 lux with the folio open and docked and an exact 0 over four
-samples with the folio closed; on 2026-09-21 it read 6 lux open in a dim
+samples with the folio closed; earlier the same day it read 6 lux open in a dim
 room. A closed folio and a dark room both read 0, so the sensor can rule
 out "closed" but cannot confirm it.
 
