@@ -18,6 +18,7 @@
 /dts-v1/;
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/iio/qcom,spmi-adc7-pm8350.h>
 #include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/leds/common.h>
@@ -313,12 +314,36 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
-		pinctrl-0 = <&vol_up_default>;
+		pinctrl-0 = <&vol_up_default>, <&hall_default>;
 
 		key-volume-up {
 			label = "Volume Up";
 			gpios = <&pm8350_gpios 6 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
+			debounce-interval = <15>;
+			wakeup-source;
+		};
+
+		/*
+		 * Hall switches (stock hall_ic node): the cover magnet on
+		 * tlmm 169 and the S Pen garage on tlmm 23, both active low.
+		 * Stock reports them as events 0x15 and 0x1e to its own
+		 * sensor framework; here they are EV_SW switches.
+		 */
+		switch-cover {
+			label = "Cover";
+			gpios = <&tlmm 169 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_MACHINE_COVER>;
+			debounce-interval = <15>;
+			wakeup-source;
+		};
+
+		switch-pen {
+			label = "S Pen";
+			gpios = <&tlmm 23 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_PEN_INSERTED>;
 			debounce-interval = <15>;
 			wakeup-source;
 		};
@@ -675,6 +700,14 @@
 	cam_mclk3_default: cam-mclk3-default-state {
 		pins = "gpio103";
 		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	/* Hall switch inputs (stock hall_irq, hall_wacom_irq). */
+	hall_default: hall-default-state {
+		pins = "gpio23", "gpio169";
+		function = "gpio";
 		drive-strength = <2>;
 		bias-disable;
 	};
@@ -1079,6 +1112,39 @@
 		power-source = <1>;
 		bias-pull-up;
 		input-enable;
+	};
+
+	/* Wi-Fi thermistor on pm8350 gpio1, an analog input to the ADC. */
+	wf_therm_default: wf-therm-default-state {
+		pins = "gpio1";
+		function = "normal";
+		bias-high-impedance;
+	};
+};
+
+/*
+ * Thermistors (stock sec_thermistor@0/@1): 100 kOhm NTCs on pm8350
+ * AMUX_THM1 (AP, next to the SoC) and pm8350 gpio1 (Wi-Fi), both read
+ * through the pmk8350 ADC as channels 0x144 and 0x14a. Ratiometric with
+ * the 100 kOhm pull-up; the driver's NTC table yields millidegrees.
+ */
+&pmk8350_vadc {
+	pinctrl-0 = <&wf_therm_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	channel@144 {
+		reg = <PM8350_ADC7_AMUX_THM1_100K_PU(1)>;
+		qcom,hw-settle-time = <200>;
+		qcom,ratiometric;
+		label = "ap_therm";
+	};
+
+	channel@14a {
+		reg = <PM8350_ADC7_GPIO1_100K_PU(1)>;
+		qcom,hw-settle-time = <200>;
+		qcom,ratiometric;
+		label = "wf_therm";
 	};
 };
 
