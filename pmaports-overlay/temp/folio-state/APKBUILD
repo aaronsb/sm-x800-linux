@@ -1,0 +1,65 @@
+# Folio, lid and pen state daemon for the Galaxy Tab S8+ (samsung-gts8pwifi).
+# Fuses the pogo keyboard device, the two hall switches and a magnetometer
+# sample through libssc into SW_LID and SW_PEN_INSERTED on a uinput device
+# named "folio-state". The device package depends on it; console-blank reads
+# the virtual device for the display policy. ADR-002 in the port's repo.
+#
+# The classifier (folio_state.c) is plain C and check() runs its host test.
+maintainer="Aaron <aaronsb@gmail.com>"
+pkgname=folio-state
+pkgver=0.1
+pkgrel=2
+pkgdesc="Folio, lid and pen state daemon for the Galaxy Tab S8+ (virtual SW_LID device)"
+url="https://github.com/aaronsb/sm-x800-linux"
+arch="aarch64"
+license="MIT"
+makedepends="glib-dev libssc-dev libqmi-dev libevdev-dev pkgconf"
+subpackages="$pkgname-systemd"
+source="
+	folio_state.h
+	folio_state.c
+	foliod.c
+	test_folio_state.c
+	Makefile
+	folio-state.service
+	folio-state.conf
+	80-folio-state.preset
+	"
+builddir="$srcdir"
+
+build() {
+	make
+}
+
+check() {
+	make check
+}
+
+package() {
+	make DESTDIR="$pkgdir" PREFIX=/usr install
+	install -Dm644 "$srcdir"/folio-state.conf \
+		"$pkgdir"/etc/conf.d/folio-state
+}
+
+systemd() {
+	install_if="$pkgname=$pkgver-r$pkgrel systemd"
+	install -Dm644 "$srcdir"/folio-state.service \
+		"$subpkgdir"/usr/lib/systemd/system/folio-state.service
+	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
+	ln -sf ../folio-state.service \
+		"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/folio-state.service
+	# vendor wants symlinks read "disabled" from is-enabled without a preset
+	install -Dm644 "$srcdir"/80-folio-state.preset \
+		"$subpkgdir"/usr/lib/systemd/system-preset/80-folio-state.preset
+}
+
+sha512sums="
+4219dd83773b3b387705eef43f19dff1cfcfd3943fe4ec300470862968bde31803ad36e9b1601686272fef1fb6b1415612564461eeaa339790e251975e971172  folio_state.h
+afd8f0734e89885f910c516822bd7300df61f191c726e3598078901f09a259063fb29b1cb7238c7f8b73e67672e90f20efa9eadc2dff5afccc2693b4d92e3a29  folio_state.c
+c636dc5d625801b04ec05dfc03e74beab191c184e72e561b96be3e39c1c5edf3c004502b1142879a29a72e8af20d9f7f1337fed32e05491b5ac712e41d412d78  foliod.c
+4244259c754dd3892bfb3b9687009517fb8e453fcf1c41bdcdd9bbfa936ef00b4de94642364acaba20cc3166be29ca8177593f1ef7432a93da5d47202adde398  test_folio_state.c
+a95414169ee33989d76d0038eff186f14f36b42659349980e4f8de1c31d96b5b3bda55434eb37bb7644fbf6aa3bbfd11a707a5c768b4bad4ef2877e1504359e9  Makefile
+d9d957109cb328feeaa680c5c3d245f8dad69900b32efd5c51fa4c3e1f17f601687f18c68e4c283a6824597a1e7f4dd39ed634c9cf41d2d5b2402d3ba32d8446  folio-state.service
+5e376a21d60ad00c051f22f6d09172b9700e126f6196ef909daca89f6b50c43c3165792f7aadf0e368096e705823f337902ee074f4b9e718b5db05b8c52c7584  folio-state.conf
+3fdb6d5f954699f9c3bad05e1284f36879a0bf23915089971e4eb2ca5a454026abfa84c404ecdb571fd9fc36209fccb07c318ea0c4da5565bfca3d5646858abe  80-folio-state.preset
+"

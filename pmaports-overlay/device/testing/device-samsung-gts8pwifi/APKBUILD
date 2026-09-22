@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=26
+pkgrel=27
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -23,12 +23,14 @@ depends="
 	hexagonrpcd-udev
 	libssc
 	iio-sensor-proxy
+	folio-state
+	evtest
 	make-dynpart-mappings
 	device-mapper
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service 80-gts8pwifi.preset 50-gts8pwifi-logind.conf"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -79,10 +81,12 @@ package() {
 	install -Dm755 "$srcdir"/panel-blank.sh \
 		"$pkgdir"/usr/bin/panel-blank
 
-	# Idle blanking for the console: after BLANK_MIN minutes without input
-	# fbcon is unbound and the framebuffer zeroed (unlit pixels are off on
-	# this panel); the next key or touch repaints. The unit lives in
-	# -systemd; the setting is /etc/conf.d/console-blank. See the script.
+	# Console display policy: after BLANK_MIN minutes without input fbcon
+	# is unbound and the framebuffer zeroed (unlit pixels are off on this
+	# panel); the next key or touch repaints. While folio-state reports
+	# SW_LID closed the console stays dark; the power button toggles it
+	# with the lid open. The unit lives in -systemd; the setting is
+	# /etc/conf.d/console-blank. See the script header.
 	install -Dm755 "$srcdir"/console-blank.sh \
 		"$pkgdir"/usr/bin/console-blank
 	install -Dm644 "$srcdir"/console-blank.conf \
@@ -160,18 +164,28 @@ tools() {
 
 systemd() {
 	install_if="$pkgname=$pkgver-r$pkgrel systemd"
-	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd"
+	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd folio-state-systemd"
 	install -Dm644 "$srcdir"/netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/netinfo-console.service
 	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
 	ln -sf ../netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/netinfo-console.service
 
-	# Console idle blanking (AMOLED): the watcher behind /etc/conf.d/console-blank.
+	# Console blanking and lid policy (AMOLED): the watcher behind
+	# /etc/conf.d/console-blank. Reads SW_LID from folio-state.
 	install -Dm644 "$srcdir"/console-blank.service \
 		"$subpkgdir"/usr/lib/systemd/system/console-blank.service
 	ln -sf ../console-blank.service \
 		"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/console-blank.service
+
+	# Vendor wants symlinks read "disabled" from is-enabled; the preset
+	# makes the state read what it is (issue #41).
+	install -Dm644 "$srcdir"/80-gts8pwifi.preset \
+		"$subpkgdir"/usr/lib/systemd/system-preset/80-gts8pwifi.preset
+
+	# The lid switch belongs to console-blank, not logind (ADR-002).
+	install -Dm644 "$srcdir"/50-gts8pwifi-logind.conf \
+		"$subpkgdir"/usr/lib/systemd/logind.conf.d/50-gts8pwifi.conf
 
 	# agetty needs --issue-file spelled out on Alpine or the banner never
 	# prints — see the drop-in's comment.
@@ -215,7 +229,9 @@ bdff32b583aba5f9dea8505978ca8b29aaec938526c5e925edac7dcd44e608bcf5721917ad1346cf
 697f6e0b288a485792cdcb40f0ebff33fe405758d83310988c5dc0e3f07d01bb468e0e91936ea06fb42783e94b299500dac1fd8ce05200d650c341b2f77278ed  Samsung-Galaxy-Tab-S8-Plus-tplg.bin
 7d2f86f39aa4e95d2301b1870290066cdf947ad2c8b9b860b774f345c4294455ead6c279344f4753b92db3d10a97c8992a0469287e3c3db2a8252117d642f533  81-libssc-samsung-gts8pwifi.rules
 d33f880ef076fffbad053f33b190cde4768ed3f95e2b749349446e4693ac3c76249f661c5ef9c42fd665b8de06c37394482d0e3733e105f6ee4ab82557a9a254  90-gts8pwifi-hexagonrpcd-sdsp.rules
-e0fc9314cd1590ff1aeb220ff66f3f31bf39b93da9c10f8de3d3a654035c1f23224363020e50c918467a5c42939ed80b5bea76975984027d0ce6462a93a71eb8  console-blank.sh
-3774d9604c73def229344d903ef19c93b186e58da8064f663564e172bbdc181d7e518e36a9c668e00d9fe766be03eeebbe987204728c562b4ae653ff5140f9a6  console-blank.conf
-d6555b17c715aa194a9c9941fad9f2a241eb50e3165e92936a7ff1fddc07acb6c89bbf1ad2d33ecd30c6ba31a4f00250c49179708c1d9352e1aaf011ac6e06c3  console-blank.service
+e702a729eef8f010c49cef1c3203cf38ba42bf75a54e6618f17501b37a392798d707920c4e5c2721d635bb1df9aecca8e69adc011e1293a9485cccc196fc268b  console-blank.sh
+0b6e024f5e69b99d45a5b570c5655922c0653cf2aad141de31d5c3133a277ebf666c6e1ff2f0bcf259869044796fe54fe38e7e40b421cf589144be663d303964  console-blank.conf
+e87c2aa23a9d58bcc38ede1259588aec91f3bf266eaa2d11182dfba2210a587b292ffc1937c1e3e4c7a075d390ea9c789f2a1b9d6ef35ad12e92fb915207ce07  console-blank.service
+7c6ae630f5da4638212256977a63a6234d7be4c4bb61676db66fee7d6354568a0f3ace1d986d30866e70555bfa0191b427ecc1b1ffa292bb8e095ab9d44bce1a  80-gts8pwifi.preset
+c0d1e42a030b33b6fe2fa033fc7ad625f247d030ec7e3a180ed08d874cebaa7db8b53ff0f1a7fed62a800e46a7e7dc8084fc3c41ae1f171209fce0f222823c90  50-gts8pwifi-logind.conf
 "

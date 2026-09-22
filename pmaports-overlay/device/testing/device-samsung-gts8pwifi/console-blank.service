@@ -1,8 +1,9 @@
 [Unit]
-Description=Console idle blanking for the AMOLED panel (gts8pwifi)
-# Idle watcher: after BLANK_MIN minutes without input it unbinds fbcon and
-# zeroes the framebuffer; the next key or touch rebinds it. No DPMS (issue
-# #41). Setting: /etc/conf.d/console-blank.
+Description=Console blanking and lid policy for the AMOLED panel (gts8pwifi)
+# After BLANK_MIN minutes without input it unbinds fbcon and zeroes the
+# framebuffer; the next key or touch rebinds it. While folio-state reports
+# the lid closed the console stays dark and the power button toggles it
+# when open (ADR-002). No DPMS (issue #41). Setting: /etc/conf.d/console-blank.
 ConditionPathExists=/dev/fb0
 After=getty@tty1.service
 
