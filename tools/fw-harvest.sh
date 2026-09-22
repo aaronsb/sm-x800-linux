@@ -14,7 +14,8 @@
 #        apnhlos:  mount -o ro,loop apnhlos.img  /mnt/apnhlos
 #        vendor:   lpunpack --partition vendor super.img .  &&  \
 #                  mount -o ro,loop vendor.img  /mnt/vendor
-#      (--from-dumps does this for you when erofs/lp tooling is present.)
+#      (--from-dumps does this for you when lpunpack and host F2FS are present;
+#      vendor is F2FS with LZ4 compression, not EROFS.)
 #   4. Harvest into a staging tree, at leisure, on the host — BEFORE flashing:
 #        tools/fw-harvest.sh --apnhlos /mnt/apnhlos --vendor /mnt/vendor \
 #                            --out root-build/stock-extract/harvest
@@ -94,7 +95,7 @@ if [ -n "$FROM_DUMPS" ]; then
 			|| die "lpunpack of vendor from super.img failed"
 		mount -o ro,loop "$WORK/vendor.img" "$WORK/mnt/vendor" \
 			&& VENDOR="$WORK/mnt/vendor" \
-			|| die "could not mount vendor.img (erofs kernel support / erofs-utils needed)"
+			|| die "could not mount vendor.img (host kernel needs f2fs with compression)"
 	fi
 fi
 

@@ -97,8 +97,8 @@ class, and the distinction is what makes the manifest have a `class` column:
 - **Wired into the Makefile:** `make dumps` (verify or pull the dumps),
   `make harvest` (`fw-harvest.sh --from-dumps` plus the sensor registry), and
   `make check` reporting the zap's presence; `make stage-fw` still gates only the
-  zap. `make check` also lists the host tools harvest needs (lpunpack and an
-  erofs reader).
+  zap. `make check` also lists what harvest needs on the host (lpunpack and
+  F2FS support in the kernel, since vendor is F2FS with LZ4).
 - **Not yet wired:** a per-blob gate that reads the manifest (generalize `make
   stage-fw` / `60-gts8pwifi-gpu-fw.files` to hard-fail per required blob).
 - **Relationship to the on-device extractor:** `gts8pwifi-fw-extract` (runtime,

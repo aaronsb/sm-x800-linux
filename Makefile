@@ -121,7 +121,7 @@ help: ## Show the build sequence and every target
 # One report of everything `make image` and its neighbours lean on. Items the
 # image build itself needs fail the target; the rest print as notes with the
 # target that provides them. Firmware harvest from a stock super.img needs
-# lpunpack (vendor split) and an erofs reader (mount or fsck.erofs); sparse
+# lpunpack (vendor split) and F2FS with compression in the host kernel; sparse
 # dumps need simg2img; DTB inspection needs dtc; flashing needs odin4; dumps
 # over USB need adb.
 check: ## Preflight: host tools, pmb init, uniLoader, dumps, harvest, apks (exit 1 if image cannot build)
@@ -133,9 +133,9 @@ check: ## Preflight: host tools, pmb init, uniLoader, dumps, harvest, apks (exit
 	echo ">> host tools for harvest / dumps / flash / inspection:"; \
 	for t in lpunpack simg2img dtc adb odin4 sshpass; do \
 	    command -v $$t >/dev/null && echo "   ok   $$t" || echo "   --   $$t"; done; \
-	if command -v fsck.erofs >/dev/null || command -v dump.erofs >/dev/null; then \
-	    echo "   ok   erofs-utils (fsck.erofs/dump.erofs)"; \
-	else echo "   --   erofs-utils  (pacman -S erofs-utils)"; fi; \
+	if grep -qw f2fs /proc/filesystems || modinfo -n f2fs >/dev/null 2>&1; then \
+	    echo "   ok   f2fs (host kernel; vendor inside super is F2FS with LZ4)"; \
+	else echo "   --   f2fs host kernel support (needed to mount vendor.img for make harvest)"; fi; \
 	echo ">> pmbootstrap:"; \
 	if test -f $(PMB_CFG) && test -d $(APORTS_ROOT); then \
 	    echo "   ok   $(PMB_CFG), aports at $(APORTS_ROOT)"; \
