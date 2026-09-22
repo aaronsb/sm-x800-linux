@@ -53,7 +53,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Rear flash LED | ✅ working — PM8350C flash module, two channels as one white LED at `/sys/class/leds/white:flash` (kernel r12). Torch: `brightness` 0..255 for 0..500 mA total, stock's level is 77 (150 mA). Flash: `flash_brightness` up to 1.5 A, hardware timeout up to 1280 ms, fired with `flash_strobe`; the timer ends the pulse and `flash_fault` then reads `flash-timeout-exceeded`, which is the normal end of a strobe |
 | Cameras | 🟡 all three sensors stream RAW10 at 30 fps, session after session — mainline CAMSS on SM8450, the Hi847 driver converted to device tree, a new Hi1337 driver with tables from the stock configuration, and a camcc fix that parks the camera RCGs on XO when idle (kernel r25). `tools/camtest.sh uw|front|frontfull|rear` captures 3264x2448, 2032x1524 / 4000x3000 and 4128x3096; first frames in `docs/media/camera-*-first-frame.jpg`. The DW9808 lens (rear focus) and libcamera are next (ADR-001, issue #27). Story: docs/11-camera.md |
 | Sensors (incl. auto-rotate) | 🟡 accelerometer, light and magnetometer through the SLPI with hexagonrpcd (patched) and libssc, iio-sensor-proxy reports orientation and auto-rotate has what it needs (kernel r28, device r24, the served tree built from the tablet's own vendor partition at setup); gyroscope and calibration open. Story: docs/12-sensors.md, issue #33 |
-| Hall switches, thermistors | 🟡 cover and S Pen hall switches as EV_SW on gpio-keys; AP and Wi-Fi thermistors on the pmk8350 ADC (kernel r26). Wi-Fi reading uncalibrated (stock uses its own table). The switches read the stock idle levels but did not toggle under handling (issue #33) |
+| Hall switches, thermistors | 🟡 cover and S Pen hall switches as EV_SW on gpio-keys; AP and Wi-Fi thermistors on the pmk8350 ADC (kernel r26), `gts8pwifi-therm` prints stock-table temperatures. The switches read the stock idle levels but did not toggle under handling (issue #33) |
 
 ![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
 
@@ -227,6 +227,11 @@ These cost us many cycles — see `docs/05` §5:
   the moment a VFE register or its interrupt handler ran. Recovery is the Vol Down
   + Power reset. Reading camcc (0xade0000) is safe; the camera blocks under
   TITAN_TOP are not while their domain or clock is off.
+- **Do not poll `/sys/kernel/debug/gpio`.** The listing walks every pin controller,
+  including the LPASS island one at 0x3440000. A 5 Hz poll of it for a minute ended
+  in a silent hang on 2026-09-22 (journal stops mid-session, no crash record); the
+  link is a suspicion, not a proof, but `/proc/interrupts` and `evtest` give the
+  same answers safely.
 - **Flash multiple partitions in one `odin4` invocation** (`-a` and `-u` together,
   as `make flash-all` does) rather than calling odin twice — that is what caused the
   reboot between writes. `--reboot` is opt-in, and `--redownload` returns the device

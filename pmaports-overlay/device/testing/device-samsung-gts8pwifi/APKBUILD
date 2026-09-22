@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=24
+pkgrel=25
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -28,7 +28,7 @@ depends="
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -58,6 +58,11 @@ package() {
 	# dumps the firmware from their own device. See the script.
 	install -Dm755 "$srcdir"/fw-extract.sh \
 		"$pkgdir"/usr/bin/gts8pwifi-fw-extract
+
+	# Thermistors: mainline's generic NTC table against stock's per-part
+	# microvolt tables from the stock device tree. See the script header.
+	install -Dm755 "$srcdir"/therm.sh \
+		"$pkgdir"/usr/bin/gts8pwifi-therm
 
 	# One-command daily-driver assembly on a fresh minimal rootfs.
 	install -Dm755 "$srcdir"/setup.sh \
@@ -182,7 +187,8 @@ c1e9c670c7b5c8b671c1595f55a44ce1c71a3c812dbdb3700c9719c92cdc283a2d97a378e68432ad
 0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
 7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
 eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start
-d9ba9940c2bcd710df577917b7544568e8ef3bdb9b219cecab93a7e9615f82c9a08e7a98536757bc51cb4c9afd6d4cfd092ca4a3af63722c28a95d26c7f9a715  fw-extract.sh
+91aada7e92bd7a2050ae0497da027b71b65d4718fb88173be9c8d803820dabef5adf872fc03612242a8f50fdeb6d35478c298347dc8f5da3c6f8388a1d142486  fw-extract.sh
+54121dac7724777b079574f5d99d7caae33c0c8ffb30c47039ac6bf7a4737f68ceccd098f410e5eb8d57bd8f60e77edbccdb02ea2c89be63f78355ce0434ad93  therm.sh
 1dea2de386da72966de61a6c7cb43c98467a26e72e9e290fdd279177de5c3c712efac48c8c0c3dc86799740c00e4c8cb130a0c7baa719700bc6859ff96cbd0c0  setup.sh
 38159785ff05cea88aeec224869ae2b2aee2c29868e37066877e983d2393ef34207cd45ee770dadba3291b9ea015bda99e6368e9bf9d22031010c5fc25d08f64  90-gts8pwifi-cs35l45-no-hibernate.rules
 6ad6664d0653537474fa569df7845ee5316d15dc1baad0a648e81c57d6ae7c4c430154ce217b52be064a0ed7c81cbc4004d4ddcea71b6e246e7109e5c5106cbb  bt-addr.sh

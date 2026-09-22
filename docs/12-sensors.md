@@ -53,27 +53,40 @@ gpio1 in high impedance for the analog input.
 On the tablet, `gpio-keys` is input5 and reports both switches; at rest
 in the keyboard dock the cover reads open and the pen reads inserted.
 `iio:device0` gains `in_temp_ap_therm_input` and
-`in_temp_wf_therm_input`. Readings at idle:
+`in_temp_wf_therm_input`. Readings at idle, with the same ADC codes put
+through stock's own tables:
 
-| Channel | mainline | nearby zones |
-|---|---|---|
-| ap_therm | 31 to 36 °C | CPU tsens 33 to 34 °C, PMIC die 37 °C |
-| wf_therm | 62 to 67 °C | Wi-Fi idle |
+| Channel | mainline | stock table | nearby zones |
+|---|---|---|---|
+| ap_therm | 31.2 to 36.3 °C | 25.3 to 30.1 °C | CPU tsens 33 to 34 °C, PMIC die 37 °C |
+| wf_therm | 62.1 to 67.4 °C | 60.0 to 65.1 °C | Wi-Fi idle |
 
-The AP value sits with its neighbours. The Wi-Fi value does not: stock
-converts each thermistor with its own microvolt table
-(`sec_thermistor` `adc_array`/`temp_array`, different curves for the
-two parts), while mainline applies its generic NTCG104EF104 table to
-both pull-up channels. Until that table is reproduced in userspace or
-the channel declared with the right scale, `wf_therm` is a trend, not a
-temperature. The switches did not toggle under handling: the operator
+Mainline converts both channels with its generic NTCG104EF104 table
+(`adcmap7_100k`, resistance against a 100k pull-up). Stock reads each
+channel as microvolts at the ADC's default scale, code × 1875000 /
+0x70e4, and maps them through a per-thermistor table in its device tree
+(`sec_thermistor` `adc_array`/`temp_array`). Through those tables the
+Wi-Fi thermistor reads 60 to 65 °C, within 2 °C of mainline, so it is
+warm rather than miscalibrated. The AP thermistor is the one that
+differs: mainline's generic curve reads about 5 °C above stock's table
+for that part. `gts8pwifi-therm` in the device package inverts mainline's
+conversion back to the ADC code and prints both temperatures for each
+channel (`--json` for scripts, `--convert LABEL MDEGC` for a single
+value). The switches did not toggle under handling: the operator
 took the pen off and on and folded the cover while a query loop and
 then evtest watched input5, and neither switch changed state. The S Pen
 line did count two edges in `/proc/interrupts` across the session, the
 cover line none. Both pads read the same levels stock reads at idle
 (TLMM 23 low, 169 high, no pull, 2 mA), so the mapping is right and the
 sensors are powered; what the magnets do to the pads is the open
-question, recorded on issue #33.
+question, recorded on issue #33. A second session on 2026-09-22 gave the
+same result: the folio closed and reopened three times and the pen swept
+over the back and edges as a moving magnet left both edge counters where
+they were. Stock's boot-time dump shows the same idle levels, so the
+hall ICs may sit on a rail mainline leaves off, which is the next thing
+to test. That session ended in a silent hang right after a minute of
+polling `/sys/kernel/debug/gpio` at 5 Hz, a listing that also walks the
+LPASS island pin controller; the interrupt counters are the safe view.
 
 ## The SLPI route (r27, r28)
 
@@ -169,7 +182,31 @@ mounts the vendor F2FS read-only, and copies `/vendor/etc/sensors` into
 `sns_reg.conf` with the revision line fixed, a `socinfo/` directory
 served as `/sys/devices/soc0`, and a registry pre-generated with
 `sscregistrygen`. An existing registry is left alone; it holds the
-SLPI's own state. The vendor image is F2FS with LZ4 compression, which
+SLPI's own state.
+
+The tablet still carries the stock `persist` partition (ext4, label
+"persist"). Mounted read-only, `sensors/registry/registry/` holds the
+registry the stock hub ran with, 178 files: the same 141 groups the SLPI
+generates from the configs, with this unit's factory calibration filled
+in (the magnetometer's soft-iron matrix in `ak0991x_0_platform.mag.fac_cal.corr_mat`,
+Samsung's axis orientation, `-y,+x,+z` for the accelerometer in
+`lsm6dso_0_platform.orient` and `+x,+y,+z` for the magnetometer in
+`ak0991x_0_platform.orient`, in place of the MTP reference), plus the
+calibration state the hub saved at runtime: 27 `sns_gyro_cal_table_s0.*`
+files and the magnetometer bias in `sns_mag_cal_persist_s0c0`.
+`gts8pwifi-fw-extract` now copies that directory into the served
+registry when it is empty (or on `--refresh-registry`) and removes the
+stale `sns_reg_version` so the SLPI re-validates it; the `sscregistrygen`
+registry is the fallback when persist is missing or empty. Measured
+with the stock registry installed and the SLPI restarted, the raw
+accelerometer in the dock reads 8.44, -0.20, 5.06 m/s², the same frame
+as with the generated registry: the stock registry's orient entries do
+not change the frame libssc reports, and the mount matrix measured above
+stays. The magnetometer did change with it, from X 33, Y 227, Z -17 µT
+in the dock to X 89, Y 260, Z -66 µT, which shows the factory correction
+matrix is applied.
+
+The vendor image is F2FS with LZ4 compression, which
 needs `CONFIG_F2FS_FS_COMPRESSION` and `CONFIG_F2FS_FS_LZ4`, which kernel
 r28 carries. Verified on r28 in one boot: the udev rule started the
 packaged daemon with no retry loop, `gts8pwifi-fw-extract` mapped super,
@@ -187,8 +224,6 @@ over ssh.
 
 - Gyroscope: libssc exposes accelerometer, light, magnetometer and
   proximity; the LSM6DSO's gyroscope is not yet read.
-- Magnetometer calibration: the dock's magnets dominate the raw field.
 - Send the `sns_registry` patch and the write support upstream to
   linux-msm/hexagonrpc (PR #26 is the write half).
-- Wi-Fi thermistor: reproduce stock's per-thermistor µV table.
 - Hall switches: why the magnets did not toggle the pads under handling.

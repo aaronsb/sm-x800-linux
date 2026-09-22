@@ -6,14 +6,15 @@
 # The cartridge-dump model: this port's repo and packages ship only OPEN or
 # redistributable content. Blobs that are Samsung-signed for THIS device
 # (the a730 GPU zap shader, the audio DSP and sensor hub images, which TrustZone will only
-# accept with Samsung's signature) and Qualcomm's proprietary sensor registry configs
-# are extracted at setup time from partitions the device already carries — nothing
-# copyrighted is ever distributed by us.
+# accept with Samsung's signature), Qualcomm's proprietary sensor registry configs
+# and this unit's factory sensor calibration are extracted at setup time from
+# partitions the device already carries. Nothing copyrighted is ever distributed by us.
 #
 #   gts8pwifi-fw-extract                     apnhlos blobs + sensor tree from super
 #   gts8pwifi-fw-extract --sensors-from DIR  sensor tree only, DIR holding a copy of the
 #                                            stock /vendor/etc/sensors (config/ and
 #                                            sns_reg_config), see tools/sensors-from-super.sh
+#   gts8pwifi-fw-extract --refresh-registry  replace a populated registry (either mode)
 #
 # Sensor tree: hexagonrpcd serves $HFS to the SLPI. It resolves that root
 # from the device tree (compatible samsung,gts8pwifi + qcom,sm8450, model
@@ -22,12 +23,17 @@
 #   sensors/config/*.json     stock /vendor/etc/sensors/config (66 SEE registry configs)
 #   sensors/sns_reg.conf      stock sns_reg_config, revision source pointed at socinfo
 #   sensors/persist/          writable by fastrpc; the SLPI keeps sns_reg_version here
-#   sensors/persist/registry/ the registry (pre-generated with sscregistrygen, the SLPI
-#                             rewrites it on its first boot)
+#   sensors/persist/registry/ the registry, copied from the stock persist partition:
+#                             the same groups the SLPI would generate, with this unit's
+#                             factory calibration (magnetometer soft-iron matrix, axis
+#                             orientation) and the calibration state the stock hub saved.
+#                             Without persist it is pre-generated with sscregistrygen and
+#                             the SLPI rewrites it on its first boot.
 #   sensors/registry -> persist/registry   read-only path of the unpatched daemon
 #   socinfo/                  served as /sys/devices/soc0: values the stock kernel
 #                             exposes and mainline does not (hw_platform, ssc_hw_rev...)
-# An existing registry is left alone: it holds the SLPI's own state.
+# An existing registry is left alone unless --refresh-registry is given: it
+# holds the SLPI's own state.
 #
 # Idempotent; run once after any userdata/rootfs reflash (see tools/README).
 
@@ -36,18 +42,22 @@ set -e
 FWDIR=/lib/firmware/qcom/sm8450/gts8pwifi
 HFS=/usr/share/qcom/sm8450/Samsung/gts8pwifi
 SUPER=/dev/disk/by-partlabel/super
+PERSIST=/dev/disk/by-partlabel/persist
 SOC_ID=457
 HW_PLATFORM=MTP
 
 MNT=$(mktemp -d)
 VMNT=
+PMNT=
 DM_CREATED=
+REFRESH_REGISTRY=
 
 cleanup() {
-	if [ -n "$VMNT" ]; then
-		umount "$VMNT" 2>/dev/null || true
-		rmdir "$VMNT" 2>/dev/null || true
-	fi
+	for d in "$VMNT" "$PMNT"; do
+		[ -n "$d" ] || continue
+		umount "$d" 2>/dev/null || true
+		rmdir "$d" 2>/dev/null || true
+	done
 	for m in $DM_CREATED; do
 		dmsetup remove "$m" 2>/dev/null || true
 	done
@@ -143,6 +153,40 @@ looks_like_json() {
 	[ "$c" = "{" ] || [ "$c" = "[" ]
 }
 
+# Registry from the stock persist partition (ext4, label "persist"), which
+# the tablet still carries: sensors/registry/registry/ holds the registry
+# the stock hub ran with. Mounted read-only, copied, unmounted. Returns 1
+# with a note when persist is missing, will not mount, or has no registry.
+registry_from_persist() {
+	dst=$HFS/sensors/persist/registry
+	if ! [ -b "$PERSIST" ] && ! [ -L "$PERSIST" ]; then
+		echo "   no persist partition"
+		return 1
+	fi
+	PMNT=$(mktemp -d)
+	if ! mount -o ro "$PERSIST" "$PMNT" 2>/dev/null; then
+		rmdir "$PMNT"; PMNT=
+		echo "   persist would not mount read-only"
+		return 1
+	fi
+	preg=$PMNT/sensors/registry/registry
+	n=$(ls -A "$preg" 2>/dev/null | wc -l)
+	if [ "$n" -eq 0 ]; then
+		umount "$PMNT"; rmdir "$PMNT"; PMNT=
+		echo "   persist has no sensor registry"
+		return 1
+	fi
+	find "$dst" -mindepth 1 -delete
+	cp -R "$preg"/. "$dst"/ || die "copying the persist registry failed"
+	umount "$PMNT"; rmdir "$PMNT"; PMNT=
+	chown -R fastrpc:fastrpc "$dst"
+	find "$dst" -type f -exec chmod 644 {} +
+	chmod 775 "$dst"
+	# A stale version file would make the SLPI trust the copy blindly.
+	rm -f "$HFS/sensors/persist/sns_reg_version"
+	echo "   registry from the stock persist partition ($n files, per-unit factory calibration)"
+}
+
 # $1 = directory holding config/ and sns_reg_config
 build_sensor_tree() {
 	src=$1
@@ -198,13 +242,17 @@ build_sensor_tree() {
 	install -d -o fastrpc -g fastrpc -m775 "$HFS/sensors/persist/registry"
 	ln -sfn persist/registry "$HFS/sensors/registry"
 
-	if [ -n "$(ls -A "$HFS/sensors/persist/registry")" ]; then
-		echo "   registry already populated, left as is (rm -rf $HFS/sensors/persist to regenerate)"
+	if [ -z "$REFRESH_REGISTRY" ] && [ -n "$(ls -A "$HFS/sensors/persist/registry")" ]; then
+		echo "   registry already populated, left as is (--refresh-registry to replace it)"
+	elif registry_from_persist; then
+		:
 	elif command -v sscregistrygen >/dev/null; then
+		find "$HFS/sensors/persist/registry" -mindepth 1 -delete
 		sscregistrygen -p "$HW_PLATFORM" -s "$SOC_ID" \
 			"$HFS/sensors/config" "$HFS/sensors/persist/registry"
 		chown -R fastrpc:fastrpc "$HFS/sensors/persist/registry"
-		echo "   registry: $(ls "$HFS/sensors/persist/registry" | wc -l) files from sscregistrygen"
+		rm -f "$HFS/sensors/persist/sns_reg_version"
+		echo "   registry: $(ls "$HFS/sensors/persist/registry" | wc -l) files from sscregistrygen (no factory calibration)"
 	else
 		echo "   registry left empty (no sscregistrygen); the SLPI generates it"
 	fi
@@ -214,21 +262,34 @@ build_sensor_tree() {
 	# re-negotiates with a burst of "Handover signaled" kernel messages.
 }
 
-case "$1" in
---sensors-from)
-	[ -n "$2" ] || die "usage: gts8pwifi-fw-extract [--sensors-from DIR]"
-	build_sensor_tree "$2"
-	;;
-"")
+usage() { die "usage: gts8pwifi-fw-extract [--refresh-registry] [--sensors-from DIR]"; }
+
+SENSORS_FROM=
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--sensors-from)
+		[ -n "$2" ] || usage
+		SENSORS_FROM=$2
+		shift 2
+		;;
+	--refresh-registry)
+		REFRESH_REGISTRY=1
+		shift
+		;;
+	*)
+		usage
+		;;
+	esac
+done
+
+if [ -n "$SENSORS_FROM" ]; then
+	build_sensor_tree "$SENSORS_FROM"
+else
 	stage_apnhlos
 	echo ">> sensor registry configs from the stock vendor image"
 	map_vendor
 	build_sensor_tree "$VMNT/etc/sensors"
-	;;
-*)
-	die "usage: gts8pwifi-fw-extract [--sensors-from DIR]"
-	;;
-esac
+fi
 
 echo ">> done. Firmware and the sensor tree are in place; effective from the"
 echo "   next boot (the SLPI reads its registry once, when it starts)."
