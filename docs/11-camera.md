@@ -2,7 +2,8 @@
 
 Decision record: `docs/architecture/001-camera-stack-mainline-camss.md`.
 Measurement record: issue #27. This page is the story of stage 1 and
-stage 2 and stage 3, kernels r13 to r25 on 2026-09-21.
+stage 2 and stage 3, kernels r13 to r25 on 2026-09-21 and r29 on
+2026-09-22.
 
 ## The hardware
 
@@ -178,13 +179,124 @@ the native readout is upright and rotation stays 0.*
 *Rear main, full resolution, quarter size: the desk, lens at its resting
 position.*
 
+## Stage 3, second half: the lens and the EEPROM (r29)
+
+The DW9808 lens actuator and the P24C256F module EEPROM sit on GENI I2C2
+at 0x988000, the stock qupv3_se2_i2c. r29 enables that bus at 400 kHz on
+the dtsi's `qup_i2c2_data_clk` pin state with the stock pin config,
+gpio8 and gpio9 at drive strength 6 with pull-ups. It gets two children:
+`lens@c` with compatible `dongwoon,dw9808-vcm` and `eeprom@58` with
+compatible `atmel,24c256`, marked read-only. Both take vcc from
+`cam_main_ldo`, the rear module rail on gpio107, so that rail is now
+shared three ways through the regulator core's refcount. The rear
+`camera@21` on `cci0_i2c1` gains `lens-focus = <&cam_main_lens>`.
+`sm8450.config` builds `CONFIG_VIDEO_DW9807_VCM=m` and
+`CONFIG_EEPROM_AT24=m`.
+
+Mainline `dw9807-vcm` has the DW9808's register map: control 0x02,
+position 0x03 and 0x04, status 0x05, mode 0x06, ring 0x07. Two gaps
+drove `dw9807-dw9808-vcc.patch`. Mainline never programs 0x06 and 0x07
+and never enables ringing control, while the stock CamX actuator module
+brings the chip up with control 0x01 then 0x00, a 5 ms wait, mode 0x60,
+ring timing 0x05, four stepped moves 1 ms apart and control 0x02 for SAC
+ringing control; the Tab S9 out-of-tree `dw9808_vcm.c` carries the same
+13 writes. Mainline also has no supply, and without one the chip answers
+only while the sensor streams, so probe writes power-down to a dead
+chip. The patch adds the `dongwoon,dw9808-vcm` compatible, an optional
+`vcc-supply` enabled on runtime resume and disabled on runtime suspend,
+and the stock bring-up on resume for the dw9808 compatible only. Probe
+leaves the device runtime-suspended; the first open powers the rail with
+a 10 ms settle and runs the bring-up. System sleep goes through
+`pm_runtime_force_suspend` and `pm_runtime_force_resume` so the
+regulator count stays balanced.
+
+The lens joins the media graph through the sensor. The Hi1337 driver
+registers with `v4l2_async_register_subdev_sensor()`, which parses the
+sensor node's `lens-focus` phandle into a sub-notifier, and when the
+lens subdev binds the core adds an ancillary link from the sensor entity
+to the lens entity. The camss notifier does not complete until the lens
+binds, so a kernel with `lens-focus` in the DTS and no `dw9807-vcm`
+module in `/lib/modules` gets no camss video nodes at all. The r29 apk
+has to be on the rootfs before the reboot into the r29 boot image.
+
+The EEPROM is a 256 Kbit part with 16-bit addressing. at24 handles it
+as `atmel,24c256`; the binding lists `puya,p24c256c` but not the F
+suffix, and a lone `atmel,24c256` is allowed. at24 takes `vcc-supply`
+and enables it around its probe-time test read and every nvmem read, so
+the calibration reads without the sensor running.
+
+On the tablet r29 booted with the lens in the graph: 17 video nodes,
+both Hi1337 modules and the Hi847 bound, a `dw9807 2-000c` entity, and
+`at24 2-0058: 32768 byte 24c256 EEPROM, read-only`. No geni_i2c, dw9807
+or at24 errors at probe. media-ctl 1.32 prints the lens entity with 0
+pads and 0 links; whether the ancillary link from the sensor exists is
+not visible from that tool and stays unverified until libcamera looks
+for it.
+
+The EEPROM at `/sys/bus/nvmem/devices/2-00583/nvmem` reads real data:
+an offset table at 0x00 (0xdb, 0x100, 0x57b, 0x580, 0x15eb, 0x15f0,
+0x162b, ...), the module string `H13EFOFW0HM` at 0x50,
+`V028FFFFFFV001TABS8PQR` at 0x70, `HVOLN` and `1702` near 0xb0, and a
+smooth gain table from 0x100 on. Stock reads 11024 bytes of calibration
+from 0x0000. Rail and address are right.
+
+The lens exposes `focus_absolute`, 0 to 1023, on its own subdev node,
+`/dev/v4l-subdev29` on this boot. The rear stream was held at each
+position, the frames decoded with `tools/raw2png.py` and scored as the
+Laplacian variance of the luma, on a desk scene with a PCB at roughly
+30 to 40 cm:
+
+| focus | full frame | center third | lower right (PCB) |
+|---|---|---|---|
+| 0 | 29.4 | 30.3 | 28.2 |
+| 100 | 30.1 | 30.9 | 28.4 |
+| 150 | 30.3 | 30.9 | 28.3 |
+| 200 | 30.2 | 31.2 | 28.5 |
+| 250 | 31.6 | 34.0 | 31.2 |
+| 300 | 35.5 | 43.8 | 41.2 |
+| 400 | 100.7 | 232.8 | 147.0 |
+| 600 | 71.6 | 46.2 | 124.4 |
+
+The lens moves and focuses. Best focus for this scene is near code 400,
+so the stock 0 to 300 range from the CamX decode does not map one to
+one onto the DAC code; the useful range on this module extends past
+400. Position is held only while the subdev is open, as mainline
+dw9807 semantics say; on close the driver steps back to 0, powers down
+and releases the rail.
+
+The order of the test matters. PR #44's recipe started the capture
+before the focus write, and with 5 frames at 30 fps the frames can
+predate the write; the first pair captured that way was identical at 0
+and 300. Holding the lens first with `v4l2-ctl --set-ctrl=focus_absolute=P
+--sleep 20 &`, waiting 3 s, then running camtest gives the numbers
+above. `tools/lens-test.sh stream POS` and `tools/lens-test.sh sweep`
+do it in that order.
+
+Every close logs a burst of `dw9807 2-000c: Cannot do the write
+operation because VCM is busy`, and the first run also logged
+`dw9807_vcm_suspend I2C failure: -16`. The messages come only from the
+suspend and resume ramps, never from the user's focus write. Mainline
+`dw9807_set_dac` polls the status register for at most 10 ms,
+`MAX_RETRY` times `DW9807_CTRL_DELAY_US`; with SAC ringing control on,
+the DW9808 stays busy 11 to 14 ms after each 16-code step, so every
+other step of the ramp times out and is skipped. Motion is unaffected
+because the next accepted step covers 32 codes, but two focus writes
+closer than about 15 ms apart would fail the same way, which matters
+once libcamera drives the lens. The fix for the next kernel is a
+per-variant busy timeout, about 30 ms for the dw9808, in
+`dw9807-dw9808-vcc.patch`. The SAC values 0x60 and 0x05 come from the
+stock decode without a datasheet; wrong values would have shown as slow
+or oscillating moves, and the step response looks clean.
+
 ## Next
 
-The DW9808 lens actuator (0x0c) and the module EEPROM (0x58) sit on GENI
-I2C2 at 0x988000, which is not enabled yet; mainline has `dw9807-vcm`,
-and the DW9808 is register-compatible enough to try first. The lite path
-(csid3 to vfe3) is untested on the fixed kernel; it hung the tablet once
-on the experimental r22 build. Stage 4 is libcamera with its software
-ISP and a Hynix sensor helper. Open items to confirm while streaming:
-the vfe_lite register windows, the interconnect bandwidth values, and
-which SMMU stream IDs belong to the SFEs.
+Stage 4 is libcamera with its software ISP and a Hynix sensor helper.
+libcamera's CameraSensor follows the ancillary link to build a
+CameraLens, and the simple pipeline handler in libcamera 0.7 does not
+drive it, so lens support and whether the link exists are the first
+things to settle there. The dw9807 busy timeout goes into the next
+kernel. The lite path (csid3 to vfe3) is untested on the fixed kernel;
+it hung the tablet once on the experimental r22 build. Open items to
+confirm while streaming: the vfe_lite register windows, the
+interconnect bandwidth values, and which SMMU stream IDs belong to the
+SFEs.
