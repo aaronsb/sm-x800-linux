@@ -84,9 +84,11 @@ because the door locks behind you:
 - **Going back to stock is possible but not painless.** Odin can reflash Samsung
   firmware (`make restore-android` documents our path), but expect friction, and
   Knox stays tripped regardless.
-- **The unlock/root path has a firmware ceiling** — no later than One UI 7.0.
-  If your tablet has already updated past it, this door may simply be closed.
-  Details and the full runbook: `docs/01-unlock-root-runbook.md`.
+- **The unlock/root path has a firmware ceiling.** Bootloader binary 9 or lower
+  qualifies (the fifth character from the end of the build number, e.g. `X800XXU9DYDC`).
+  Binary 9 covers One UI 7 and the first One UI 8 builds up to January 2026;
+  binary A or B, shipped since February 2026, closes the door. Which units still
+  qualify, and how to downgrade to One UI 7 first: `docs/00-compatibility.md`.
 - **This is a development platform, not a product.** No microphones, raw
   camera frames only, no motion sensors. What works, works genuinely well — native display, GPU,
   input, wireless — but you are signing up to be a porter, not a customer.
@@ -96,7 +98,7 @@ And a sincere off-ramp: if any of the above reads as risk rather than fun,
 environment with zero risk and zero soldered-shut doors.** That is the sensible
 choice. This repo is the other one.
 
-Start with `docs/01` (unlock/root), then `docs/05` (the boot recipe).
+Start with `docs/00` (does your tablet qualify), then `docs/01` (unlock/root), then `docs/05` (the boot recipe).
 
 ## Why this is unusual
 
@@ -119,6 +121,7 @@ a lot of blind reboots.
 
 ```
 docs/                     The maintained story, in phase order
+  00-compatibility.md       Which SM-X800 units can still be unlocked (binary counter)
   01-unlock-root-runbook.md Bootloader unlock + root
   05-mainline-uniloader-boot.md   ★ the working recipe + every bug and fix
   06-upstreaming.md         Conventions, pinning + patch model, contributing back
