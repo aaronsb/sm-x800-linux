@@ -2,25 +2,37 @@
  * foliod - folio, lid and pen state daemon for the Galaxy Tab S8+ (ADR-002).
  *
  * Inputs: the presence of the pogo keyboard input device, the two
- * gpio-keys hall switches, and on every input transition and on a slow
+ * gpio-keys hall switches, and on every input transition and on a
  * heartbeat one magnetometer and one light sample through libssc. The
  * classifier in folio_state.c turns those into lid and pen state, which
  * this daemon publishes on a uinput device named "folio-state" carrying
  * SW_LID and SW_PEN_INSERTED. Every state change and every pen-forgotten
  * edge is logged to stderr, which the unit sends to the journal.
  *
- * Sensors are opened, read and closed per sample, so the SLPI is not kept
- * streaming (issue #46). The libssc calls are the asynchronous ones: when
- * hexagonrpcd is not serving, libssc retries sensor discovery once a
- * second for 100 s inside its synchronous wrappers, and a lid change must
- * not wait on that. A sample that does not complete within
- * SAMPLE_TIMEOUT_S is abandoned and the classifier runs on the hard
- * signals alone; the next trigger tries the sensors again.
+ * The two libssc sensor objects are created once and kept for the life of
+ * the process: each creation allocates a QMI client id on the SLPI that
+ * unref does not give back, and creating per sample exhausted the ids in
+ * minutes on the tablet (ClientIdsExhausted). Each sample opens, reads and
+ * closes the same objects, so the SLPI is not kept streaming (issue #46).
+ *
+ * The libssc calls are the asynchronous ones: when hexagonrpcd is not
+ * serving, libssc retries sensor discovery once a second for 100 s inside
+ * its synchronous wrappers, and a lid change must not wait on that. A
+ * sample that does not complete within SAMPLE_TIMEOUT_S is abandoned and
+ * the classifier runs on the hard signals alone; the sequence still closes
+ * whatever it opened, and the next trigger tries again.
+ *
+ * Heartbeat: while the folio is attached but not on the pogo pins
+ * (keyboard absent, hall 23 asserted) closing or opening it changes only
+ * the magnetometer, so that context samples every ATTACHED_HEARTBEAT_S;
+ * bare and docked sample every HEARTBEAT_S. SIGUSR1 samples at once;
+ * console-blank sends it when input arrives while the lid reads closed.
  *
  * Settings come from the environment, and from /etc/conf.d/folio-state
- * for any key the environment does not set: HEARTBEAT_S, LIGHT_VETO_LUX,
- * PEN_DZ_BARE, PEN_DZ_DOCKED, REVERSED_DZ, REVERSED_DX, CLOSED_DZ,
- * BASE_Z_BARE, BASE_X_BARE, BASE_Z_DOCKED, MAG_SAMPLES, SAMPLE_TIMEOUT_S.
+ * for any key the environment does not set: HEARTBEAT_S,
+ * ATTACHED_HEARTBEAT_S, LIGHT_VETO_LUX, PEN_DZ_BARE, PEN_DZ_DOCKED,
+ * REVERSED_DZ, REVERSED_DX, CLOSED_DZ, BASE_Z_BARE, BASE_X_BARE,
+ * BASE_Z_DOCKED, MAG_SAMPLES, SAMPLE_TIMEOUT_S, PEN_FORGOTTEN.
  *
  * `foliod --once` samples, prints the inputs and the classification and
  * exits without creating the virtual device.
@@ -37,6 +49,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <glib.h>
@@ -57,8 +70,19 @@
 #define UINPUT_NAME "folio-state"
 #define TRIGGER_DEBOUNCE_MS 200
 #define RESCAN_DEBOUNCE_MS 300
+#define FAIL_LOG_INTERVAL_S 60
 
-struct sample;
+/* where the sample sequence is */
+enum phase {
+	PH_IDLE,
+	PH_WAIT_SENSORS,	/* sensor objects still being created */
+	PH_MAG_OPEN,
+	PH_MAG_COLLECT,
+	PH_MAG_CLOSE,
+	PH_LIGHT_OPEN,
+	PH_LIGHT_COLLECT,
+	PH_LIGHT_CLOSE,
+};
 
 struct daemon {
 	struct folio_state st;
@@ -76,44 +100,45 @@ struct daemon {
 	guint heartbeat_id;
 	const char *trigger_reason;
 
-	struct sample *job;
-	bool rerun;
-
-	unsigned heartbeat_s;
-	unsigned mag_samples;
-	unsigned sample_timeout_s;
-
-	bool once;
-	GMainLoop *loop;
-	int exit_code;
-
-	bool published;
-	struct folio_output last;
-};
-
-/* One sensor sample: magnetometer, then light. */
-struct sample {
-	struct daemon *d;
-	bool abandoned;		/* timed out, callbacks only clean up */
-	int inflight;		/* async calls not yet answered */
-	guint timeout_id;
-	const char *phase;
-
+	/* sensors, created once */
 	SSCSensorMagnetometer *mag;
-	gulong mag_sig;
-	bool mag_open;
+	bool mag_creating;
+	SSCSensorLight *light;
+	bool light_creating;
+
+	/* the sample in progress */
+	enum phase phase;
+	bool sampling;
+	bool abandoned;		/* timed out and published; only closing now */
+	bool rerun;		/* a trigger arrived during the sample */
+	guint sample_timeout_id;
 	unsigned mag_n;
 	double mag_sx;
 	double mag_sz;
 	bool mag_ok;
 	float mag_x;
 	float mag_z;
-
-	SSCSensorLight *light;
-	gulong light_sig;
-	bool light_open;
 	bool light_ok;
 	float light_lux;
+	char fail[256];		/* reasons this sample failed, for one log line */
+
+	/* failure log rate limit */
+	char last_fail[256];
+	time_t last_fail_time;
+	unsigned fail_suppressed;
+	unsigned failed_samples;
+
+	unsigned heartbeat_s;
+	unsigned attached_heartbeat_s;
+	unsigned mag_samples;
+	unsigned sample_timeout_s;
+	bool pen_forgotten_log;
+
+	bool once;
+	GMainLoop *loop;
+
+	bool published;
+	struct folio_output last;
 };
 
 static void logmsg(const char *fmt, ...) G_GNUC_PRINTF(1, 2);
@@ -130,7 +155,29 @@ static void logmsg(const char *fmt, ...)
 }
 
 static void sample_start(struct daemon *d);
+static void sample_advance(struct daemon *d);
 static void schedule_rescan(struct daemon *d);
+static void arm_heartbeat(struct daemon *d);
+
+/* ------------------------------------------------------------------ */
+/* GLib log filter                                                    */
+
+/* libssc warns "Mount matrix provided by firmware is all 0" on every open
+ * of a sensor that has no mount matrix; two lines per sample at idle. */
+static GLogWriterOutput log_writer(GLogLevelFlags level, const GLogField *fields,
+				   gsize n_fields, gpointer user_data)
+{
+	gsize i;
+
+	(void)user_data;
+	for (i = 0; i < n_fields; i++) {
+		if (strcmp(fields[i].key, "MESSAGE") == 0 && fields[i].value &&
+		    fields[i].length == (gssize)-1 &&
+		    strstr(fields[i].value, "Mount matrix provided by firmware is all 0"))
+			return G_LOG_WRITER_HANDLED;
+	}
+	return g_log_writer_default(level, fields, n_fields, user_data);
+}
 
 /* ------------------------------------------------------------------ */
 /* configuration                                                      */
@@ -205,6 +252,7 @@ static bool env_uint(const char *key, unsigned *out)
 static void configure(struct daemon *d)
 {
 	struct folio_config cfg;
+	const char *v;
 
 	load_conf_file(CONF_FILE);
 	folio_config_defaults(&cfg);
@@ -220,15 +268,28 @@ static void configure(struct daemon *d)
 	folio_state_init(&d->st, &cfg);
 
 	d->heartbeat_s = 60;
+	d->attached_heartbeat_s = 3;
 	d->mag_samples = 3;
 	d->sample_timeout_s = 10;
 	env_uint("HEARTBEAT_S", &d->heartbeat_s);
+	env_uint("ATTACHED_HEARTBEAT_S", &d->attached_heartbeat_s);
 	env_uint("MAG_SAMPLES", &d->mag_samples);
 	env_uint("SAMPLE_TIMEOUT_S", &d->sample_timeout_s);
 	if (d->mag_samples == 0)
 		d->mag_samples = 1;
 	if (d->sample_timeout_s == 0)
 		d->sample_timeout_s = 1;
+
+	/* off by default: the operator keeps the pen in the folio's holder,
+	 * which the sensors cannot see, so every close would fire it */
+	d->pen_forgotten_log = false;
+	v = getenv("PEN_FORGOTTEN");
+	if (v && *v) {
+		if (strcmp(v, "strip") == 0)
+			d->pen_forgotten_log = true;
+		else if (strcmp(v, "off") != 0)
+			logmsg("PEN_FORGOTTEN='%s' is not strip or off, keeping off", v);
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -299,16 +360,19 @@ static void print_once(const struct daemon *d, const struct folio_input *in,
 	printf("pen_forgotten=%d\n", o->pen_forgotten);
 }
 
-static void step_and_publish(struct daemon *d, const struct sample *s)
+/* Step the classifier with the hard signals and whatever the sample in
+ * progress has collected, publish, and re-arm the heartbeat for the
+ * context that came out. */
+static void step_and_publish(struct daemon *d, bool use_sample)
 {
 	struct folio_input in = d->hard;
 	struct folio_output o;
 
-	in.mag_valid = s && s->mag_ok;
-	in.mag_x = in.mag_valid ? s->mag_x : 0.0f;
-	in.mag_z = in.mag_valid ? s->mag_z : 0.0f;
-	in.light_valid = s && s->light_ok;
-	in.light_lux = in.light_valid ? s->light_lux : 0.0f;
+	in.mag_valid = use_sample && d->mag_ok;
+	in.mag_x = in.mag_valid ? d->mag_x : 0.0f;
+	in.mag_z = in.mag_valid ? d->mag_z : 0.0f;
+	in.light_valid = use_sample && d->light_ok;
+	in.light_lux = in.light_valid ? d->light_lux : 0.0f;
 
 	folio_state_step(&d->st, &in, &o);
 
@@ -341,295 +405,360 @@ static void step_and_publish(struct daemon *d, const struct sample *s)
 			       in.keyboard_present, in.hall23, in.hall169,
 			       d->trigger_reason ? d->trigger_reason : "start");
 	}
-	if (o.pen_forgotten)
+	if (o.pen_forgotten && d->pen_forgotten_log)
 		logmsg("pen forgotten: lid closed and the last open sample saw no pen on the strip");
 
 	publish(d, &o);
 	d->last = o;
 	d->published = true;
-
-	if (d->rerun) {
-		d->rerun = false;
-		sample_start(d);
-	}
+	arm_heartbeat(d);
 }
 
 /* ------------------------------------------------------------------ */
-/* sensor sample                                                      */
+/* failure log, one line per distinct reason per minute               */
 
-static void sample_maybe_free(struct sample *s)
+static void fail_add(struct daemon *d, const char *fmt, ...) G_GNUC_PRINTF(2, 3);
+static void fail_add(struct daemon *d, const char *fmt, ...)
 {
-	if (!s->abandoned || s->inflight > 0 || s->mag || s->light)
-		return;
-	g_free(s);
-}
+	size_t len = strlen(d->fail);
+	va_list ap;
 
-static void sample_done(struct sample *s)
-{
-	struct daemon *d = s->d;
-
-	if (s->abandoned) {
-		sample_maybe_free(s);
-		return;
+	if (len && len + 2 < sizeof(d->fail)) {
+		strcat(d->fail, "; ");
+		len += 2;
 	}
-	if (s->timeout_id) {
-		g_source_remove(s->timeout_id);
-		s->timeout_id = 0;
-	}
-	d->job = NULL;
-	step_and_publish(d, s);
-	g_free(s);
+	va_start(ap, fmt);
+	vsnprintf(d->fail + len, sizeof(d->fail) - len, fmt, ap);
+	va_end(ap);
 }
 
-/* light */
-
-static void light_close_cb(GObject *src, GAsyncResult *res, gpointer data)
+static void fail_report(struct daemon *d)
 {
-	struct sample *s = data;
-	GError *err = NULL;
+	time_t now = time(NULL);
 
-	s->inflight--;
-	if (!ssc_sensor_light_close_finish(SSC_SENSOR_LIGHT(src), res, &err)) {
-		logmsg("light close failed: %s", err ? err->message : "unknown");
-		g_clear_error(&err);
-	}
-	s->light_open = false;
-	g_clear_object(&s->light);
-	sample_done(s);
-}
-
-static void light_close(struct sample *s)
-{
-	if (s->light_sig) {
-		g_signal_handler_disconnect(s->light, s->light_sig);
-		s->light_sig = 0;
-	}
-	s->inflight++;
-	s->phase = "light close";
-	ssc_sensor_light_close(s->light, NULL, light_close_cb, s);
-}
-
-static void light_measurement(SSCSensorLight *sensor, gfloat lux, gpointer data)
-{
-	struct sample *s = data;
-
-	(void)sensor;
-	if (s->abandoned || s->light_ok)
-		return;
-	s->light_ok = true;
-	s->light_lux = lux;
-	light_close(s);
-}
-
-static void light_open_cb(GObject *src, GAsyncResult *res, gpointer data)
-{
-	struct sample *s = data;
-	GError *err = NULL;
-	gboolean ok;
-
-	s->inflight--;
-	ok = ssc_sensor_light_open_finish(SSC_SENSOR_LIGHT(src), res, &err);
-	if (!ok) {
-		logmsg("light open failed: %s", err ? err->message : "unknown");
-		g_clear_error(&err);
-		if (s->light_sig)
-			g_signal_handler_disconnect(s->light, s->light_sig);
-		s->light_sig = 0;
-		g_clear_object(&s->light);
-		sample_done(s);
+	if (!d->fail[0]) {
+		if (d->failed_samples) {
+			logmsg("sensors recovered after %u failed sample%s",
+			       d->failed_samples, d->failed_samples == 1 ? "" : "s");
+			if (d->fail_suppressed)
+				logmsg("%u identical failure line%s suppressed",
+				       d->fail_suppressed, d->fail_suppressed == 1 ? "" : "s");
+		}
+		d->failed_samples = 0;
+		d->fail_suppressed = 0;
+		d->last_fail[0] = '\0';
 		return;
 	}
-	s->light_open = true;
-	if (s->abandoned) {
-		light_close(s);
+	d->failed_samples++;
+	if (strcmp(d->fail, d->last_fail) == 0 &&
+	    now - d->last_fail_time < FAIL_LOG_INTERVAL_S) {
+		d->fail_suppressed++;
 		return;
 	}
-	s->phase = "light report";
-	/* now waiting for the measurement signal */
+	if (d->fail_suppressed)
+		logmsg("sample failed: %s (%u identical line%s suppressed)", d->fail,
+		       d->fail_suppressed, d->fail_suppressed == 1 ? "" : "s");
+	else
+		logmsg("sample failed: %s", d->fail);
+	d->fail_suppressed = 0;
+	strncpy(d->last_fail, d->fail, sizeof(d->last_fail) - 1);
+	d->last_fail[sizeof(d->last_fail) - 1] = '\0';
+	d->last_fail_time = now;
 }
 
-static void light_new_cb(GObject *src, GAsyncResult *res, gpointer data)
-{
-	struct sample *s = data;
-	GError *err = NULL;
-
-	(void)src;
-	s->inflight--;
-	s->light = ssc_sensor_light_new_finish(res, &err);
-	if (!s->light) {
-		logmsg("light sensor unavailable: %s", err ? err->message : "unknown");
-		g_clear_error(&err);
-		sample_done(s);
-		return;
-	}
-	if (s->abandoned) {
-		g_clear_object(&s->light);
-		sample_maybe_free(s);
-		return;
-	}
-	s->light_sig = g_signal_connect(s->light, "measurement",
-					G_CALLBACK(light_measurement), s);
-	s->inflight++;
-	s->phase = "light open";
-	ssc_sensor_light_open(s->light, NULL, light_open_cb, s);
-}
-
-static void light_start(struct sample *s)
-{
-	if (s->abandoned) {
-		sample_maybe_free(s);
-		return;
-	}
-	s->inflight++;
-	s->phase = "light discovery";
-	ssc_sensor_light_new(NULL, light_new_cb, s);
-}
-
-/* magnetometer */
-
-static void mag_close_cb(GObject *src, GAsyncResult *res, gpointer data)
-{
-	struct sample *s = data;
-	GError *err = NULL;
-
-	s->inflight--;
-	if (!ssc_sensor_magnetometer_close_finish(SSC_SENSOR_MAGNETOMETER(src),
-						  res, &err)) {
-		logmsg("magnetometer close failed: %s", err ? err->message : "unknown");
-		g_clear_error(&err);
-	}
-	s->mag_open = false;
-	g_clear_object(&s->mag);
-	light_start(s);
-}
-
-static void mag_close(struct sample *s)
-{
-	if (s->mag_sig) {
-		g_signal_handler_disconnect(s->mag, s->mag_sig);
-		s->mag_sig = 0;
-	}
-	s->inflight++;
-	s->phase = "magnetometer close";
-	ssc_sensor_magnetometer_close(s->mag, NULL, mag_close_cb, s);
-}
+/* ------------------------------------------------------------------ */
+/* sensor objects, created once                                       */
 
 static void mag_measurement(SSCSensorMagnetometer *sensor, gfloat x, gfloat y,
 			    gfloat z, gpointer data)
 {
-	struct sample *s = data;
+	struct daemon *d = data;
 
 	(void)sensor;
 	(void)y;
-	if (s->abandoned || s->mag_ok)
+	if (d->phase != PH_MAG_COLLECT)
 		return;
-	s->mag_sx += x;
-	s->mag_sz += z;
-	s->mag_n++;
-	if (s->mag_n < s->d->mag_samples)
+	d->mag_sx += x;
+	d->mag_sz += z;
+	d->mag_n++;
+	if (d->mag_n < d->mag_samples)
 		return;
-	s->mag_ok = true;
-	s->mag_x = (float)(s->mag_sx / s->mag_n);
-	s->mag_z = (float)(s->mag_sz / s->mag_n);
-	mag_close(s);
+	d->mag_ok = true;
+	d->mag_x = (float)(d->mag_sx / d->mag_n);
+	d->mag_z = (float)(d->mag_sz / d->mag_n);
+	d->phase = PH_MAG_CLOSE;
+	sample_advance(d);
 }
 
-static void mag_open_cb(GObject *src, GAsyncResult *res, gpointer data)
+static void light_measurement(SSCSensorLight *sensor, gfloat lux, gpointer data)
 {
-	struct sample *s = data;
-	GError *err = NULL;
-	gboolean ok;
+	struct daemon *d = data;
 
-	s->inflight--;
-	ok = ssc_sensor_magnetometer_open_finish(SSC_SENSOR_MAGNETOMETER(src),
-						 res, &err);
-	if (!ok) {
-		logmsg("magnetometer open failed: %s", err ? err->message : "unknown");
-		g_clear_error(&err);
-		if (s->mag_sig)
-			g_signal_handler_disconnect(s->mag, s->mag_sig);
-		s->mag_sig = 0;
-		g_clear_object(&s->mag);
-		light_start(s);
+	(void)sensor;
+	if (d->phase != PH_LIGHT_COLLECT)
 		return;
-	}
-	s->mag_open = true;
-	if (s->abandoned) {
-		mag_close(s);
+	d->light_ok = true;
+	d->light_lux = lux;
+	d->phase = PH_LIGHT_CLOSE;
+	sample_advance(d);
+}
+
+static void sensors_created(struct daemon *d)
+{
+	if (d->mag_creating || d->light_creating)
 		return;
+	if (d->sampling && d->phase == PH_WAIT_SENSORS) {
+		d->phase = PH_IDLE;
+		sample_advance(d);
 	}
-	s->phase = "magnetometer report";
 }
 
 static void mag_new_cb(GObject *src, GAsyncResult *res, gpointer data)
 {
-	struct sample *s = data;
+	struct daemon *d = data;
 	GError *err = NULL;
 
 	(void)src;
-	s->inflight--;
-	s->mag = ssc_sensor_magnetometer_new_finish(res, &err);
-	if (!s->mag) {
-		logmsg("magnetometer unavailable: %s", err ? err->message : "unknown");
+	d->mag_creating = false;
+	d->mag = ssc_sensor_magnetometer_new_finish(res, &err);
+	if (!d->mag) {
+		fail_add(d, "magnetometer unavailable: %s", err ? err->message : "unknown");
 		g_clear_error(&err);
-		light_start(s);
+	} else {
+		g_signal_connect(d->mag, "measurement", G_CALLBACK(mag_measurement), d);
+		logmsg("magnetometer sensor ready");
+	}
+	sensors_created(d);
+}
+
+static void light_new_cb(GObject *src, GAsyncResult *res, gpointer data)
+{
+	struct daemon *d = data;
+	GError *err = NULL;
+
+	(void)src;
+	d->light_creating = false;
+	d->light = ssc_sensor_light_new_finish(res, &err);
+	if (!d->light) {
+		fail_add(d, "light sensor unavailable: %s", err ? err->message : "unknown");
+		g_clear_error(&err);
+	} else {
+		g_signal_connect(d->light, "measurement", G_CALLBACK(light_measurement), d);
+		logmsg("light sensor ready");
+	}
+	sensors_created(d);
+}
+
+/* true when a creation is pending */
+static bool ensure_sensors(struct daemon *d)
+{
+	if (!d->mag && !d->mag_creating) {
+		d->mag_creating = true;
+		ssc_sensor_magnetometer_new(NULL, mag_new_cb, d);
+	}
+	if (!d->light && !d->light_creating) {
+		d->light_creating = true;
+		ssc_sensor_light_new(NULL, light_new_cb, d);
+	}
+	return d->mag_creating || d->light_creating;
+}
+
+/* ------------------------------------------------------------------ */
+/* the sample sequence                                                */
+
+static void sample_finish(struct daemon *d)
+{
+	bool rerun = d->rerun;
+
+	if (d->sample_timeout_id) {
+		g_source_remove(d->sample_timeout_id);
+		d->sample_timeout_id = 0;
+	}
+	if (!d->abandoned) {
+		fail_report(d);
+		step_and_publish(d, true);
+	}
+	d->phase = PH_IDLE;
+	d->sampling = false;
+	d->abandoned = false;
+	d->rerun = false;
+	if (rerun && !d->once)
+		sample_start(d);
+}
+
+static void mag_open_cb(GObject *src, GAsyncResult *res, gpointer data)
+{
+	struct daemon *d = data;
+	GError *err = NULL;
+
+	if (!ssc_sensor_magnetometer_open_finish(SSC_SENSOR_MAGNETOMETER(src), res, &err)) {
+		fail_add(d, "magnetometer open: %s", err ? err->message : "unknown");
+		g_clear_error(&err);
+		d->phase = PH_LIGHT_OPEN;
+	} else {
+		d->phase = d->abandoned ? PH_MAG_CLOSE : PH_MAG_COLLECT;
+	}
+	sample_advance(d);
+}
+
+static void mag_close_cb(GObject *src, GAsyncResult *res, gpointer data)
+{
+	struct daemon *d = data;
+	GError *err = NULL;
+
+	if (!ssc_sensor_magnetometer_close_finish(SSC_SENSOR_MAGNETOMETER(src), res, &err)) {
+		fail_add(d, "magnetometer close: %s", err ? err->message : "unknown");
+		g_clear_error(&err);
+	}
+	d->phase = PH_LIGHT_OPEN;
+	sample_advance(d);
+}
+
+static void light_open_cb(GObject *src, GAsyncResult *res, gpointer data)
+{
+	struct daemon *d = data;
+	GError *err = NULL;
+
+	if (!ssc_sensor_light_open_finish(SSC_SENSOR_LIGHT(src), res, &err)) {
+		fail_add(d, "light open: %s", err ? err->message : "unknown");
+		g_clear_error(&err);
+		d->phase = PH_IDLE;
+		sample_finish(d);
 		return;
 	}
-	if (s->abandoned) {
-		g_clear_object(&s->mag);
-		sample_maybe_free(s);
+	d->phase = d->abandoned ? PH_LIGHT_CLOSE : PH_LIGHT_COLLECT;
+	sample_advance(d);
+}
+
+static void light_close_cb(GObject *src, GAsyncResult *res, gpointer data)
+{
+	struct daemon *d = data;
+	GError *err = NULL;
+
+	if (!ssc_sensor_light_close_finish(SSC_SENSOR_LIGHT(src), res, &err)) {
+		fail_add(d, "light close: %s", err ? err->message : "unknown");
+		g_clear_error(&err);
+	}
+	d->phase = PH_IDLE;
+	sample_finish(d);
+}
+
+/* Drive the sequence from the phase it is in. Phases that wait on a
+ * callback or a signal return without doing anything. */
+static void sample_advance(struct daemon *d)
+{
+	switch (d->phase) {
+	case PH_IDLE:
+		/* start: nothing created means nothing to sample */
+		if (!d->mag && !d->light) {
+			sample_finish(d);
+			return;
+		}
+		if (d->abandoned) {
+			sample_finish(d);
+			return;
+		}
+		if (d->mag) {
+			d->phase = PH_MAG_OPEN;
+			ssc_sensor_magnetometer_open(d->mag, NULL, mag_open_cb, d);
+		} else {
+			d->phase = PH_LIGHT_OPEN;
+			sample_advance(d);
+		}
+		return;
+	case PH_WAIT_SENSORS:
+	case PH_MAG_OPEN:
+	case PH_MAG_COLLECT:
+	case PH_LIGHT_COLLECT:
+		return;
+	case PH_MAG_CLOSE:
+		ssc_sensor_magnetometer_close(d->mag, NULL, mag_close_cb, d);
+		return;
+	case PH_LIGHT_OPEN:
+		if (!d->light || d->abandoned) {
+			d->phase = PH_IDLE;
+			sample_finish(d);
+			return;
+		}
+		ssc_sensor_light_open(d->light, NULL, light_open_cb, d);
+		return;
+	case PH_LIGHT_CLOSE:
+		ssc_sensor_light_close(d->light, NULL, light_close_cb, d);
 		return;
 	}
-	s->mag_sig = g_signal_connect(s->mag, "measurement",
-				      G_CALLBACK(mag_measurement), s);
-	s->inflight++;
-	s->phase = "magnetometer open";
-	ssc_sensor_magnetometer_open(s->mag, NULL, mag_open_cb, s);
+}
+
+static const char *phase_name(enum phase p)
+{
+	switch (p) {
+	case PH_IDLE: return "idle";
+	case PH_WAIT_SENSORS: return "sensor discovery";
+	case PH_MAG_OPEN: return "magnetometer open";
+	case PH_MAG_COLLECT: return "magnetometer report";
+	case PH_MAG_CLOSE: return "magnetometer close";
+	case PH_LIGHT_OPEN: return "light open";
+	case PH_LIGHT_COLLECT: return "light report";
+	case PH_LIGHT_CLOSE: return "light close";
+	}
+	return "?";
 }
 
 static gboolean sample_timeout(gpointer data)
 {
-	struct sample *s = data;
-	struct daemon *d = s->d;
+	struct daemon *d = data;
 
-	s->timeout_id = 0;
-	logmsg("sensor sample timed out after %u s during %s; classifying on the hard signals",
-	       d->sample_timeout_s, s->phase);
+	d->sample_timeout_id = 0;
+	fail_add(d, "timed out after %u s during %s", d->sample_timeout_s,
+		 phase_name(d->phase));
 
 	/* a partial magnetometer average is still a reading */
-	if (!s->mag_ok && s->mag_n > 0) {
-		s->mag_ok = true;
-		s->mag_x = (float)(s->mag_sx / s->mag_n);
-		s->mag_z = (float)(s->mag_sz / s->mag_n);
+	if (!d->mag_ok && d->mag_n > 0) {
+		d->mag_ok = true;
+		d->mag_x = (float)(d->mag_sx / d->mag_n);
+		d->mag_z = (float)(d->mag_sz / d->mag_n);
 	}
-	s->abandoned = true;
-	d->job = NULL;
-	step_and_publish(d, s);
+	fail_report(d);
+	step_and_publish(d, true);
+	d->abandoned = true;
 
-	/* whatever is still open gets closed by its own callback */
-	if (s->mag && s->mag_open && s->inflight == 0)
-		mag_close(s);
-	if (s->light && s->light_open && s->inflight == 0)
-		light_close(s);
-	sample_maybe_free(s);
+	/* a sensor left open waiting for a report is closed now; a phase
+	 * with a callback in flight closes from that callback */
+	if (d->phase == PH_MAG_COLLECT) {
+		d->phase = PH_MAG_CLOSE;
+		sample_advance(d);
+	} else if (d->phase == PH_LIGHT_COLLECT) {
+		d->phase = PH_LIGHT_CLOSE;
+		sample_advance(d);
+	}
 	return G_SOURCE_REMOVE;
 }
 
 static void sample_start(struct daemon *d)
 {
-	struct sample *s;
-
-	if (d->job) {
+	if (d->sampling) {
 		d->rerun = true;
+		/* the sensors are known slow: do not hold the hard signals */
+		if (d->abandoned || d->phase == PH_WAIT_SENSORS)
+			step_and_publish(d, false);
 		return;
 	}
-	s = g_new0(struct sample, 1);
-	s->d = d;
-	d->job = s;
-	s->timeout_id = g_timeout_add_seconds(d->sample_timeout_s, sample_timeout, s);
-	s->inflight++;
-	s->phase = "magnetometer discovery";
-	ssc_sensor_magnetometer_new(NULL, mag_new_cb, s);
+	d->sampling = true;
+	d->abandoned = false;
+	d->rerun = false;
+	d->mag_n = 0;
+	d->mag_sx = 0.0;
+	d->mag_sz = 0.0;
+	d->mag_ok = false;
+	d->light_ok = false;
+	d->fail[0] = '\0';
+	d->sample_timeout_id = g_timeout_add_seconds(d->sample_timeout_s,
+						     sample_timeout, d);
+	if (ensure_sensors(d)) {
+		d->phase = PH_WAIT_SENSORS;
+		return;
+	}
+	d->phase = PH_IDLE;
+	sample_advance(d);
 }
 
 /* ------------------------------------------------------------------ */
@@ -654,7 +783,33 @@ static void trigger(struct daemon *d, const char *reason)
 
 static gboolean heartbeat(gpointer data)
 {
-	trigger(data, "heartbeat");
+	struct daemon *d = data;
+
+	d->heartbeat_id = 0;
+	trigger(d, "heartbeat");
+	return G_SOURCE_REMOVE;
+}
+
+/* One-shot, re-armed after every publish for the context in force. */
+static void arm_heartbeat(struct daemon *d)
+{
+	unsigned s;
+
+	if (d->once)
+		return;
+	if (d->heartbeat_id) {
+		g_source_remove(d->heartbeat_id);
+		d->heartbeat_id = 0;
+	}
+	s = d->last.context == FOLIO_CTX_ATTACHED ? d->attached_heartbeat_s
+						  : d->heartbeat_s;
+	if (s > 0)
+		d->heartbeat_id = g_timeout_add_seconds(s, heartbeat, d);
+}
+
+static gboolean on_usr1(gpointer data)
+{
+	trigger(data, "SIGUSR1");
 	return G_SOURCE_CONTINUE;
 }
 
@@ -896,6 +1051,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	g_log_set_writer_func(log_writer, NULL, NULL);
 	configure(&d);
 	d.loop = g_main_loop_new(NULL, FALSE);
 
@@ -906,11 +1062,11 @@ int main(int argc, char **argv)
 			return 1;
 		g_unix_signal_add(SIGTERM, on_signal, &d);
 		g_unix_signal_add(SIGINT, on_signal, &d);
-		if (d.heartbeat_s > 0)
-			d.heartbeat_id = g_timeout_add_seconds(d.heartbeat_s, heartbeat, &d);
-		logmsg("heartbeat %u s, %u magnetometer readings per sample, sample timeout %u s, light veto above %g lux",
-		       d.heartbeat_s, d.mag_samples, d.sample_timeout_s,
-		       d.st.cfg.light_veto_lux);
+		g_unix_signal_add(SIGUSR1, on_usr1, &d);
+		logmsg("heartbeat %u s, %u s while attached, %u magnetometer readings per sample, sample timeout %u s, light veto above %g lux, pen forgotten %s",
+		       d.heartbeat_s, d.attached_heartbeat_s, d.mag_samples,
+		       d.sample_timeout_s, d.st.cfg.light_veto_lux,
+		       d.pen_forgotten_log ? "logged" : "off");
 	}
 
 	scan_inputs(&d);
@@ -925,5 +1081,5 @@ int main(int argc, char **argv)
 	if (d.uinput)
 		libevdev_uinput_destroy(d.uinput);
 	g_main_loop_unref(d.loop);
-	return d.exit_code;
+	return 0;
 }

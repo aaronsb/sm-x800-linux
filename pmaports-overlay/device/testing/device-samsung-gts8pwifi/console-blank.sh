@@ -14,6 +14,9 @@
 # console is blanked and no input brings it back, the power button
 # included. When it returns to open the console comes back and the idle
 # count restarts. Without the device the idle policy alone applies.
+# Input arriving while the lid reads closed is what the operator does on
+# opening (a hall edge, a touch), so it is forwarded to foliod as SIGUSR1,
+# which samples the magnetometer at once instead of at its next heartbeat.
 #
 # Power button: with the lid open, bytes on the pmic_pwrkey device toggle
 # the console, blank if visible and visible if blanked. Every other device
@@ -136,6 +139,12 @@ poll_inputs() {
 	done
 }
 
+# ask foliod for a sample now; it decides what the lid is
+kick_foliod() {
+	pid=$(systemctl show -p MainPID --value folio-state 2>/dev/null)
+	[ -n "$pid" ] && [ "$pid" != 0 ] && kill -USR1 "$pid" 2>/dev/null
+}
+
 # open, closed, or none when there is no folio-state device
 lid_state() {
 	if [ -z "$FOLIO" ] || [ ! -c "$FOLIO" ]; then
@@ -198,9 +207,11 @@ run() {
 		prev=$lid
 		lid=$(lid_state)
 		if [ "$lid" = closed ]; then
-			# folio closed: dark, and nothing typed or pressed brings it back
+			# folio closed: dark, and nothing typed or pressed brings it
+			# back; foliod is told there was input so it re-checks the lid
 			poll_inputs
 			console_on && blank
+			[ "$ACTIVITY" -eq 0 ] || [ "$POWER" -eq 0 ] && kick_foliod
 			idle=0
 			continue
 		fi
