@@ -1,0 +1,17 @@
+[Unit]
+Description=Console idle blanking for the AMOLED panel (gts8pwifi)
+# Idle watcher: after BLANK_MIN minutes without input it unbinds fbcon and
+# zeroes the framebuffer; the next key or touch rebinds it. No DPMS (issue
+# #41). Setting: /etc/conf.d/console-blank.
+ConditionPathExists=/dev/fb0
+After=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/console-blank run
+ExecStopPost=-/usr/bin/console-blank on
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

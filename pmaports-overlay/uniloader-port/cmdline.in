@@ -2,6 +2,8 @@
 # `make uniloader` via the cmdline-blob target). One string; lines starting
 # with # are dropped. @BOOT_UUID@ and @ROOT_UUID@ are filled from the rootfs
 # (vendor_boot header cmdline in the rootfs chroot); the build appends
-# `bootloader=uniloader` and BOOTARGS_EXTRA. The DTS /chosen/bootargs keeps
+# `bootloader=uniloader` and BOOTARGS_EXTRA. No consoleblank= here: the VT blank
+# timer ends in a DPMS off that hangs this tablet (issue #41); console idle
+# blanking is console-blank.service in the device package. The DTS /chosen/bootargs keeps
 # the same tokens until uniLoader takes over the command line.
 earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=4 arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT pmos_boot_uuid=@BOOT_UUID@ pmos_root_uuid=@ROOT_UUID@ pmos_rootfsopts=defaults

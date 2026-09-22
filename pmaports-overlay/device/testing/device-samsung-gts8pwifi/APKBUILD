@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=25
+pkgrel=26
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -28,7 +28,7 @@ depends="
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -78,6 +78,15 @@ package() {
 	# simpledrm boots. See the script header.
 	install -Dm755 "$srcdir"/panel-blank.sh \
 		"$pkgdir"/usr/bin/panel-blank
+
+	# Idle blanking for the console: after BLANK_MIN minutes without input
+	# fbcon is unbound and the framebuffer zeroed (unlit pixels are off on
+	# this panel); the next key or touch repaints. The unit lives in
+	# -systemd; the setting is /etc/conf.d/console-blank. See the script.
+	install -Dm755 "$srcdir"/console-blank.sh \
+		"$pkgdir"/usr/bin/console-blank
+	install -Dm644 "$srcdir"/console-blank.conf \
+		"$pkgdir"/etc/conf.d/console-blank
 
 	# Manual USB VBUS sourcing (MAX77705 OTG boost) — powers bus-powered
 	# USB peripherals in host mode. See the script header.
@@ -158,6 +167,12 @@ systemd() {
 	ln -sf ../netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/netinfo-console.service
 
+	# Console idle blanking (AMOLED): the watcher behind /etc/conf.d/console-blank.
+	install -Dm644 "$srcdir"/console-blank.service \
+		"$subpkgdir"/usr/lib/systemd/system/console-blank.service
+	ln -sf ../console-blank.service \
+		"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/console-blank.service
+
 	# agetty needs --issue-file spelled out on Alpine or the banner never
 	# prints — see the drop-in's comment.
 	install -Dm644 "$srcdir"/getty-issue.conf \
@@ -200,4 +215,7 @@ bdff32b583aba5f9dea8505978ca8b29aaec938526c5e925edac7dcd44e608bcf5721917ad1346cf
 697f6e0b288a485792cdcb40f0ebff33fe405758d83310988c5dc0e3f07d01bb468e0e91936ea06fb42783e94b299500dac1fd8ce05200d650c341b2f77278ed  Samsung-Galaxy-Tab-S8-Plus-tplg.bin
 7d2f86f39aa4e95d2301b1870290066cdf947ad2c8b9b860b774f345c4294455ead6c279344f4753b92db3d10a97c8992a0469287e3c3db2a8252117d642f533  81-libssc-samsung-gts8pwifi.rules
 d33f880ef076fffbad053f33b190cde4768ed3f95e2b749349446e4693ac3c76249f661c5ef9c42fd665b8de06c37394482d0e3733e105f6ee4ab82557a9a254  90-gts8pwifi-hexagonrpcd-sdsp.rules
+e0fc9314cd1590ff1aeb220ff66f3f31bf39b93da9c10f8de3d3a654035c1f23224363020e50c918467a5c42939ed80b5bea76975984027d0ce6462a93a71eb8  console-blank.sh
+3774d9604c73def229344d903ef19c93b186e58da8064f663564e172bbdc181d7e518e36a9c668e00d9fe766be03eeebbe987204728c562b4ae653ff5140f9a6  console-blank.conf
+d6555b17c715aa194a9c9941fad9f2a241eb50e3165e92936a7ff1fddc07acb6c89bbf1ad2d33ecd30c6ba31a4f00250c49179708c1d9352e1aaf011ac6e06c3  console-blank.service
 "
