@@ -1,0 +1,3 @@
+# The -systemd subpackage ships the multi-user.target.wants symlink under
+# /usr/lib; without this line systemctl is-enabled reports it disabled.
+enable folio-state.service

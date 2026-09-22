@@ -1,0 +1,18 @@
+[Unit]
+Description=Folio, lid and pen state from the hall switches, pogo keyboard and magnetometer (gts8pwifi)
+# Publishes SW_LID and SW_PEN_INSERTED on a uinput device named "folio-state".
+# console-blank reads it for the display policy; logind is told to ignore
+# the lid switch. Settings: /etc/conf.d/folio-state. ADR-002.
+After=hexagonrpcd-sdsp.service
+Wants=hexagonrpcd-sdsp.service
+Before=console-blank.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/conf.d/folio-state
+ExecStart=/usr/bin/foliod
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
