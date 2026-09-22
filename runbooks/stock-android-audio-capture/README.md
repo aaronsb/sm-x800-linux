@@ -262,7 +262,7 @@ make uuids                           # DTS bootargs UUIDs must match the rootfs 
 make flash-all                       # boot + userdata sparse, one odin session
 ```
 
-Press Power at "press power button to confirm unverified firmware boot". After pmOS is up:
+The "press power button to confirm unverified firmware boot" prompt times out on its own (Power skips the wait). After pmOS is up:
 
 ```sh
 ssh user@<ip>

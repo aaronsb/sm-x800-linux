@@ -211,8 +211,8 @@ These cost us many cycles — see `docs/05` §5:
   subpartition, and our real boot partition is occupied by uniLoader — so both have
   to live inside userdata. Flashing only the split `-root.img` leaves no `pmOS_boot`
   and stage-1 stalls forever in `wait_boot_partition`. See `docs/05` §8b.
-- **Press Power** at the "press power button to confirm unverified firmware boot"
-  prompt or the kernel never runs.
+- **The "press power button to confirm unverified firmware boot" prompt times out
+  on its own** and the boot continues unattended; pressing Power only skips the wait.
 - **Kernel modules live in the rootfs, not in boot.img.** The fast path (`dd` the
   new boot.img to the boot partition) replaces kernel, DTB and initramfs only;
   `/lib/modules` is whatever kernel apk the rootfs has installed. A patch that

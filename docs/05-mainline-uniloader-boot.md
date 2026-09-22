@@ -10,7 +10,7 @@ See §8 and §10.
 
 Boot chain that works:
 ```
-ABL -> "press power to confirm unverified firmware boot" (MUST press Power)
+ABL -> "press power to confirm unverified firmware boot" (times out on its own; Power skips the wait)
     -> uniLoader (own simplefb console; prints its banner)
     -> mainline kernel + OUR untouched DTB
     -> initramfs: UFS enumerates -> mdev makes /dev/disk/by-uuid
@@ -164,7 +164,7 @@ Two separate things were needed:
 ## 6. Boot flow that works
 
 ```
-ABL -> "press power button to confirm unverified firmware boot"  (MUST press Power)
+ABL -> "press power button to confirm unverified firmware boot"  (times out on its own; Power skips the wait)
     -> uniLoader (simplefb console on panel, prints its banner)
     -> jumps to mainline kernel with OUR untouched DTB
     -> kernel boots, 8 penguins, readable log, pmOS initramfs
