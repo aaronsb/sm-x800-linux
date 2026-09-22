@@ -82,6 +82,13 @@ already happened" once per sample, five times a second at ssccli's
 default rate. Issue #46 tracks it. A daemon that streams the
 magnetometer would keep that going for the life of the boot.
 
+Light. The ambient light sensor on the front face is read through the
+same SLPI path, `ssccli --sensor light`. On 2026-09-22 in one room light
+it read 5 lux with the folio open and docked and an exact 0 over four
+samples with the folio closed; on 2026-09-21 it read 6 lux open in a dim
+room. A closed folio and a dark room both read 0, so the sensor can rule
+out "closed" but cannot confirm it.
+
 Display. DPMS off hangs the tablet about a minute later and it resets
 itself, twice on 2026-09-22; issue #41 holds the record and the cause is
 open. Device r26 ships `console-blank`, a system unit that unbinds fbcon
@@ -118,6 +125,9 @@ Inputs:
 3. Magnetometer samples through libssc: open the sensor, take the
    samples needed, close it. Taken when input 1 or 2 changes and on a
    slow heartbeat. No continuous stream.
+4. A light sample through libssc, taken with the magnetometer sample.
+   It is a veto only: a reading clearly above zero overrides a
+   lid-closed classification; a reading of zero changes nothing.
 
 Classification, one context at a time. The context is chosen by the
 keyboard device and tlmm 23, and the magnetometer decides only within
@@ -134,7 +144,8 @@ that context:
 | keyboard absent, tlmm 23 clear | Z 50 to 120 and X below 180 | bare, pen reversed |
 | tlmm 169 asserted | any | plain cover closed |
 
-The Z and X values in the table are the 2026-09-22 readings. The shipped
+A light reading above zero moves a lid-closed result to the open row of
+its context. The Z and X values in the table are the 2026-09-22 readings. The shipped
 thresholds are the deltas between rows of the same context, applied to a
 baseline the daemon holds for that context, since the clear-air field
 moved by 123 µT between two days. Bare against bare-reversed is the thin
@@ -177,8 +188,8 @@ port's kernel drivers, is C.
 
 Design constraint: the state machine lives in one source file with no
 GLib or libevdev types in it, plain C structs and functions. Its inputs
-are keyboard present, hall 23, hall 169, and magnetometer X and Z; its
-outputs are lid, pen and pen-forgotten. The sensor and uinput glue calls
+are keyboard present, hall 23, hall 169, magnetometer X and Z, and
+light; its outputs are lid, pen and pen-forgotten. The sensor and uinput glue calls
 it. That file can be unit-tested on the host and lifted into another
 language later without touching the glue.
 
@@ -275,6 +286,8 @@ its own.
   holder is usable, or whether pen-forgotten stays a carry-over from the
   last open state.
 - Choose the heartbeat interval against the issue #46 idle count.
+- Measure the light veto threshold: closed in daylight against open in
+  a dark room, so the veto never fires on a closed folio.
 - Choose the pen-forgotten notification. `aplay` tone first.
 - console-blank: rescan or restart on input add, already on issue #41,
   so a daemon restart does not leave it holding a dead descriptor.
