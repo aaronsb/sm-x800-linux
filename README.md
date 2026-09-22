@@ -44,7 +44,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Volume up (pm8350 gpio6, gpio-keys) | 🟡 mapped and working on most boots — `KEY_VOLUMEUP` from the pm8350 GPIO line, active low with pull-up, as stock wires it. On some boots the PMIC latches two edges per press while the level never changes, so no event fires until the next reboot (issue #18; `tools/volup-trap/` records the next occurrence) |
 | `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
-| Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Story: device-facts/display-s6tuum1.md |
+| Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Leaving the panel DPMS off hangs the tablet about a minute later with a silent reset, so idle blanking ships as `console-blank` (device r26): black frame after `BLANK_MIN` idle minutes with the panel powered, wake on any input (issue #41). Story: docs/08-native-display.md, device-facts/display-s6tuum1.md |
 | S Pen (Wacom WEZ01 EMR digitizer) | ✅ working — our `wacom-wez01` driver; position + pressure + tool. SE14's FIFO is silicon-disabled (forces broken GPI DMA), so we bit-bang i2c on its pins via `i2c-gpio`. Firmware `wez01_gts8p.bin` (harvested). Polish: query/calibration + axis verify. Story: device-facts/wacom-wez01.md |
 | GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition (`gts8pwifi-fw-extract`), firmware rides in the initramfs (a7xx loads SQE at bind time) |
 | Plasma Desktop 6 (KWin Wayland) | ✅ working — full KDE 6.7 desktop, KWin composited on the Adreno, Plasma Login Manager autostart; one command on a fresh install: `sudo gts8pwifi-setup plasma`. Polish gaps: tear bands under fast motion (panel idles at ~24 Hz LFD), no runtime 120 Hz switching yet |
@@ -249,9 +249,13 @@ These cost us many cycles — see `docs/05` §5:
   `/dev/disk/by-partlabel/boot`, never a hardcoded `sdX`; the tell is `cmp`
   failing against every image at once.
 - **Stage the recovery image before the first flash of a new bootloader.** Keep
-  a `pmos_uniloader_boot.tar` from a known-good build. If the new one loops,
-  enter download mode (power off, then Vol Up + Vol Down, plug USB) and
-  `odin4 -a root-build/pmos_uniloader_boot.tar` from that build.
+  a `pmos_uniloader_boot.tar` from a known-good build. `make boot` and
+  `make image` rewrite `root-build/pmos_uniloader_boot.tar` and
+  `root-build/uniloader/boot.img` in place, so copy the known-good pair aside
+  under a dated or pkgrel-suffixed name before rebuilding (today's are
+  `pmos_uniloader_boot-r28-good.tar` and `uniloader/boot-r28-good.img`). If the
+  new one loops, enter download mode (power off, then Vol Up + Vol Down, plug
+  USB) and `odin4 -a` that saved tar.
 - **A camera register touched without its clock hangs the SoC.** Skipping the CPAS
   fast AHB or the VFE core clock in a power-cycle bisect froze the tablet (no ping)
   the moment a VFE register or its interrupt handler ran. Recovery is the Vol Down
