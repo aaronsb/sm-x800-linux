@@ -1,0 +1,252 @@
+From c4a7b901bc309dbeae9c636510a0bc04ab1cae83 Mon Sep 17 00:00:00 2001
+From: Aaron Bockelie <aaronsb@gmail.com>
+Date: Mon, 21 Sep 2026 21:20:58 -0500
+Subject: [PATCH] cmdline: set /chosen/bootargs from an embedded blob
+
+The kernel command line so far lives in the device tree's bootargs, so
+changing it means rebuilding the kernel package. CMDLINE_BLOB (default y)
+links CMDLINE_PATH, default blob/cmdline, into a .cmdline section next to
+the ramdisk, with cmdline_size from SIZEOF like ramdisk_size.
+
+After the ramdisk handler has opened the DTB into the static buffer,
+drivers/cmdline-handler.c copies the blob into a bounded buffer
+(COMMAND_LINE_SIZE, 2048 bytes) and NUL-terminates it, prints it once as
+"cmdline: ..." at KERN_INFO and sets /chosen/bootargs with
+fdt_setprop_string. A blob of size 0 or 1 is skipped, and a failure to
+find /chosen or to set the property is reported and the boot continues
+with the DTB's own bootargs.
+
+ld refuses a missing INPUT file, so the build creates an empty blob/cmdline
+when the file is absent (a rule on $(CMDLINE_PATH), which is added to the
+linker script dependencies). Callers do not have to create the file.
+
+The printk buffer is 256 bytes, so the console line is truncated for
+longer command lines; the DTB property carries the full string.
+---
+ Kconfig                           | 18 +++++++++++++
+ Makefile                          | 10 +++++++
+ arch/aarch64/linker.lds.S         | 13 +++++++++
+ drivers/Makefile                  |  1 +
+ drivers/cmdline-handler.c         | 45 +++++++++++++++++++++++++++++++
+ include/drivers/cmdline-handler.h | 15 +++++++++++
+ main/boot-fdt.c                   | 13 ++++++---
+ 7 files changed, 112 insertions(+), 3 deletions(-)
+ create mode 100644 drivers/cmdline-handler.c
+ create mode 100644 include/drivers/cmdline-handler.h
+
+diff --git a/Kconfig b/Kconfig
+index bcc80a2..3c2f3a5 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -81,6 +81,24 @@ menu "Building options"
+ 		depends on DTB_RELOCATE
+ 		default 0x0
+ 
++	config CMDLINE_BLOB
++		bool "Set the kernel command line from an embedded blob"
++		depends on EMBED_LINUX && LIBFDT
++		default y
++		help
++		  Embed CMDLINE_PATH and set /chosen/bootargs from it, so the
++		  command line travels with the boot image instead of the
++		  device tree. An empty or missing blob leaves the DTB's
++		  bootargs alone.
++
++	config CMDLINE_PATH
++		string "Path to kernel command line blob"
++		depends on CMDLINE_BLOB
++		default blob/cmdline
++		help
++		  Path to a NUL-terminated string, which is going to get
++		  embedded to uniLoader
++
+ endmenu
+ 
+ source "drivers/Kconfig"
+diff --git a/Makefile b/Makefile
+index d30a320..0395832 100644
+--- a/Makefile
++++ b/Makefile
+@@ -105,6 +105,7 @@ CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
+ KERNEL_PATH	?= $(CONFIG_KERNEL_PATH:"%"=%)
+ DT_PATH		?= $(CONFIG_DT_PATH:"%"=%)
+ RAMDISK_PATH	?= $(CONFIG_RAMDISK_PATH:"%"=%)
++CMDLINE_PATH	?= $(CONFIG_CMDLINE_PATH:"%"=%)
+ TEXT_BASE	?= $(CONFIG_TEXT_BASE:"%"=%)
+ 
+ KCONFIG_CONFIG	?= .config
+@@ -408,6 +409,14 @@ uniloader-all := $(uniloader-objs) $(uniloader-libs)
+ # Linker script dependencies
+ linker-script-deps := $(KERNEL_PATH) $(RAMDISK_PATH)
+ 
++ifdef CONFIG_CMDLINE_BLOB
++linker-script-deps += $(CMDLINE_PATH)
++
++# An absent command line blob is created empty, which keeps the DTB's bootargs
++$(CMDLINE_PATH):
++	touch $@
++endif
++
+ # ===========================================================================
+ # Build targets
+ 
+@@ -422,6 +431,7 @@ quiet_cmd_cpp_lds = LDS     $@
+                             -DKERNEL_PATH=$(KERNEL_PATH) \
+                             -DDTB_PATH=$(DT_PATH) \
+                             -DRAMDISK_PATH=$(RAMDISK_PATH) \
++                            -DCMDLINE_PATH=$(CMDLINE_PATH) \
+                             -P -o $@
+ 
+ ifdef CONFIG_RAMDISK_NO_COPY
+diff --git a/arch/aarch64/linker.lds.S b/arch/aarch64/linker.lds.S
+index de350f1..5e5a723 100644
+--- a/arch/aarch64/linker.lds.S
++++ b/arch/aarch64/linker.lds.S
+@@ -20,6 +20,9 @@ INPUT(DTB_PATH)
+ #ifndef CONFIG_RAMDISK_NO_COPY
+ INPUT(RAMDISK_PATH)
+ #endif
++#ifdef CONFIG_CMDLINE_BLOB
++INPUT(CMDLINE_PATH)
++#endif
+ 
+ SECTIONS
+ {
+@@ -50,6 +53,13 @@ SECTIONS
+ 	}
+ #endif
+ 
++#ifdef CONFIG_CMDLINE_BLOB
++	.cmdline ALIGN(8) : {
++		cmdline = .;
++		CMDLINE_PATH
++	}
++#endif
++
+ 	.rodata ALIGN(8) : {
+ 		*(.rodata)
+ 		*(.rodata.*)
+@@ -89,6 +99,9 @@ SECTIONS
+ #else
+ 	ramdisk_size = SIZEOF(.ramdisk);
+ #endif
++#ifdef CONFIG_CMDLINE_BLOB
++	cmdline_size = SIZEOF(.cmdline);
++#endif
+ #ifdef CONFIG_POSITION_INDEPENDENT
+ 	_reloc_size = _reloc_end - _reloc_start;
+ #endif
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 59795ee..8b8ee32 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -1,6 +1,7 @@
+ # the drivers registration framework
+ lib-y += framework.o
+ lib-$(CONFIG_LIBFDT) += ramdisk-handler.o
++lib-$(CONFIG_CMDLINE_BLOB) += cmdline-handler.o
+ lib-$(CONFIG_EXYNOS_ACPM) += samsung/exynos-acpm.o
+ lib-$(CONFIG_EXYNOS_SPEEDY) += samsung/exynos-speedy.o
+ lib-$(CONFIG_MEDIATEK_MCUSYS) += mediatek/mcusys.o
+diff --git a/drivers/cmdline-handler.c b/drivers/cmdline-handler.c
+new file mode 100644
+index 0000000..17feb81
+--- /dev/null
++++ b/drivers/cmdline-handler.c
+@@ -0,0 +1,45 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2026, Aaron Bockelie <aaronsb@gmail.com>
++ */
++
++#include <drivers/cmdline-handler.h>
++#include <lib/debug.h>
++#include <lib/libfdt/libfdt.h>
++#include <string.h>
++
++/* COMMAND_LINE_SIZE on arm64 */
++#define CMDLINE_MAX 2048
++
++int cmdline_handler_patch_dtb(void *buf)
++{
++	static char str[CMDLINE_MAX];
++	unsigned long len = (unsigned long)&cmdline_size;
++	int ret, dtb_chosen_offset;
++
++	/* an empty blob or a lone NUL leaves the DTB's bootargs alone */
++	if (len <= 1)
++		return 0;
++
++	/* the blob may lack a terminator; copy out bounded and add one */
++	if (len > sizeof(str) - 1)
++		len = sizeof(str) - 1;
++	memcpy(str, cmdline, len);
++	str[len] = '\0';
++
++	printk(KERN_INFO, "cmdline: %s\n", str);
++
++	dtb_chosen_offset = fdt_path_offset(buf, "/chosen");
++	if (dtb_chosen_offset < 0) {
++		printk(KERN_ERR, "Could not find /chosen node: %s\n", fdt_strerror(dtb_chosen_offset));
++		return dtb_chosen_offset;
++	}
++
++	ret = fdt_setprop_string(buf, dtb_chosen_offset, "bootargs", str);
++	if (ret < 0) {
++		printk(KERN_ERR, "failed to set bootargs: %s\n", fdt_strerror(ret));
++		return ret;
++	}
++
++	return 0;
++}
+diff --git a/include/drivers/cmdline-handler.h b/include/drivers/cmdline-handler.h
+new file mode 100644
+index 0000000..6a2d243
+--- /dev/null
++++ b/include/drivers/cmdline-handler.h
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2026, Aaron Bockelie <aaronsb@gmail.com>
++ */
++
++#ifndef CMDLINE_HANDLER_H_   /* Include guard */
++#define CMDLINE_HANDLER_H_
++
++/* The embedded command line blob, see .cmdline in the linker script */
++extern char cmdline[];
++extern unsigned long cmdline_size;
++
++int cmdline_handler_patch_dtb(void *buf);
++
++#endif
+diff --git a/main/boot-fdt.c b/main/boot-fdt.c
+index 2de83c4..16e559c 100644
+--- a/main/boot-fdt.c
++++ b/main/boot-fdt.c
+@@ -3,6 +3,7 @@
+  * Copyright (c) 2026, Igor Belwon <igor.belwon@mentallysanemainliners.org>
+  */
+ 
++#include <drivers/cmdline-handler.h>
+ #include <drivers/ramdisk-handler.h>
+ #include <lib/debug.h>
+ 
+@@ -13,8 +14,14 @@ void patch_dtb(void** dt)
+ 	int ret;
+ 
+ 	ret = ramdisk_handler_patch_dtb(*dt, &fdt_buf, sizeof(fdt_buf));
+-	if (ret != 0)
++	if (ret != 0) {
+ 		printk(KERN_ERR, "failed to patch dtb\n");
+-	else
+-		*dt = &fdt_buf;
++		return;
++	}
++	*dt = &fdt_buf;
++
++#ifdef CONFIG_CMDLINE_BLOB
++	/* a failure here leaves the DTB's own bootargs in place */
++	cmdline_handler_patch_dtb(&fdt_buf);
++#endif
+ }

@@ -1,0 +1,46 @@
+From 61af7abfdafc315fbdc569bdc4c07df1afedd901 Mon Sep 17 00:00:00 2001
+From: Aaron Bockelie <aaronsb@gmail.com>
+Date: Mon, 21 Sep 2026 21:21:21 -0500
+Subject: [PATCH] board: register Samsung Galaxy Tab S8+ Wi-Fi (gts8pwifi)
+
+Add the SAMSUNG_GTS8PWIFI Kconfig entry (SM8450, alphabetical after
+GTA4XL) and the board/Makefile line so the board builds without a manual
+edit of either file. board/samsung/board-gts8pwifi.c and
+configs/gts8pwifi_defconfig are not part of this patch; the port's
+Makefile copies them in from pmaports-overlay/uniloader-port/ before
+applying the patch series.
+---
+ board/Kconfig  | 7 +++++++
+ board/Makefile | 1 +
+ 2 files changed, 8 insertions(+)
+
+diff --git a/board/Kconfig b/board/Kconfig
+index 222ab29..fb67b3c 100644
+--- a/board/Kconfig
++++ b/board/Kconfig
+@@ -194,6 +194,13 @@ menu "Device Support"
+ 		help
+ 		  Say Y if you want to include support for Samsung Galaxy Tab S6 Lite (2020)
+ 
++	config SAMSUNG_GTS8PWIFI
++		bool "Support for Samsung Galaxy Tab S8+ Wi-Fi"
++		default n
++		depends on SM8450
++		help
++		  Say Y if you want to include support for Samsung Galaxy Tab S8+ Wi-Fi
++
+ 	config SAMSUNG_HEROLTE
+ 		bool "Support for Samsung Galaxy S7"
+ 		default n
+diff --git a/board/Makefile b/board/Makefile
+index b72170b..4642f18 100644
+--- a/board/Makefile
++++ b/board/Makefile
+@@ -24,6 +24,7 @@ lib-$(CONFIG_SAMSUNG_C1S) += samsung/board-c1s.o
+ lib-$(CONFIG_SAMSUNG_DREAMLTE) += samsung/board-dreamlte.o
+ lib-$(CONFIG_SAMSUNG_G0S) += samsung/board-g0s.o
+ lib-$(CONFIG_SAMSUNG_GTA4XL) += samsung/board-gta4xl.o
++lib-$(CONFIG_SAMSUNG_GTS8PWIFI) += samsung/board-gts8pwifi.o
+ lib-$(CONFIG_SAMSUNG_HEROLTE) += samsung/board-herolte.o
+ lib-$(CONFIG_SAMSUNG_J4LTE) += samsung/board-j4lte.o
+ lib-$(CONFIG_SAMSUNG_J5LTE) += samsung/board-j5lte.o
