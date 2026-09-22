@@ -41,7 +41,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | USB host (xhci) | ✅ working |
 | USB ethernet + DHCP + ssh | ✅ working (Realtek RTL8153 dongle) — now the fallback, not the lifeline |
 | Power key, volume down (PMIC PON) | ✅ working |
-| Volume up (pm8350 gpio-keys) | 🟡 dead — NOT an index bug: gpiomon watched every pm8350/pm8350c/pmk8350 line through presses, zero edges anywhere; needs schematic-level digging (pull-up rail / SPMI register poke) |
+| Volume up (pm8350 gpio6, gpio-keys) | 🟡 mapped and working on most boots — `KEY_VOLUMEUP` from the pm8350 GPIO line, active low with pull-up, as stock wires it. On some boots the PMIC latches two edges per press while the level never changes, so no event fires until the next reboot (issue #18, trap service recording the next occurrence) |
 | `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
 | Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Story: device-facts/display-s6tuum1.md |
@@ -52,7 +52,8 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Audio | ✅ working — four CS35L45 amps on Primary MI2S from the ADSP (AudioReach), stereo playback through PulseAudio/UCM; volume capped (no speaker-protection DSP yet). Three DMICs through the VA macro, powered from L12C (found 2026-09-21 with a pad probe); stereo capture of the bottom and back mics through UCM. Story: docs/10-audio.md |
 | Rear flash LED | ✅ working — PM8350C flash module, two channels as one white LED at `/sys/class/leds/white:flash` (kernel r12). Torch: `brightness` 0..255 for 0..500 mA total, stock's level is 77 (150 mA). Flash: `flash_brightness` up to 1.5 A, hardware timeout up to 1280 ms, fired with `flash_strobe`; the timer ends the pulse and `flash_fault` then reads `flash-timeout-exceeded`, which is the normal end of a strobe |
 | Cameras | 🟡 all three sensors stream RAW10 at 30 fps, session after session — mainline CAMSS on SM8450, the Hi847 driver converted to device tree, a new Hi1337 driver with tables from the stock configuration, and a camcc fix that parks the camera RCGs on XO when idle (kernel r25). `tools/camtest.sh uw|front|frontfull|rear` captures 3264x2448, 2032x1524 / 4000x3000 and 4128x3096; first frames in `docs/media/camera-*-first-frame.jpg`. The DW9808 lens (rear focus) and libcamera are next (ADR-001, issue #27). Story: docs/11-camera.md |
-| Sensors (incl. auto-rotate) | ❌ SLPI boots (stock image, 7.2-r8) but exposes nothing: the sensors wait for the registry stock feeds over QMI |
+| Sensors (incl. auto-rotate) | ❌ motion, magnetometer and light sensors sit behind the SLPI, which boots (stock image) but exposes nothing: they wait for the QMI registry stock feeds. Mainline has drivers for all three chips; the missing piece is a QRTR sensor client. Inventory: docs/12-sensors.md, issue #33 |
+| Hall switches, thermistors | 🟡 cover and S Pen hall switches as EV_SW on gpio-keys; AP and Wi-Fi thermistors on the pmk8350 ADC (kernel r26). Wi-Fi reading uncalibrated (stock uses its own table). The switches read the stock idle levels but did not toggle under handling (issue #33) |
 
 ![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
 
@@ -86,8 +87,8 @@ because the door locks behind you:
 - **The unlock/root path has a firmware ceiling** — no later than One UI 7.0.
   If your tablet has already updated past it, this door may simply be closed.
   Details and the full runbook: `docs/01-unlock-root-runbook.md`.
-- **This is a development platform, not a product.** No microphones, no
-  cameras, no sensors. What works, works genuinely well — native display, GPU,
+- **This is a development platform, not a product.** No microphones, raw
+  camera frames only, no motion sensors. What works, works genuinely well — native display, GPU,
   input, wireless — but you are signing up to be a porter, not a customer.
 
 And a sincere off-ramp: if any of the above reads as risk rather than fun,
