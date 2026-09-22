@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Accepted
 date: 2026-09-22
 deciders:
   - aaronsb
@@ -202,6 +202,10 @@ Reversibility: cheap. The virtual device is the interface. The daemon
 behind it and its thresholds can change without touching console-blank,
 logind or a future session layer, and the state machine file moves on
 its own.
+
+The implementation landed as folio-state 0.1 and device r27 in PR #48
+and was verified on the tablet on 2026-09-22: all five use cases pass,
+with the timings in `docs/13-buttons-and-lid.md`.
 
 ## Consequences
 
