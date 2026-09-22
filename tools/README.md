@@ -1,9 +1,8 @@
 # tools/
 
-On-device bring-up helpers. Everything here is **read-only** with respect to device
-flash — no tool in this directory erases or writes an MCU.
-
-Run them over ssh:
+Bring-up helpers. Everything here is **read-only** with respect to device
+flash — no tool in this directory erases or writes an MCU. All but
+`uniloader-fdt-harness/` (host-side, see its row) run on the tablet over ssh:
 
 ```sh
 scp tools/<script> user@<ip>:/tmp/
@@ -26,6 +25,7 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 | `raw2png.py` | Decode a `camtest.sh` capture (V4L2 SGRBG10P) into a quarter-size stretched PNG on the host and print raw statistics. `python3 raw2png.py IN.raw W H OUT.png [FRAME]`. |
 | `volup-trap/` | Volume Up dead-state trap (issue #18): `volup-trap.py` plus its systemd unit. Logs every gpio-keys event with the PMIC interrupt count and captures the PMIC GPIO 6 block, GPIO chips and regulators when the count rises with no key event. Install steps in `volup-trap/README.md`; baseline dumps in `device-facts/volup-2026-09-19/`. |
 | `slpi-registry-test.sh` | Harness for the hexagonrpcd sns_registry patches: stops the packaged daemon, restarts the SLPI, runs the daemon in a restart loop for N seconds and reports daemon exits, SLPI crash lines, get_property calls, registry writes and errors. `sh slpi-registry-test.sh LOG [SECONDS] [HEXAGONRPCD]` on the tablet; the binary defaults to `/usr/bin/hexagonrpcd`. |
+| `uniloader-fdt-harness/` | Host-side. Builds uniLoader's libfdt, string routines and `memcpy.S` from `reference/uniLoader` with `blob/dtb` and `blob/cmdline` embedded, and runs the DTB patching uniLoader does at boot under `qemu-aarch64` (user mode) and `qemu-system-aarch64 -M virt` with the MMU off, the tablet's memory model. Reproduces the 2026-09-22 alignment fault and verifies `0004-memcpy-strict-align.patch`. `make run-linux`, `make run-virt`; see its README. |
 
 ## After any userdata/rootfs flash
 

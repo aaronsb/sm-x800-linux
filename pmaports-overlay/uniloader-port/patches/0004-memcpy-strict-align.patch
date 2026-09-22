@@ -1,0 +1,96 @@
+From b121fb5d66bdfbbfaa646af6887c2a652fc29e44 Mon Sep 17 00:00:00 2001
+From: Aaron Bockelie <aaronsb@gmail.com>
+Date: Mon, 21 Sep 2026 22:22:09 -0500
+Subject: [PATCH] aarch64: keep memcpy/memmove aligned with the MMU off
+
+ABL hands the CPU to uniLoader with the MMU off, so every data access is
+to Device-nGnRnE memory and an unaligned one is an Alignment fault.
+arch/aarch64/memcpy.S is the Arm optimized-routines copy, which assumes
+unaligned accesses are allowed: for counts over 128 it finishes by
+loading and storing the last 64 bytes with ldp/stp relative to the end of
+the region, so an odd count or an unaligned pointer faults there. The
+kernel and DTB copies never reach that case (page-aligned bases, counts
+that are multiples of 16). The 253-byte command line blob does: the copy
+in cmdline_handler_patch_dtb faults at cmdline + 189 (ESR_EL1
+0x96000021) before "Booting kernel..." is printed.
+
+memcpy and memmove now take a byte loop, backwards when the destination
+overlaps the source, unless src, dst and count are all multiples of 8;
+the aligned case keeps the existing code. C code is built with
+-mstrict-align so the compiler cannot introduce the same access pattern.
+
+Reproduced and verified with tools/uniloader-fdt-harness in the
+sm-x800-linux repository (qemu-system-aarch64 -M virt, MMU off).
+---
+ Makefile              |  4 +++-
+ arch/aarch64/memcpy.S | 34 ++++++++++++++++++++++++++++++++++
+ 2 files changed, 37 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 0395832..3b4f8fa 100644
+--- a/Makefile
++++ b/Makefile
+@@ -261,7 +261,9 @@ ifeq ($(ARCH), arm)
+ KBUILD_CFLAGS += -march=armv7-a -mfloat-abi=soft -mtune=cortex-a9
+ KBUILD_AFLAGS += -march=armv7-a -mfloat-abi=soft -mtune=cortex-a9
+ else
+-KBUILD_CFLAGS += -march=armv8-a -mtune=cortex-a53 -mcpu=cortex-a53
++# -mstrict-align: with the MMU off every data access is to Device memory,
++# where an unaligned access is an Alignment fault
++KBUILD_CFLAGS += -march=armv8-a -mtune=cortex-a53 -mcpu=cortex-a53 -mstrict-align
+ KBUILD_AFLAGS += -march=armv8-a -mtune=cortex-a53 -mcpu=cortex-a53
+ endif
+ 
+diff --git a/arch/aarch64/memcpy.S b/arch/aarch64/memcpy.S
+index e3de08f..e6641a1 100644
+--- a/arch/aarch64/memcpy.S
++++ b/arch/aarch64/memcpy.S
+@@ -60,6 +60,15 @@ ENTRY (memcpy)
+ 	PTR_ARG (0)
+ 	PTR_ARG (1)
+ 	SIZE_ARG (2)
++	/* uniLoader runs with the MMU off, so every data access is to
++	   Device-nGnRnE memory and an unaligned one is an Alignment fault.
++	   The copy below keeps its 8-byte loads and stores aligned only when
++	   src, dst and count are all multiples of 8 (the kernel and DTB
++	   copies); anything else takes the byte loop at the end.  */
++	orr	tmp1, src, dstin
++	orr	tmp1, tmp1, count
++	tst	tmp1, 7
++	b.ne	L(copy_bytes)
+ 	add	srcend, src, count
+ 	add	dstend, dstin, count
+ 	cmp	count, 128
+@@ -241,4 +250,29 @@ L(copy64_from_start):
+ 	stp	C_l, C_h, [dstin]
+ 	ret
+ 
++	.p2align 4
++	/* Byte copy for unaligned src, dst or count. Copies backwards when
++	   dst lies inside [src, src + count) so that memmove stays correct.  */
++L(copy_bytes):
++	cbz	count, L(copy0)
++	add	srcend, src, count
++	add	dstend, dstin, count
++	sub	tmp1, dstin, src
++	cmp	tmp1, count
++	b.lo	L(copy_bytes_backwards)
++	mov	dst, dstin
++L(copy_bytes_forwards):
++	ldrb	A_lw, [src], 1
++	strb	A_lw, [dst], 1
++	cmp	src, srcend
++	b.ne	L(copy_bytes_forwards)
++	ret
++
++L(copy_bytes_backwards):
++	ldrb	A_lw, [srcend, -1]!
++	strb	A_lw, [dstend, -1]!
++	cmp	srcend, src
++	b.ne	L(copy_bytes_backwards)
++	ret
++
+ END (memcpy)
+-- 
+2.55.0
+

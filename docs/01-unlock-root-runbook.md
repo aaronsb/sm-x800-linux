@@ -32,10 +32,14 @@ Who qualifies: any SM-X800 on bootloader binary 9 or lower, downgraded to a bina
 7. **Root shell:** install KernelSU Manager APK (`adb install` tiann KernelSU v1.0.5), open once, grant root to shell.
 8. **dd backup (the real safety net):**
    ```bash
-   adb shell su -c 'for p in boot dtbo super vbmeta vbmeta_system modem ...; do \
+   adb shell su -c 'for p in boot dtbo super vbmeta vbmeta_system modem apnhlos ...; do \
      dd if=/dev/block/by-name/$p of=/sdcard/bk_$p.img; done'   # then adb pull
    ```
-   (Full partition list from device-facts/partitions-by-name.txt.)
+   (Full partition list from device-facts/partitions-by-name.txt.) Include
+   `apnhlos`: the GPU zap firmware is harvested from it (docs/09). The three
+   dumps the build itself needs, `boot`, `apnhlos` and `super`, can be pulled
+   into `device-facts/partitions-backup/` with sha256 verification by
+   `make dumps ADB=1` while the tablet is still rooted on stock.
 
 ## Recovery if a flash goes wrong
 - Won't boot → download mode → `odin4 -a stock_boot.tar` (stock kernel back).
