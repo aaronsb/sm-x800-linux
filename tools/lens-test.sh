@@ -12,10 +12,12 @@
 M="media-ctl -d /dev/media0"
 CAMTEST=${CAMTEST:-/home/user/camtest.sh}
 OUTDIR=${OUTDIR:-/home/user}
+# lens_sub: set SUB to the lens subdev node, exit if the entity is missing.
 lens_sub() {
 	LENS=$($M -p | sed -n 's/^- entity [0-9]*: \(dw9807 [0-9]*-000c\).*/\1/p')
 	[ -n "$LENS" ] || { echo "!! no dw9807 lens entity in the media graph"; exit 1; }
-	$M -e "$LENS"
+	SUB=$($M -e "$LENS")
+	[ -n "$SUB" ] || { echo "!! media-ctl -e failed for $LENS"; exit 1; }
 }
 # hold_capture POS COUNT: open the lens at POS, wait for it to settle, capture COUNT rear frames.
 hold_capture() {
@@ -33,18 +35,18 @@ check)
 	echo "== video nodes: $(ls /dev/video* 2>/dev/null | wc -l)  nvmem: $(ls /sys/bus/nvmem/devices/ 2>/dev/null | tr '\n' ' ')"
 	;;
 lens)
-	SUB=$(lens_sub); echo "lens subdev $SUB"
-	v4l2-ctl -d $SUB --list-ctrls
+	lens_sub; echo "lens subdev $SUB"
+	v4l2-ctl -d $SUB --list-ctrls 2>&1 | grep -v QUERYCAP
 	echo ">> moving to ${2:-600}, hold 3 s (listen for the click)"
 	v4l2-ctl -d $SUB --set-ctrl=focus_absolute=${2:-600} --sleep 3
 	sudo dmesg | grep -E 'dw9807|dw9808|geni_i2c' | tail -5
 	;;
 stream)
-	POS=${2:?focus position}; SUB=$(lens_sub)
+	POS=${2:?focus position}; lens_sub
 	hold_capture $POS 5
 	;;
 sweep)
-	shift; SUB=$(lens_sub)
+	shift; lens_sub
 	for POS in ${*:-0 150 300 400 600}; do
 		echo ">> focus $POS"
 		hold_capture $POS 3
@@ -52,7 +54,7 @@ sweep)
 	;;
 eeprom)
 	ls -la /sys/bus/nvmem/devices/
-	for n in /sys/bus/nvmem/devices/*/nvmem; do echo "== $n"; sudo hexdump -C "$n" | head -24; echo "-- at 0x100"; sudo hexdump -C -s 256 -n 64 "$n"; done
+	for n in /sys/bus/nvmem/devices/*/nvmem; do echo "== $n"; sudo hexdump -C "$n" | head -32; done
 	;;
 *) echo "usage: sh lens-test.sh check|lens [POS]|stream POS|sweep [POS...]|eeprom"; exit 1 ;;
 esac

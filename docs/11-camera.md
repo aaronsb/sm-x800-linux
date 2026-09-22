@@ -264,10 +264,9 @@ one onto the DAC code; the useful range on this module extends past
 dw9807 semantics say; on close the driver steps back to 0, powers down
 and releases the rail.
 
-The order of the test matters. PR #44's recipe started the capture
-before the focus write, and with 5 frames at 30 fps the frames can
-predate the write; the first pair captured that way was identical at 0
-and 300. Holding the lens first with `v4l2-ctl --set-ctrl=focus_absolute=P
+PR #44's recipe started the capture before the focus write, and with 5
+frames at 30 fps the frames can predate the write; the first pair
+captured that way was identical at 0 and 300. Holding the lens first with `v4l2-ctl --set-ctrl=focus_absolute=P
 --sleep 20 &`, waiting 3 s, then running camtest gives the numbers
 above. `tools/lens-test.sh stream POS` and `tools/lens-test.sh sweep`
 do it in that order.
