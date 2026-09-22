@@ -178,13 +178,23 @@ registry_from_persist() {
 	fi
 	find "$dst" -mindepth 1 -delete
 	cp -R "$preg"/. "$dst"/ || die "copying the persist registry failed"
+	# Stock keeps its version marker beside the registry; with it in place
+	# the SLPI accepts the registry as is instead of rewriting all of it
+	# on its first boot (a rewrite shows up as a burst of "Handover
+	# signaled" kernel lines).
+	if [ -f "$PMNT/sensors/registry/sns_reg_version" ]; then
+		install -o fastrpc -g fastrpc -m644 "$PMNT/sensors/registry/sns_reg_version" \
+			"$HFS/sensors/persist/sns_reg_version"
+		ver="with its version marker"
+	else
+		rm -f "$HFS/sensors/persist/sns_reg_version"
+		ver="no version marker, the SLPI will rewrite it once"
+	fi
 	umount "$PMNT"; rmdir "$PMNT"; PMNT=
 	chown -R fastrpc:fastrpc "$dst"
 	find "$dst" -type f -exec chmod 644 {} +
 	chmod 775 "$dst"
-	# A stale version file would make the SLPI trust the copy blindly.
-	rm -f "$HFS/sensors/persist/sns_reg_version"
-	echo "   registry from the stock persist partition ($n files, per-unit factory calibration)"
+	echo "   registry from the stock persist partition ($n files, per-unit factory calibration, $ver)"
 }
 
 # $1 = directory holding config/ and sns_reg_config
