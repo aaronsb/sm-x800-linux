@@ -1,0 +1,2 @@
+#!/bin/sh
+last=; while :; do s="dpms=$(cat /sys/class/drm/card1-DSI-1/dpms) en=$(cat /sys/class/drm/card1-DSI-1/enabled) bl=$(cat /sys/class/backlight/ae94000.dsi.0/actual_brightness) g0=$(devmem2 $((0xf100000+4)) w | tail -1 | awk "{print \$NF}") g34=$(devmem2 $((0xf100000+34*0x1000+4)) w | tail -1 | awk "{print \$NF}")"; [ "$s" != "$last" ] && echo "$(date +%T) $s" >> /home/user/dpms.log; last=$s; sleep 2; done

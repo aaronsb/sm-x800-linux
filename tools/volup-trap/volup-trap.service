@@ -1,0 +1,11 @@
+[Unit]
+Description=Volume Up dead-state trap (sm-x800-linux issue #18)
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/user/volup-trap.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
