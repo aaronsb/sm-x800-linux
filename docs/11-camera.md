@@ -204,9 +204,12 @@ ringing control; the Tab S9 out-of-tree `dw9808_vcm.c` carries the same
 only while the sensor streams, so probe writes power-down to a dead
 chip. The patch adds the `dongwoon,dw9808-vcm` compatible, an optional
 `vcc-supply` enabled on runtime resume and disabled on runtime suspend,
-and the stock bring-up on resume for the dw9808 compatible only. Probe
-leaves the device runtime-suspended; the first open powers the rail with
-a 10 ms settle and runs the bring-up. System sleep goes through
+and, for the dw9808 compatible only, the control, mode and ring writes
+of that bring-up on resume; the four stepped moves are replaced by
+mainline's own ramp to the last position, a single write on first open,
+and ringing control is switched on after it. Probe leaves the device
+runtime-suspended; the first open powers the rail with a 10 ms settle
+and runs the bring-up. System sleep goes through
 `pm_runtime_force_suspend` and `pm_runtime_force_resume` so the
 regulator count stays balanced.
 

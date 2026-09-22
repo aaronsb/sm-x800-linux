@@ -153,8 +153,8 @@ log line from painting, and zeroes `/dev/fb0`. The panel and its rails
 stay powered and the DRM connector stays On. Idle detection opens every
 `/dev/input/event*` once and holds the descriptors; evdev gives each
 reader its own queue, so the VT and getty see everything as before, and
-every two seconds the watcher drains each queue with a short
-non-blocking read. Any bytes mean activity: the idle count restarts and
+every two seconds the watcher drains each queue with a `dd` read cut
+off by `timeout` after 50 ms. Any bytes mean activity: the idle count restarts and
 a blanked console is rebound. The setting is `BLANK_MIN` in
 `/etc/conf.d/console-blank`, default 10, 0 disables;
 `systemctl restart console-blank` applies a change. By hand,

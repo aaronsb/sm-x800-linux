@@ -8,9 +8,9 @@
 # The lens holds a position only while its subdev is open, so stream and sweep
 # open it first and start the capture 3 s later. Frames land in $OUTDIR/rear-af$POS.raw;
 # decode with tools/raw2png.py IN.raw 4128 3096 OUT.png.
-# CAMTEST (default /home/user/camtest.sh) and OUTDIR (default /home/user) override the paths.
+# CAMTEST (default: camtest.sh next to this script) and OUTDIR (default /home/user) override the paths.
 M="media-ctl -d /dev/media0"
-CAMTEST=${CAMTEST:-/home/user/camtest.sh}
+CAMTEST=${CAMTEST:-$(dirname "$0")/camtest.sh}
 OUTDIR=${OUTDIR:-/home/user}
 # lens_sub: set SUB to the lens subdev node, exit if the entity is missing.
 lens_sub() {
@@ -19,19 +19,31 @@ lens_sub() {
 	SUB=$($M -e "$LENS")
 	[ -n "$SUB" ] || { echo "!! media-ctl -e failed for $LENS"; exit 1; }
 }
+# need_camtest: stream and sweep capture through camtest.sh; fail before the lens is opened.
+need_camtest() {
+	[ -r "$CAMTEST" ] || { echo "!! $CAMTEST not found: set CAMTEST=/path/to/camtest.sh"; exit 1; }
+}
 # hold_capture POS COUNT: open the lens at POS, wait for it to settle, capture COUNT rear frames.
+# The hold outlives camtest's own 30 s timeout and is killed once the frames are on disk.
+# A rejected focus write (bad POS, driver error) exits v4l2-ctl at once; that is caught before capturing.
 hold_capture() {
-	v4l2-ctl -d $SUB --set-ctrl=focus_absolute=$1 --sleep 20 >/dev/null 2>&1 &
+	case "$1" in ''|*[!0-9]*) echo "!! focus position must be an integer 0..1023, got '$1'"; return 1;; esac
+	[ "$1" -le 1023 ] || { echo "!! focus position $1 out of range 0..1023"; return 1; }
+	v4l2-ctl -d $SUB --set-ctrl=focus_absolute=$1 --sleep 120 >"$OUTDIR/.lens-hold.log" 2>&1 &
+	HOLD=$!
 	sleep 3
+	kill -0 $HOLD 2>/dev/null || { echo "!! focus write to $1 failed:"; grep -v QUERYCAP "$OUTDIR/.lens-hold.log"; return 1; }
 	sh "$CAMTEST" rear $2 "$OUTDIR/rear-af$1.raw"
-	wait
+	kill $HOLD 2>/dev/null; wait $HOLD 2>/dev/null
+	rm -f "$OUTDIR/.lens-hold.log"
 	ls -la "$OUTDIR/rear-af$1.raw"
 }
 case "${1:-check}" in
 check)
 	echo "== kernel: $(uname -r), apk: $(apk info linux-postmarketos-qcom-sm8450 2>/dev/null | head -1)"
 	echo "== dmesg"; sudo dmesg | grep -E 'geni_i2c|988000|dw9807|dw9808|at24|hi1337|camss'
-	echo "== media graph"; $M -p 2>/dev/null | grep -E '^- entity|dw9807|hi1337|ANCILLARY' || echo "!! no /dev/media0"
+	echo "== media graph"
+	if [ -e /dev/media0 ]; then $M -p | grep -E '^- entity|dw9807|hi1337' || echo "!! no entities listed"; else echo "!! no /dev/media0"; fi
 	echo "== video nodes: $(ls /dev/video* 2>/dev/null | wc -l)  nvmem: $(ls /sys/bus/nvmem/devices/ 2>/dev/null | tr '\n' ' ')"
 	;;
 lens)
@@ -42,11 +54,11 @@ lens)
 	sudo dmesg | grep -E 'dw9807|dw9808|geni_i2c' | tail -5
 	;;
 stream)
-	POS=${2:?focus position}; lens_sub
+	POS=${2:?focus position}; need_camtest; lens_sub
 	hold_capture $POS 5
 	;;
 sweep)
-	shift; lens_sub
+	shift; need_camtest; lens_sub
 	for POS in ${*:-0 150 300 400 600}; do
 		echo ">> focus $POS"
 		hold_capture $POS 3
