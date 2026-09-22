@@ -176,7 +176,9 @@ The build is an ordered sequence. Each step checks what the previous one left
 behind and names the step to run when something is missing:
 
 ```sh
-make check          # host tools, pmbootstrap init, dumps, harvest, apks
+make check          # host tools, pmbootstrap init, dumps, harvest, apks; ends with
+                    # what you are ready for (boot/install-tablet, or image once
+                    # rootfs has produced root-build/combined.img)
 make deps           # one-time: clone uniLoader (pinned), copy in the board port,
                     # apply patches 0001-0004, install the chroot toolchain
 make dumps          # verify the stock partition dumps; ADB=1 pulls boot, apnhlos

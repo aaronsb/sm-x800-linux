@@ -1,19 +1,17 @@
 # Phase 3 — MAINLINE LINUX BOOTS (uniLoader path)
 
-**Status: 2026-07-19 — mainline Linux 6.13-rc3 boots the SM-X800 all the way to a
-postmarketOS login prompt (`samsung-gts8pwifi login:`). 8 cores, readable console on
-the panel, UFS storage, root mounted, systemd stage 2, getty.**
+**Status: 2026-09-22. Vanilla kernel 7.2 from kernel.org (package 7.2-r28) boots
+the SM-X800 through uniLoader into postmarketOS**, with input, USB host, the
+native display stack and the GPU up (docs/07 and 08). uniLoader owns the kernel
+command line: the port is a pinned upstream commit plus four git-generated
+patches (§2), it sets `/chosen/bootargs` from a blob the build writes, and the
+tablet's `/proc/cmdline` ends in `bootloader=uniloader`. The same day's reset
+loop was an alignment fault in uniLoader's memcpy (§4.5). The build is one
+ordered `make` sequence (§2.3).
 
-That was the state on 2026-07-19; the peripheral gaps it left (input, USB) are
-closed in docs/07 onward. This page keeps the boot story: why uniLoader, what
-our port of it looks like, and every silent failure on the way.
-
-**Status: 2026-09-22. uniLoader owns the kernel command line.** The port is a
-pinned upstream commit plus four git-generated patches (§2). uniLoader sets
-`/chosen/bootargs` from a blob the build writes, and the tablet's `/proc/cmdline`
-ends in `bootloader=uniloader`. The same day's reset loop turned out to be an
-alignment fault in uniLoader's memcpy (§4.5). The build is one ordered `make`
-sequence (§2.3).
+The first login prompt (`samsung-gts8pwifi login:`) came on 2026-07-19 on
+6.13-rc3, with nothing to type at it. This page keeps that story: why
+uniLoader, what our port of it looks like, and every silent failure on the way.
 
 Boot chain that works:
 ```
@@ -71,7 +69,7 @@ Makefile). Everything of ours lives in `pmaports-overlay/uniloader-port/`:
 
 | Patch | What it does |
 |---|---|
-| `0001-dtb-relocate` | `DTB_RELOCATE`/`DTB_ENTRY`: copy the embedded DTB out of the loader image before handing it to the kernel, for boards where the image lands in memory a remote processor must own |
+| `0001-dtb-relocate` | `DTB_RELOCATE`/`DTB_ENTRY`: copy the embedded DTB out of the loader image before handing it to the kernel. uniLoader loads at `0x87000000` and its 30 MiB image put the DTB at `0x88cd6000`, inside the SLPI carve-out at `0x88000000`; the kernel reserves the DTB first, the carve-out then fails to reserve, and the SLPI cannot probe. The copy goes to `0xb6000000`, plain RAM below the ramdisk copy (commit 84de076) |
 | `0002-cmdline-blob` | `CMDLINE_BLOB`/`CMDLINE_PATH`: link `blob/cmdline` into a `.cmdline` section and set `/chosen/bootargs` from it (§2.1) |
 | `0003-board-gts8pwifi-registration` | `SAMSUNG_GTS8PWIFI` in `board/Kconfig` and the `board/Makefile` line, so the board builds with no manual edit of either file |
 | `0004-memcpy-strict-align` | keep memcpy/memmove aligned with the MMU off, `-mstrict-align` for C (§4.5) |
@@ -129,7 +127,10 @@ The Makefile is ordered; each step checks what the previous one left behind and
 names the step to run when something is missing:
 
 ```
-make check          host tools, pmbootstrap init, uniLoader pin, dumps, harvest, apks
+make check          host tools, pmbootstrap init, uniLoader pin, dumps, harvest, apks;
+                    reports "ready for make boot / make install-tablet" until
+                    make rootfs has produced root-build/combined.img, which the
+                    sparse userdata tar at the end of make image is built from
 make deps           one-time: uniLoader clone + patches, chroot toolchain
 make dumps          verify the stock dumps (boot, apnhlos, super) by sha256;
                     ADB=1 pulls the missing ones from a tablet rooted on stock
@@ -169,7 +170,7 @@ custom vendor_boot is unnecessary and is a source of interference.
 | 2 | Framebuffer geometry transposed | text rendered diagonally sheared | 2800x1752, NOT 1752x2800 |
 | 3 | `/memory` node had size 0 | instant silent panic after "Booting kernel..." | hardcode real banks |
 | 4 | No bootargs anywhere | would inherit stock `console=null` | put bootargs in DTS `/chosen`; since 2026-09-22 uniLoader sets them from `blob/cmdline` (§2.1) |
-| 5 | Display torn down mid-boot | screen paints then goes black | `clk_ignore_unused pd_ignore_unused` |
+| 5 | Display torn down mid-boot | screen paints then goes black | `clk_ignore_unused pd_ignore_unused`; retired in DTS r40 once the msm DPU/DSI and GPU drivers owned their clocks (§4.4) |
 | 6 | simplefb didn't hold display | framebuffer became raw memory noise | give simplefb `clocks` + `power-domains` |
 | 7 | UFS not enabled | no block devices, can't mount rootfs | enable `&ufs_mem_hc` / `&ufs_mem_phy` |
 | 8 | Unaligned memcpy with the MMU off | reset loop before "Booting kernel" once the command line blob existed | byte loop for unaligned copies, `-mstrict-align` (§4.5) |
@@ -200,16 +201,20 @@ but diagonally sheared text (each row slipping by 2800-1752 px).
 ### 4.3 The zero-RAM panic
 `sm8450.dtsi` ships a placeholder `memory@a0000000` with `reg = <0 0xa0000000 0 0>`
 — size ZERO — expecting the bootloader to patch it. **uniLoader does not patch
-`/memory`** (it only injects `linux,initrd-start`/`-end` into `/chosen`). The kernel
+`/memory`** (it injects `linux,initrd-start`/`-end` and, since patch 0002,
+`bootargs` into `/chosen`, nothing else). The kernel
 got zero bytes of RAM and panicked instantly, before any console. Completely silent.
 Fix: `/delete-node/ memory@a0000000;` and hardcode the real banks from the stock DTB.
 
 ### 4.4 Keeping the display alive
-Two separate things were needed:
+Two separate things were needed in the simpledrm era:
 - `clk_ignore_unused pd_ignore_unused` on the cmdline — otherwise the kernel's
   late-boot "disable everything unused" sweep gates the display clocks and the panel
   goes black mid-boot. Log confirms: `clk: Not disabling unused clocks`,
-  `PM: genpd: Not disabling unused power domains`.
+  `PM: genpd: Not disabling unused power domains`. Retired in DTS r40: the msm
+  DPU/DSI/panel and GPU drivers now own their clocks and domains, and keeping
+  every unclaimed clock on forever costs power and masks PM bugs. The command
+  line carries neither token today.
 - **simplefb must declare the display `clocks` and `power-domains`.** simpledrm
   acquires and HOLDS them (see `simpledrm_device_release_clocks` /
   `simpledrm_device_detach_genpd` in the kernel). Without them nothing owns the
@@ -284,23 +289,18 @@ APKBUILD names, so a stale uniLoader build never goes out with a fresh apk.
   `/dev/disk/by-partlabel/boot`, never a hardcoded `sdX`. The tell is `cmp`
   failing against every image at once.
 
-## 6. Boot flow that works
+## 6. A legible console
 
-```
-ABL -> "press power button to confirm unverified firmware boot"  (times out on its own; Power skips the wait)
-    -> uniLoader (simplefb console on panel, prints its banner)
-    -> jumps to mainline kernel with OUR untouched DTB
-    -> kernel boots, 8 penguins, readable log, pmOS initramfs
-```
-
-`fbcon=font:TER16x32` + `CONFIG_FONT_TER16x32=y` makes the log legible at 2800px wide
+`fbcon=font:TER16x32` (still in the command line, now uniLoader's blob) +
+`CONFIG_FONT_TER16x32=y` makes the log legible at 2800px wide
 (the default 8x16 font gives ~350 columns and photographs as unreadable noise —
 which genuinely cost us time, because we could not tell a real boot log from
 framebuffer garbage).
 
-## 7. UFS (built, not yet verified on device)
+## 7. UFS
 
-Neither `sm8450-samsung-r0q.dts` nor our original skeleton enabled UFS, so there were
+Root has been on UFS since the first login prompt. Neither
+`sm8450-samsung-r0q.dts` nor our original skeleton enabled it, so there were
 NO block devices and the initramfs failed with
 `ERROR: failed to mount subpartitions!` and dropped to the debug shell.
 
@@ -331,26 +331,15 @@ The DTS `bootargs` still carries a copy (§2.1), and `make image` starts with th
 mismatch, and prints the two lines to change. A mismatch there is the most
 common reason a freshly flashed system drops to the initramfs debug shell.
 
-## 8. Known gaps / next up
+## 8. What the first boot left open, and where it closed
 
-- **USB enumerates nothing, in EITHER direction.** Key finding: **host mode cannot
-  work** until Type-C / `pmic_glink` is described in the DTS — in host mode the tablet
-  must supply 5V VBUS to the peripheral and nothing switches it, so a bus-powered
-  keyboard never gets power regardless of dwc3. Gadget mode (PC supplies VBUS) is the
-  achievable path; currently `&usb_1_dwc3 { dr_mode = "peripheral"; phys =
-  <&usb_1_hsphy>; }` with the SS phy left out, and still nothing enumerates.
-- **Input: nothing at all.** Log shows `couldn't open /dev/input/: No such file or
-  directory` repeatedly. Touchscreen (STM `stm_ts`) has no mainline driver; the
-  magnetic Book Cover Keyboard is unported. So the debug shell is currently
-  look-but-don't-touch.
-- **USB gadget failed:** `dwc3 a600000.usb: Configuration mismatch. dr_mode forced to
-  gadget`, `dwc3: failed to initialize core`, `can't open .../usb_gadget/g1/UDC`,
-  `Couldn't write new UDC`. Getting this up is the highest-value next step — it gives
-  a keyboard-free way in (SSH/telnet over USB networking).
-- Deferred probes seen: `rx_macro`/`tx_macro` (unable to get macro clock),
-  `qcom-sm8450-lpass-lpi-pinctrl`, `1dfa000.crypto` sync_state.
-- `DRM_MSM=n` currently (deliberate, so simpledrm owns the panel). Real display stack
-  and the S6TUUM1 panel driver are much later work.
+The 2026-07-19 boot had no input, no USB in either direction, deferred LPASS
+probes and `DRM_MSM=n` so simpledrm could own the panel. All of it is resolved:
+touchscreen, Book Cover Keyboard and USB host with VBUS from the MAX77705 in
+docs/07; the native DPU/DSI/DSC stack and the S6TUUM1 panel driver in docs/08
+(`pmos.config` sets `DRM_MSM=y`; a later line wins over the earlier `=n` that
+still carries the first-boot comment); the LPASS probes in docs/10. The gadget
+path remains open (README status table).
 
 ## 8b. Partition layout — userdata must hold the COMBINED image
 
@@ -382,16 +371,21 @@ strings <pmb-work>/chroot_rootfs_<device>/boot/vendor_boot.img | grep pmos_root_
 ```
 
 **Build-order trap:** `pmb build --force` zaps chroots and DELETES the rootfs image in
-`chroot_native/home/pmos/rootfs/`. The UUIDs only exist after `pmb install`, so the
-order is: install → copy the .img out to safety → read UUIDs → build kernel → build
-uniLoader. `make rootfs` preserves the image as `root-build/combined.img` and
-`make image` runs the rest in that order.
+`chroot_native/home/pmos/rootfs/`. `make rootfs` preserves it as
+`root-build/combined.img`. The UUIDs only exist after `pmb install`, and only
+uniLoader consumes them: after a rootfs change `make uniloader` (or `make boot`)
+rebuilds the blob, no kernel rebuild is needed. `make image` still runs the
+`uuids` gate against the DTS copy until that copy is dropped (kernel r29).
 
-## 9. Package/versions at time of writing
+## 9. Package versions
 
-- `linux-postmarketos-qcom-sm8450` 6.13_rc3-r7, source `sm8450-mainline/linux`
-  `next-new` @ `bf1d29fced6e156dd6090a9b6600a8c44259c114`. Config generated in
-  prepare(): tree `defconfig` + `sm8450.config` fragment + our `pmos.config`.
-- `device-samsung-gts8pwifi` 0.1-r5 (mainline, `device/testing/`).
-- Kernel reports: `6.13.0-rc3-next-20241220-sm8450`.
-- Mainline builds cleanly with Alpine gcc — none of the clang-12 pain from downstream.
+- `linux-postmarketos-qcom-sm8450` 7.2-r28, the vanilla release tarball from
+  kernel.org. Config generated in prepare(): tree `defconfig` + the `sm8450.config`
+  fragment carried in the package + our `pmos.config`. The pin and bump procedure
+  are in docs/06.
+- `device-samsung-gts8pwifi` 0.1-r25 (`device/testing/`).
+- uniLoader at `43770a04`, patches 0001-0004 (§2).
+- First boot, 2026-07-19: `linux-postmarketos-qcom-sm8450` 6.13_rc3-r7 from
+  `sm8450-mainline/linux` `next-new` @ `bf1d29fc`, device 0.1-r5, kernel reporting
+  `6.13.0-rc3-next-20241220-sm8450`. Mainline built cleanly with Alpine gcc, none
+  of the clang-12 pain from downstream.
