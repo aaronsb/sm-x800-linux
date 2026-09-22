@@ -4,15 +4,23 @@
 postmarketOS login prompt (`samsung-gts8pwifi login:`). 8 cores, readable console on
 the panel, UFS storage, root mounted, systemd stage 2, getty.**
 
-The port works. What remains is peripheral bring-up — above all **input**: there is
-no working keyboard, touchscreen, or USB, so the login prompt cannot be typed at.
-See §8 and §10.
+That was the state on 2026-07-19; the peripheral gaps it left (input, USB) are
+closed in docs/07 onward. This page keeps the boot story: why uniLoader, what
+our port of it looks like, and every silent failure on the way.
+
+**Status: 2026-09-22. uniLoader owns the kernel command line.** The port is a
+pinned upstream commit plus four git-generated patches (§2). uniLoader sets
+`/chosen/bootargs` from a blob the build writes, and the tablet's `/proc/cmdline`
+ends in `bootloader=uniloader`. The same day's reset loop turned out to be an
+alignment fault in uniLoader's memcpy (§4.5). The build is one ordered `make`
+sequence (§2.3).
 
 Boot chain that works:
 ```
 ABL -> "press power to confirm unverified firmware boot" (times out on its own; Power skips the wait)
-    -> uniLoader (own simplefb console; prints its banner)
-    -> mainline kernel + OUR untouched DTB
+    -> uniLoader (own simplefb console; prints its banner and "cmdline: ...")
+    -> copies the DTB out of its own image, sets initrd + bootargs in /chosen
+    -> mainline kernel + OUR DTB, untouched by ABL
     -> initramfs: UFS enumerates -> mdev makes /dev/disk/by-uuid
     -> subpartitions inside userdata (pmOS_boot + pmOS_root) -> root mounted
     -> jump_init_2nd -> systemd -> getty -> LOGIN PROMPT
@@ -44,38 +52,103 @@ lk2nd does NOT support SM8450. uniLoader is the answer.
 
 ## 2. Our uniLoader port
 
-Upstream: `github.com/ivoszbg/uniLoader` (has SM8450 + `r0q_defconfig` already).
-Our port (3 small files, in `reference/uniLoader/`):
+Upstream: `github.com/ivoszbg/uniLoader` (has SM8450 + `r0q_defconfig` already),
+pinned to commit `43770a04327532407194ddd3f9f35770daa01c70` (`UL_COMMIT` in the
+Makefile). Everything of ours lives in `pmaports-overlay/uniloader-port/`:
 
 - `board/samsung/board-gts8pwifi.c` — a simplefb definition and nothing else.
-- `board/Kconfig` — `config SAMSUNG_GTS8PWIFI`, `depends on SM8450`.
-- `board/Makefile` — `lib-$(CONFIG_SAMSUNG_GTS8PWIFI) += samsung/board-gts8pwifi.o`
 - `configs/gts8pwifi_defconfig` — copy of `r0q_defconfig` with our board symbol.
   Addresses were kept from r0q and they WORK:
   `TEXT_BASE=0x87000000  PAYLOAD_ENTRY=0x80b900000  RAMDISK_ENTRY=0xb6915000`
   (`0x80b900000` is not a typo — it is `0x8_0b900000`, in the upper DRAM bank, which
-  our memory map also has.)
+  our memory map also has.) `DTB_RELOCATE=y` with `DTB_ENTRY=0xb6000000`,
+  `CMDLINE_BLOB=y`, and `COMPRESS_GZIP` off: the `.gz` output was never used,
+  the boot image always carried the raw `uniLoader` binary (§3).
+- `cmdline.in`: the kernel command line, one string with `@BOOT_UUID@` and
+  `@ROOT_UUID@` placeholders (§2.1).
+- `patches/`: every change to an upstream file, as git-generated patches
+  (`tools/mkpatch`, never hand-written), applied in name order by `make deps`:
 
-Build (needs a host gcc for kbuild's fixdep, plus an aarch64 cross toolchain — the
-pmbootstrap chroot has both):
+| Patch | What it does |
+|---|---|
+| `0001-dtb-relocate` | `DTB_RELOCATE`/`DTB_ENTRY`: copy the embedded DTB out of the loader image before handing it to the kernel, for boards where the image lands in memory a remote processor must own |
+| `0002-cmdline-blob` | `CMDLINE_BLOB`/`CMDLINE_PATH`: link `blob/cmdline` into a `.cmdline` section and set `/chosen/bootargs` from it (§2.1) |
+| `0003-board-gts8pwifi-registration` | `SAMSUNG_GTS8PWIFI` in `board/Kconfig` and the `board/Makefile` line, so the board builds with no manual edit of either file |
+| `0004-memcpy-strict-align` | keep memcpy/memmove aligned with the MMU off, `-mstrict-align` for C (§4.5) |
+
+Two board files are copied into the clone, the rest is patched; the old manual
+step (append the registration lines yourself) is gone. `make deps` applies each
+patch when it applies cleanly, reports it as already applied when it applies in
+reverse, and stops on anything else.
+
+### 2.1 The kernel command line
+
+uniLoader upstream injects `linux,initrd-start`/`-end` into `/chosen` and
+nothing else, so the command line first lived in the DTS `bootargs` (bug 4 in
+§4), and every change to it meant a kernel package rebuild. Patch 0002 moves it
+into uniLoader: `blob/cmdline` is linked next to the ramdisk, and after the
+ramdisk handler has opened the DTB, `drivers/cmdline-handler.c` copies the blob
+into a bounded buffer, prints it once as `cmdline: ...`, and sets
+`/chosen/bootargs`. An empty blob leaves the DTB's bootargs alone, and a
+failure to set the property is reported and the boot continues with the DTB's
+own value. The build creates an empty `blob/cmdline` when the file is absent,
+because `ld` refuses a missing `INPUT`.
+
+The Makefile's `cmdline-blob` target writes the blob: `cmdline.in` with the two
+UUIDs filled from the rootfs `vendor_boot` header, then `bootloader=uniloader`,
+then `BOOTARGS_EXTRA` when set, NUL-terminated. On the tablet `/proc/cmdline`
+ends in `bootloader=uniloader`, which is the proof that the blob and not the DTS
+supplied it. The DTS `/chosen/bootargs` still carries the same tokens for now;
+dropping it is the follow-up (kernel pkgrel 29), and until then the `uuids` gate
+(§7) keeps the two copies in agreement.
+
+### 2.2 Building it
+
+uniLoader needs a host gcc for kbuild's fixdep plus an aarch64 cross toolchain;
+the pmbootstrap chroot has both. `make uniloader` does the following, and
+`make deps` re-installs the toolchain because `pmb build` zaps the chroot:
 
 ```sh
 # blobs: kernel must be UNCOMPRESSED Image
 gunzip -c vmlinuz > blob/Image
 cp sm8450-samsung-gts8pwifi.dtb blob/dtb
 cp initramfs blob/ramdisk
+# blob/cmdline from cmdline-blob (above)
 make ARCH=aarch64 CROSS_COMPILE=aarch64-alpine-linux-musl- gts8pwifi_defconfig
 make ARCH=aarch64 CROSS_COMPILE=aarch64-alpine-linux-musl-
 # -> ./uniLoader  ("Linux kernel ARM64 boot executable Image" — it masquerades as a kernel)
 ```
 
-NOTE: `pmb build` zaps the chroot, so reinstall the toolchain each time:
-`./pmb chroot -- apk add build-base gcc-aarch64 binutils-aarch64 make bison flex`
+The kernel apk is chosen by the APKBUILD's `pkgver-pkgrel`, never by the newest
+file in the package cache, and its path is recorded in `.stage/kernel-apk` for
+`install-tablet` to check against (§5b).
+
+### 2.3 The build as a sequence
+
+The Makefile is ordered; each step checks what the previous one left behind and
+names the step to run when something is missing:
+
+```
+make check          host tools, pmbootstrap init, uniLoader pin, dumps, harvest, apks
+make deps           one-time: uniLoader clone + patches, chroot toolchain
+make dumps          verify the stock dumps (boot, apnhlos, super) by sha256;
+                    ADB=1 pulls the missing ones from a tablet rooted on stock
+make harvest        proprietary blobs and sensor configs out of the dumps (docs/09)
+make rootfs         pmb install; preserves the combined image, prints the UUIDs
+make image          uuids gate -> kernel -> device -> boot -> sparse userdata tar
+make flash-all      first install: boot + userdata in ONE odin session (§5)
+make install-tablet later kernels: dd boot.img + apk add over ssh, reboot (§5b)
+```
+
+Variants: `boot-debug` rebuilds uniLoader with `pmos.debug-shell` appended to
+the command line and writes `boot-debug.img` and its tar beside the normal
+artifacts; `kernel`, `device` and `boot` run one stage of `image`.
 
 ## 3. Packaging the boot image
 
-Stock kernel is a RAW uncompressed Image, so use raw `uniLoader` (not `uniLoader.gz`).
-Take the stock boot.img's own mkbootimg args and just substitute the kernel:
+Stock kernel is a RAW uncompressed Image, so the boot image carries the raw
+`uniLoader` binary; the defconfig no longer builds a `.gz` at all. Take the stock
+boot.img's own mkbootimg args and just substitute the kernel (`make bootimg`):
 
 ```sh
 mkbootimg --header_version 4 --os_version 12.0.0 --os_patch_level 2025-04 \
@@ -95,10 +168,11 @@ custom vendor_boot is unnecessary and is a source of interference.
 | 1 | Wrong load addresses | kernel never runs, falls back to download | see below |
 | 2 | Framebuffer geometry transposed | text rendered diagonally sheared | 2800x1752, NOT 1752x2800 |
 | 3 | `/memory` node had size 0 | instant silent panic after "Booting kernel..." | hardcode real banks |
-| 4 | No bootargs anywhere | would inherit stock `console=null` | put bootargs in DTS `/chosen` |
+| 4 | No bootargs anywhere | would inherit stock `console=null` | put bootargs in DTS `/chosen`; since 2026-09-22 uniLoader sets them from `blob/cmdline` (§2.1) |
 | 5 | Display torn down mid-boot | screen paints then goes black | `clk_ignore_unused pd_ignore_unused` |
 | 6 | simplefb didn't hold display | framebuffer became raw memory noise | give simplefb `clocks` + `power-domains` |
 | 7 | UFS not enabled | no block devices, can't mount rootfs | enable `&ufs_mem_hc` / `&ufs_mem_phy` |
+| 8 | Unaligned memcpy with the MMU off | reset loop before "Booting kernel" once the command line blob existed | byte loop for unaligned copies, `-mstrict-align` (§4.5) |
 
 ### 4.1 Load addresses — and a boot-deploy trap
 Stock expects **base `0x00000000`**: kernel `0x00008000`, ramdisk `0x02000000`,
@@ -143,7 +217,40 @@ Two separate things were needed:
   degenerates into ordinary RAM — which renders on-panel as accumulating garbage,
   exactly "a binary file opened in an image viewer".
 
+### 4.5 The alignment fault (2026-09-22)
+
+The first boot with a command line blob reset before uniLoader printed
+"Booting kernel...", and kept resetting. ABL hands the CPU to uniLoader with the
+MMU off, so every data access is to Device-nGnRnE memory, where an unaligned
+access is an Alignment fault. `arch/aarch64/memcpy.S` is the Arm
+optimized-routines copy and assumes unaligned access is allowed: for counts over
+128 it finishes by loading and storing the last 64 bytes relative to the end of
+the region. The kernel and DTB copies never reach that case (page-aligned bases,
+counts that are multiples of 16). The 253-byte command line copy in
+`cmdline_handler_patch_dtb` did, and faulted at `cmdline + 189` with
+`ESR_EL1 0x96000021`.
+
+Patch 0004 makes memcpy and memmove take a byte loop, backwards when the
+destination overlaps the source, unless src, dst and count are all multiples of
+8; the aligned case keeps the existing code. C code is built with
+`-mstrict-align` so the compiler cannot introduce the same access pattern.
+
+The fault was reproduced off the tablet with `tools/uniloader-fdt-harness`
+(its README records the runs): uniLoader's own libfdt, string routines and
+`memcpy.S` built into a freestanding binary for `qemu-system-aarch64 -M virt`
+with the MMU off. The upstream `memcpy.S` faults there at the same instruction;
+the patched one passes every step, and the user-mode build under `qemu-aarch64`
+shows with `dtc` that only the initrd properties and `bootargs` changed. libfdt
+was not involved: uniLoader's `fdt_rw.c` uses a byte-loop `__optimized_memmove`,
+and the asm memmove is overlap-safe as well.
+
 ## 5. odin4 flashing lessons (hard-won, cost many cycles)
+
+- **Stage the recovery image before the first flash of a new bootloader.** A
+  uniLoader that faults before the kernel gives a reset loop and nothing else.
+  Keep the `pmos_uniloader_boot.tar` of a known-good build; download mode is
+  power off, then Vol Up + Vol Down, plug USB, then
+  `odin4 -a root-build/pmos_uniloader_boot.tar` from that build.
 
 - **userdata MUST be a sparse image.** A raw ext4 image fails at ~3-4% with
   `Fail request receive 3` regardless of cable/hub. Convert first:
@@ -160,6 +267,22 @@ Two separate things were needed:
   port (`usb 1-1`) was far more reliable.
 - Flash with everything in one AP tar; odin matches images to partitions BY FILENAME:
   `tar -H ustar -cf ap.tar boot.img vendor_boot.img vbmeta.img`
+
+## 5b. Updating a running port without download mode
+
+`make install-tablet` writes a new kernel to the tablet over ssh: `dd` of
+`boot.img` to `/dev/disk/by-partlabel/boot`, `cmp` against the image, `apk add`
+of the kernel apk (and the device and temp/ apks), then reboot (`NOREBOOT=1`
+skips it). It refuses when `.stage/kernel-apk` is not the apk the overlay
+APKBUILD names, so a stale uniLoader build never goes out with a fresh apk.
+
+- **A flash is two things.** Kernel modules live in the rootfs, not in boot.img.
+  `dd` alone replaces kernel, DTB and initramfs; without the matching `apk add`
+  the old `.ko` files stay under `/lib/modules` and a changed module never binds.
+- **The UFS LUN order is not stable across boots.** The boot partition was
+  `/dev/sda25` on one boot and `/dev/sdb25` on the next. Address it as
+  `/dev/disk/by-partlabel/boot`, never a hardcoded `sdX`. The tell is `cmp`
+  failing against every image at once.
 
 ## 6. Boot flow that works
 
@@ -200,9 +323,13 @@ Added (supplies follow `sm8450-hdk.dts`), plus `vreg_l6b_1p2`/`vreg_l7b_2p5`/
 `reset-gpios` deliberately omitted (HDK's `<&tlmm 210>` is board specific; the stock
 DTB exposes no UFS reset line for this tablet).
 
-**UUID GOTCHA:** the rootfs UUID is baked into `bootargs` in the DTS. Re-running
-`pmb install` regenerates the rootfs with a NEW UUID. The currently-flashed userdata is
-`a4348702-8917-409c-8b8d-ae162bbcc969`. If you reflash userdata, update the DTS to match.
+**UUID GOTCHA:** re-running `pmb install` regenerates the rootfs with NEW UUIDs.
+The command line blob picks them up from the rootfs `vendor_boot` header on every
+`make uniloader`, so uniLoader always hands the kernel the flashed image's values.
+The DTS `bootargs` still carries a copy (§2.1), and `make image` starts with the
+`uuids` gate: it compares the rootfs values against the DTS, exits 1 on a
+mismatch, and prints the two lines to change. A mismatch there is the most
+common reason a freshly flashed system drops to the initramfs debug shell.
 
 ## 8. Known gaps / next up
 
@@ -245,18 +372,20 @@ occupied by uniLoader, so both must live *inside* userdata. That means:
 - Flashing only the `--split` `-root.img` leaves no pmOS_boot; even once root is found
   the initramfs stalls at `wait_boot_partition` and drops to the debug shell.
 
-**UUIDs:** every `pmb install` regenerates them, and ours are baked into the DTS
-bootargs (uniLoader sets no cmdline). After any install, read the fresh values from
-boot-deploy and update the DTS or the initramfs will not find root:
+**UUIDs:** every `pmb install` regenerates them. The build reads the fresh values
+from the `vendor_boot` header in the rootfs chroot (the same source `make uuids`
+prints) and writes them into the command line blob; the DTS copy has to be
+updated by hand until it is dropped (§2.1, §7):
 
 ```sh
 strings <pmb-work>/chroot_rootfs_<device>/boot/vendor_boot.img | grep pmos_root_uuid
 ```
 
 **Build-order trap:** `pmb build --force` zaps chroots and DELETES the rootfs image in
-`chroot_native/home/pmos/rootfs/`. Since the kernel needs UUIDs that only exist after
-`pmb install`, the order must be: install → copy the .img out to safety → read UUIDs →
-patch DTS → build kernel → build uniLoader. Preserve the initramfs too.
+`chroot_native/home/pmos/rootfs/`. The UUIDs only exist after `pmb install`, so the
+order is: install → copy the .img out to safety → read UUIDs → build kernel → build
+uniLoader. `make rootfs` preserves the image as `root-build/combined.img` and
+`make image` runs the rest in that order.
 
 ## 9. Package/versions at time of writing
 

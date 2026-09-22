@@ -25,22 +25,27 @@ not repeatedly on the running port. That ordering is the point: it lets the buil
 or incomplete harvest is caught while the tablet is still trivially recoverable.
 
 1. **Unlock + root on stock** — `docs/01-unlock-root-runbook.md`.
-2. **Dump the blob-bearing partitions** off the rooted device. The runbook's
-   step-8 `dd` backup already does this for `super` (and friends); harvest needs
-   **`apnhlos`** (the zap) and **`super`** (everything else) at minimum.
+2. **Dump the blob-bearing partitions** off the rooted device. Harvest needs
+   **`apnhlos`** (the zap) and **`super`** (everything else) at minimum, and the
+   boot image build needs **`boot`** for the stock ramdisk. `make dumps ADB=1`
+   pulls all three from the rooted tablet into `device-facts/partitions-backup/`
+   and verifies each against the on-device sha256; without `ADB=1` it only checks
+   what is already there (the runbook's step 8).
 3. **Turn the raw images into source roots** on the host:
    - `apnhlos` — plain vfat: `mount -o ro,loop apnhlos.img /mnt/apnhlos`
    - `vendor`  — F2FS (LZ4-compressed) logical image inside `super`:
      `lpunpack --partition vendor super.img . && mount -o ro,loop vendor.img /mnt/vendor`
    (`tools/fw-harvest.sh --from-dumps DIR` does both when lp tooling and F2FS support are present.)
-4. **Harvest, offline, at leisure** — before flashing:
+4. **Harvest, offline, at leisure**, before flashing. `make harvest` runs
+   `tools/fw-harvest.sh --from-dumps` on the dumps directory and
+   `tools/sensors-from-super.sh` for the sensor registry configs; by hand:
    ```sh
    tools/fw-harvest.sh --apnhlos /mnt/apnhlos --vendor /mnt/vendor \
                        --out root-build/stock-extract/harvest
    ```
-5. **Build gate** — the build stages from the harvest tree and HARD-FAILS if a
-   blob a bring-up feature depends on is missing (the same discipline `make
-   stage-fw` already applies to the zap).
+5. **Build gate.** `make check` reports whether the dumps and the harvested zap
+   are present before anything is built, and `make stage-fw` (run by every boot
+   image build) HARD-FAILS if the zap does not land in the initramfs.
 
 ## The manifest
 
@@ -89,10 +94,13 @@ class, and the distinction is what makes the manifest have a `class` column:
   the local `super`/vendor dump — 10/10 vendor blobs harvested, PIL split-sets
   handled (24 `CAMERA_ICP.*`, 22 `evass.*`, 4 `vpu`), `apnhlos` skipped cleanly
   when not supplied.
-- **Not yet wired:** the build-side gate (generalize `make stage-fw` /
-  `60-gts8pwifi-gpu-fw.files` to read the manifest and hard-fail per required
-  blob), and `--from-dumps` end-to-end (needs erofs-utils or the erofs kernel
-  module on the host — absent on this Arch box at time of writing).
+- **Wired into the Makefile:** `make dumps` (verify or pull the dumps),
+  `make harvest` (`fw-harvest.sh --from-dumps` plus the sensor registry), and
+  `make check` reporting the zap's presence; `make stage-fw` still gates only the
+  zap. `make check` also lists the host tools harvest needs (lpunpack and an
+  erofs reader).
+- **Not yet wired:** a per-blob gate that reads the manifest (generalize `make
+  stage-fw` / `60-gts8pwifi-gpu-fw.files` to hard-fail per required blob).
 - **Relationship to the on-device extractor:** `gts8pwifi-fw-extract` (runtime,
   mounts `apnhlos` on the running port) stays as a fallback for the zap. The
   pre-flash harvest is the primary, scalable path.

@@ -8,7 +8,7 @@ upstreams matter, each with different rules.
 | Our file | Upstream | Rules |
 |---|---|---|
 | `sm8450-samsung-gts8pwifi.dts` | **Linux** (`arch/arm64/boot/dts/qcom/`) | kernel DT bindings; plain-text patch to the arm64/qcom list |
-| `board-gts8pwifi.c`, `gts8pwifi_defconfig` | **uniLoader** (`ivoszbg/uniLoader`) | GitHub PR |
+| `board-gts8pwifi.c`, `gts8pwifi_defconfig`, `uniloader-port/patches/0001-0004` | **uniLoader** (`ivoszbg/uniLoader`) | GitHub PR; the board is upstream PR #145 (Tab S8 Wi-Fi), the cmdline blob and memcpy alignment patches are candidates to send alongside it |
 | `device-samsung-gts8pwifi/`, `linux-postmarketos-qcom-sm8450/` | **pmaports** | GitLab MR, `device/testing/` |
 
 They upstream at different speeds. The DTS is the long pole (kernel review is
@@ -98,13 +98,15 @@ Never copy a value from a sibling device without checking it against (1).
   uniLoader path and are not accepted upstream. They exist in our tree only as a
   record of the direct-ABL experiment.
 - Upstream will want the DTS to describe *hardware*, not workarounds. Our baked
-  `bootargs` (a uniLoader-specific necessity) is not upstreamable as-is.
+  `bootargs` is not upstreamable; uniLoader now sets the command line itself
+  (docs/05 §2.1), and dropping the DTS copy is the follow-up (kernel pkgrel 29).
 
 ## 6. Open questions for upstream
 
-- **`bootargs` in the DTS.** uniLoader does not set a command line, so ours lives in
-  `/chosen`. Cleaner would be uniLoader learning to inject one — worth raising with
-  the uniLoader maintainer rather than carrying it in a device DTS forever.
+- **`bootargs` in the DTS.** Resolved on our side: uniLoader sets `/chosen/bootargs`
+  from an embedded blob (`0002-cmdline-blob.patch`, docs/05 §2.1). The question for
+  the uniLoader maintainer is whether that patch, and the memcpy alignment fix it
+  needed (`0004-memcpy-strict-align.patch`), go upstream alongside PR #145.
 - **simplefb clocks/power-domains.** We list display clocks + `MDSS_GDSC` on the
   `simple-framebuffer` node so simpledrm holds them. r0q does not, and relies on
   `clk_ignore_unused`. Worth asking which upstream prefers.
@@ -120,7 +122,7 @@ modification takes one of exactly two shapes:
 | Component | Pin | Modifications |
 |---|---|---|
 | kernel (vanilla mainline) | `pkgver` in the kernel APKBUILD (release tarball) | whole in-repo files (our drivers, DTS, config fragments) + `*.patch` files |
-| uniLoader | `UL_COMMIT` in the Makefile | whole in-repo files (board port) |
+| uniLoader | `UL_COMMIT` in the Makefile, `43770a04327532407194ddd3f9f35770daa01c70` | whole in-repo files (board file, defconfig, `cmdline.in`) + `uniloader-port/patches/0001-0004`, applied in name order by `make deps` |
 | Alpine/pmOS packages | apk repos (edge) | none — metapackages compose, never fork |
 
 **Patches are generated, never hand-written.** Unified diff is an unforgiving

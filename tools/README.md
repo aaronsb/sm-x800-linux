@@ -1,9 +1,8 @@
 # tools/
 
-On-device bring-up helpers. Everything here is **read-only** with respect to device
-flash — no tool in this directory erases or writes an MCU.
-
-Run them over ssh:
+Bring-up helpers. Everything here is **read-only** with respect to device
+flash — no tool in this directory erases or writes an MCU. All but
+`uniloader-fdt-harness/` (host-side, see its row) run on the tablet over ssh:
 
 ```sh
 scp tools/<script> user@<ip>:/tmp/
@@ -24,6 +23,7 @@ ssh user@<ip> 'echo <pw> | sudo -S sh /tmp/<script>'
 | `flashtest.sh` | Rear flash LED demo: torch 5 s at a given brightness (0..255 = 0..500 mA), off, then one 300 mA strobe with a 200 ms hardware timeout. `sh flashtest.sh [brightness]` on the tablet. |
 | `camtest.sh` | Stream raw frames from a camera through CAMSS: links sensor -> csiphy -> csidN -> vfeN_rdi0, sets the native format on every pad, captures N packed 10-bit Bayer frames with v4l2-ctl. `sh camtest.sh uw|front|frontfull [COUNT] [OUT]` on the tablet (needs v4l-utils); each camera has a default CSID/VFE pair (uw 0, front 1; CSID N feeds IFE N only), `VFE=N CSID=N` override it. |
 | `raw2png.py` | Decode a `camtest.sh` capture (V4L2 SGRBG10P) into a quarter-size stretched PNG on the host and print raw statistics. `python3 raw2png.py IN.raw W H OUT.png [FRAME]`. |
+| `uniloader-fdt-harness/` | Host-side. Builds uniLoader's libfdt, string routines and `memcpy.S` from `reference/uniLoader` with `blob/dtb` and `blob/cmdline` embedded, and runs the DTB patching uniLoader does at boot under `qemu-aarch64` (user mode) and `qemu-system-aarch64 -M virt` with the MMU off, the tablet's memory model. Reproduces the 2026-09-22 alignment fault and verifies `0004-memcpy-strict-align.patch`. `make run-linux`, `make run-virt`; see its README. |
 
 ## After any userdata/rootfs flash
 

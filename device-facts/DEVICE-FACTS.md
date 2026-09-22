@@ -31,7 +31,7 @@ Pulled via `adb getprop` / sysfs on 2026-07-18 from the actual unit (serial reda
 ## Storage / partitions (A-only, no A/B slots — `slot_suffix` empty)
 | Partition | Block | Size | Role |
 |---|---|---|---|
-| `boot` | sda25 | 96 MB | **pmOS flash target** (kernel + initramfs) |
+| `boot` | sda25 (sdb25 on some boots: the UFS LUN order varies, address `/dev/disk/by-partlabel/boot`) | 96 MB | **pmOS flash target** (kernel + initramfs) |
 | `dtbo` | sda34 | 8 MB | device-tree overlays |
 | `super` | sda28 | ~10.4 GB | dynamic (system/vendor/product/odm/…) |
 | `recovery` | sda26 | — | stock recovery / TWRP target |

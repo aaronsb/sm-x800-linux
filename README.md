@@ -30,7 +30,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 
 | Component | State |
 |---|---|
-| Boot (uniLoader → mainline kernel) | ✅ working |
+| Boot (uniLoader → mainline kernel) | ✅ working. uniLoader pinned with four patches: DTB relocation, the kernel command line from an embedded blob (`/proc/cmdline` ends in `bootloader=uniloader`), board registration, and aligned memcpy for the MMU-off CPU state ABL hands over (fixed the 2026-09-22 reset loop). Build and flash are one ordered `make` sequence. Story: docs/05 |
 | Display — native KMS console (msm DPU/DSI/DSC @ 2800×1752) | ✅ working |
 | CPU — all 8 cores | ✅ working |
 | UFS storage — root mounted, auto-resized | ✅ working |
@@ -130,6 +130,8 @@ docs/                     The maintained story, in phase order
   08-native-display.md      Native KMS: DPU/DSC bring-up and the Anapass TCON
   09-firmware-harvest.md    Which blobs live where, and the extractor model
   10-audio.md               ADSP + AudioReach + four CS35L45 amps on MI2S
+  11-camera.md              CAMSS raw path, Hi847 and Hi1337 sensors
+  12-sensors.md             SLPI sensors, hall switches, thermistors
   discovery-notes/          Raw early-session notes, kept for provenance
                             (recon, the downstream dead end, the mainline pivot)
 pmaports-overlay/         Our postmarketOS packages (the actual port)
@@ -140,12 +142,16 @@ pmaports-overlay/         Our postmarketOS packages (the actual port)
                                                    (keyboard), max77705-otg.c (VBUS),
                                                    panel-samsung-s6tuum1.c (display)
   device/testing/device-samsung-gts8pwifi/         device pkg + deviceinfo
-  uniloader-port/                                  our uniLoader board port
+  uniloader-port/                                  our uniLoader port: board file,
+                                                   defconfig, cmdline.in (the kernel
+                                                   command line), patches 0001-0004
 device-facts/             Non-proprietary device documentation
 tools/                    Runbooks + helpers: mkpatch (patch workbench),
-                          post-flash procedure, hard-won gotchas
-Makefile                  Build/flash automation (make help; boot builds run
-                          the stage-fw gate and end with the bring-up manifest)
+                          uniloader-fdt-harness (uniLoader's DTB patching
+                          under qemu), post-flash procedure, hard-won gotchas
+Makefile                  The build as an ordered sequence: check, deps, dumps,
+                          harvest, rootfs, image, flash-all, install-tablet
+                          (make help lists it)
 ```
 
 Not in git (see `.gitignore`): `pmb-work/`, `kernel-src/`, `reference/`,
@@ -166,38 +172,49 @@ pmbootstrap's own config file):
                 # channel edge, device samsung-gts8pwifi (ours), UI console
 ```
 
-Then:
+The build is an ordered sequence. Each step checks what the previous one left
+behind and names the step to run when something is missing:
 
 ```sh
-make deps       # clone uniLoader (pinned), apply our board port, chroot toolchain
-make boot       # kernel -> uniLoader -> boot.img -> flashable tar
-make flash      # odin4 the boot image (device in download mode)
-make help       # everything else
+make check          # host tools, pmbootstrap init, dumps, harvest, apks
+make deps           # one-time: clone uniLoader (pinned), copy in the board port,
+                    # apply patches 0001-0004, install the chroot toolchain
+make dumps          # verify the stock partition dumps; ADB=1 pulls boot, apnhlos
+                    # and super from a tablet rooted on stock (docs/01 step 8)
+make harvest        # copy the proprietary blobs (GPU zap, sensor registry) out of the dumps
+make rootfs         # pmb install; preserves the combined image, prints the UUIDs
+make image          # uuids gate -> kernel -> device -> boot -> sparse userdata tar
+make flash-all      # first install: boot + userdata in ONE odin session
+make install-tablet # later kernels: dd boot.img + apk add over ssh, then reboot
+make help           # the same list, plus every other target
 ```
+
+Variants: `make boot-debug` builds a second boot image with `pmos.debug-shell`
+on the command line (its own `boot-debug.img` and tar, the normal artifacts stay);
+`make kernel`, `make device` and `make boot` run one stage of `image`;
+`make flash-help` picks the odin flavor for what you changed.
 
 `make rootfs` prompts for the device user password unless you pass
 `PASSWORD=...` (the docs use throwaway credentials throughout — pick your own).
 `DEVSUDO=1` additionally installs the `-devsudo` subpackage: passwordless sudo
 for the default user, for development images only.
 
-`make boot` runs `stage-fw` first (stages the locally-extracted GPU zap into the
-build chroot's initramfs and hard-fails if it does not land) and ends by printing
-the numbered bring-up manifest.
+uniLoader owns the kernel command line. The `cmdline-blob` step writes
+`blob/cmdline` from `pmaports-overlay/uniloader-port/cmdline.in` with the two
+rootfs UUIDs read from the vendor_boot header, then appends
+`bootloader=uniloader` and anything in `BOOTARGS_EXTRA`; uniLoader sets
+`/chosen/bootargs` from it at boot. The DTS still carries the same tokens for
+now, so `make image` starts with the `uuids` gate: the rootfs UUIDs must match
+the DTS or the build stops and prints the two lines to change. A mismatch there
+is the single most common reason a freshly flashed system drops to the
+initramfs debug shell. Dropping the DTS copy is the follow-up (kernel pkgrel 29).
 
-Rebuilding the rootfs as well is a longer path, because the rootfs UUIDs are baked
-into the DTS bootargs (uniLoader passes no kernel cmdline of its own):
-
-```sh
-make rootfs     # pmb install; preserves the image and prints the new UUIDs
-                # ...update pmos_boot_uuid / pmos_root_uuid in the DTS to match...
-make boot       # rebuild kernel + uniLoader with the new UUIDs
-make flash-all  # boot AND userdata in ONE odin session (no reboot between)
-make flash-stay # same, but come back up in download mode for the next round
-make uuids      # compare the rootfs UUIDs against what the DTS currently says
-```
-
-`make uuids` is the cheap sanity check — a mismatch there is the single most common
-reason a freshly flashed system drops to the initramfs debug shell.
+`make uniloader` picks the kernel apk by the APKBUILD's `pkgver-pkgrel`, never
+the newest file, and records it in `.stage/kernel-apk`; `install-tablet`
+refuses when that record does not match the APKBUILD. The boot-image build runs
+`stage-fw` first (stages the harvested GPU zap into the build chroot's initramfs
+and hard-fails if it does not land) and ends by printing the numbered bring-up
+manifest.
 
 ## Flashing gotchas
 
@@ -217,11 +234,21 @@ These cost us many cycles — see `docs/05` §5:
   and stage-1 stalls forever in `wait_boot_partition`. See `docs/05` §8b.
 - **The "press power button to confirm unverified firmware boot" prompt times out
   on its own** and the boot continues unattended; pressing Power only skips the wait.
-- **Kernel modules live in the rootfs, not in boot.img.** The fast path (`dd` the
-  new boot.img to the boot partition) replaces kernel, DTB and initramfs only;
-  `/lib/modules` is whatever kernel apk the rootfs has installed. A patch that
-  changes a module (camss, r13) needs `apk add --allow-untrusted linux-postmarketos-qcom-sm8450-7.2-rN.apk`
-  on the tablet as well, or the old `.ko` stays and the new compatible never binds.
+- **A flash is two things: the boot image and the kernel apk.** Kernel modules
+  live in the rootfs, not in boot.img. `dd` of the new boot.img replaces kernel,
+  DTB and initramfs only; `/lib/modules` is whatever kernel apk the rootfs has
+  installed. A patch that changes a module (camss, r13) needs the matching
+  `apk add --allow-untrusted linux-postmarketos-qcom-sm8450-7.2-rN.apk` on the
+  tablet as well, or the old `.ko` stays and the new compatible never binds.
+  `make install-tablet` does both and refuses on a pkgrel mismatch.
+- **The UFS LUN order is not stable across boots.** The boot partition was
+  `/dev/sda25` on one boot and `/dev/sdb25` on the next. Always address
+  `/dev/disk/by-partlabel/boot`, never a hardcoded `sdX`; the tell is `cmp`
+  failing against every image at once.
+- **Stage the recovery image before the first flash of a new bootloader.** Keep
+  a `pmos_uniloader_boot.tar` from a known-good build. If the new one loops,
+  enter download mode (power off, then Vol Up + Vol Down, plug USB) and
+  `odin4 -a root-build/pmos_uniloader_boot.tar` from that build.
 - **A camera register touched without its clock hangs the SoC.** Skipping the CPAS
   fast AHB or the VFE core clock in a power-cycle bisect froze the tablet (no ping)
   the moment a VFE register or its interrupt handler ran. Recovery is the Vol Down
