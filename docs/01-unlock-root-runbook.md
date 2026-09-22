@@ -2,6 +2,8 @@
 
 Device: SM-X800 (gts8pwifi), One UI 7 / X800XXU9DYDC. Host: Arch, `odin4` + artifacts in `root-build/`.
 
+Who qualifies: any SM-X800 on bootloader binary 9 or lower, downgraded to a binary-9 One UI 7 firmware first if it is on One UI 8; see `docs/00-compatibility.md` before step 1.
+
 ## Artifacts (all staged & verified)
 | File | Purpose | Note |
 |---|---|---|
