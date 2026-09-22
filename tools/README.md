@@ -85,7 +85,7 @@ These cost real time; they are not generic Linux knowledge.
   98%/4.25 V, so not a brown-out. Mechanism unknown (I/O wedge? thermal?);
   every stock partition of interest exists locally in
   device-facts/partitions-backup/ (11 GB super.img included) — search
-  there. Note super's members are EROFS (compressed): raw `grep`/`strings`
+  there. Note super's members are F2FS with LZ4 compression: raw `grep`/`strings`
   over the image finds nothing; `lpunpack` + loop-mount, then search files.
 - **The zap shader and the ADSP image live in the `apnhlos` partition**
   (`/image/a730_zap.mdt` + `.b00-.b02`; `/image/adsp.mdt` + `.b00-.b24`), not

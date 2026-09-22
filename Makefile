@@ -15,8 +15,12 @@
 
 SHELL       := /bin/bash
 PMB         := ./pmb
-APORTS      := pmb-work/cache_git/pmaports/device/testing
+APORTS_ROOT := pmb-work/cache_git/pmaports
+APORTS      := $(APORTS_ROOT)/device/testing
 OVERLAY     := pmaports-overlay/device/testing
+# Non-device packages forked from Alpine live in temp/, as in pmaports.
+TEMP_OVERLAY := pmaports-overlay/temp
+TEMP_PKGS   := $(notdir $(wildcard $(TEMP_OVERLAY)/*))
 KPKG        := linux-postmarketos-qcom-sm8450
 DPKG        := device-samsung-gts8pwifi
 DEVICE      := samsung-gts8pwifi
@@ -276,13 +280,17 @@ restore-android: ## [escape hatch] put stock Android back
 ## ---------------------------------------------------------------------------
 
 sync-aports: ## Copy our packages from the repo into the live pmaports tree
-	@mkdir -p $(APORTS)
+	@mkdir -p $(APORTS) $(APORTS_ROOT)/temp
 	cp -r $(OVERLAY)/$(KPKG) $(APORTS)/
 	cp -r $(OVERLAY)/$(DPKG) $(APORTS)/
+	@for p in $(TEMP_PKGS); do \
+	    rm -rf $(APORTS_ROOT)/temp/$$p; \
+	    cp -r $(TEMP_OVERLAY)/$$p $(APORTS_ROOT)/temp/; done
 
 sync-overlay: ## Copy packages OUT of the live pmaports tree back into the repo
 	cp -r $(APORTS)/$(KPKG) $(OVERLAY)/
 	cp -r $(APORTS)/$(DPKG) $(OVERLAY)/
+	@for p in $(TEMP_PKGS); do cp -r $(APORTS_ROOT)/temp/$$p $(TEMP_OVERLAY)/; done
 	cp $(UL_SRC)/board/samsung/board-gts8pwifi.c \
 	   pmaports-overlay/uniloader-port/board/samsung/
 	cp $(UL_SRC)/configs/gts8pwifi_defconfig \
@@ -290,7 +298,7 @@ sync-overlay: ## Copy packages OUT of the live pmaports tree back into the repo
 
 lint: ## Validate packaging + DTS bracket balance (full DTS check = `make kernel`)
 	@echo "== APKBUILD shell syntax =="
-	@for f in $(OVERLAY)/*/APKBUILD; do bash -n $$f && echo "  ok: $$f"; done
+	@for f in $(OVERLAY)/*/APKBUILD $(TEMP_OVERLAY)/*/APKBUILD; do bash -n $$f && echo "  ok: $$f"; done
 	@echo "== deviceinfo shell syntax =="
 	@bash -n $(OVERLAY)/$(DPKG)/deviceinfo && echo "  ok: deviceinfo"
 	@echo "== DTS sanity =="

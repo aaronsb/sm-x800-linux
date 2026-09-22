@@ -1,0 +1,513 @@
+From 9f74e64ecbbbd53164924dc3d578a38dca9f6c41 Mon Sep 17 00:00:00 2001
+From: Fady <fadyackad@gmail.com>
+Date: Sat, 19 Sep 2026 23:58:47 +0200
+Subject: [PATCH 2/7] apps_std: serve fopen, fwrite, fsync, fremove, ftrunc and
+ frename
+
+Implement the apps_std methods the sensor framework's registry initialisation calls (ids as in quic/fastrpc inc/apps_std.h: fopen 0, fwrite 5, fsync 23, fremove 24, ftrunc 32, frename 33; ids above 30 travel in the first primitive word), open w/a/+ modes read-write, and let fopen_with_env open an absolute name whatever search variable the DSP names. Refusing the first write (fremove, then fopen of the DIR marker for writing) made the X1E80100 firmware assert in sns_registry_sensor.c and take the whole ADSP down. Unlike the stubs proposed in pull request 21, the writes reach the files, so what the framework persists (its parsed registry, calibration) is there at the next start.
+
+Link: https://github.com/linux-msm/hexagonrpc/issues/19
+
+Link: https://github.com/linux-msm/hexagonrpc/pull/21
+---
+ hexagonrpcd/apps_std.c           | 299 +++++++++++++++++++++++--------
+ hexagonrpcd/interface/apps_std.c |  79 ++++++++
+ hexagonrpcd/interface/apps_std.h |   6 +
+ 3 files changed, 311 insertions(+), 73 deletions(-)
+
+diff --git a/hexagonrpcd/apps_std.c b/hexagonrpcd/apps_std.c
+index 7172bf0..c1a8cb8 100644
+--- a/hexagonrpcd/apps_std.c
++++ b/hexagonrpcd/apps_std.c
+@@ -20,6 +20,8 @@
+  */
+ 
+ #include <errno.h>
++#include <fcntl.h>
++#include <stdbool.h>
+ #include <libhexagonrpc/error.h>
+ #include <stdio.h>
+ #include <stdint.h>
+@@ -150,13 +152,210 @@ static uint32_t apps_std_fseek(void *data,
+ 	return 0;
+ }
+ 
++/*
++ * Open NAME below DIRFD the way fopen(3) would for MODE: read-only for "r",
++ * otherwise (w, a, +) read-write, created if absent, truncated for "w",
++ * appended for "a". The sensor framework of the Snapdragon Sensor Core
++ * writes into its registry directory while it initialises and aborts the
++ * whole DSP when that is refused.
++ */
++static int apps_std_open_mode(struct apps_std_ctx *ctx, int dirfd,
++			      const char *name, const char *mode)
++{
++	const char *m;
++	bool writing = false;
++	int flags = 0;
++
++	for (m = mode; *m != '\0'; m++) {
++		switch (*m) {
++			case 'w':
++				writing = true;
++				flags |= O_TRUNC;
++				break;
++			case 'a':
++				writing = true;
++				flags |= O_APPEND;
++				break;
++			case '+':
++				writing = true;
++				break;
++			default:
++				break;
++		}
++	}
++
++	if (!writing)
++		return hexagonfs_openat(ctx->fds, ctx->rootfd, dirfd, name);
++
++	return hexagonfs_create(ctx->fds, ctx->rootfd, dirfd, name, flags);
++}
++
++static uint32_t apps_std_fopen(void *data,
++			       const struct fastrpc_io_buffer *inbufs,
++			       struct fastrpc_io_buffer *outbufs)
++{
++	struct apps_std_ctx *ctx = data;
++	uint32_t *out = outbufs[0].p;
++	const char *name = inbufs[1].p;
++	const char *mode = inbufs[2].p;
++	int dirfd, fd;
++
++	// The name and mode must be NULL-terminated
++	if (name[inbufs[1].s - 1] != 0 || mode[inbufs[2].s - 1] != 0)
++		return AEE_EBADPARM;
++
++	dirfd = name[0] == '/' ? ctx->rootfd : ctx->adsp_library_dirfd;
++	if (dirfd < 0) {
++		fprintf(stderr, "Could not open %s: no search directory\n", name);
++		return AEE_EFAILED;
++	}
++
++	fd = apps_std_open_mode(ctx, dirfd, name, mode);
++	if (fd < 0) {
++		fprintf(stderr, "Could not open %s (%s): %s\n",
++				name, mode, strerror(-fd));
++		return AEE_EFAILED;
++	}
++
++#ifdef HEXAGONRPC_VERBOSE
++	printf("open(%s, %s) -> %d\n", name, mode, fd);
++#endif
++
++	*out = fd;
++
++	return 0;
++}
++
++static uint32_t apps_std_fwrite(void *data,
++				const struct fastrpc_io_buffer *inbufs,
++				struct fastrpc_io_buffer *outbufs)
++{
++	struct apps_std_ctx *ctx = data;
++	const struct {
++		uint32_t fd;
++		uint32_t buf_size;
++	} *first_in = inbufs[0].p;
++	struct {
++		uint32_t written;
++		uint32_t is_eof;
++	} *first_out = outbufs[0].p;
++	ssize_t ret;
++
++	ret = hexagonfs_write(ctx->fds, first_in->fd, inbufs[1].s, inbufs[1].p);
++	if (ret < 0) {
++		fprintf(stderr, "Could not write file: %s\n", strerror(-ret));
++		return AEE_EFAILED;
++	}
++
++#ifdef HEXAGONRPC_VERBOSE
++	printf("write(%u, %u) -> %ld\n", first_in->fd, first_in->buf_size, ret);
++#endif
++
++	first_out->written = ret;
++	first_out->is_eof = 0;
++
++	return 0;
++}
++
++/*
++ * Writes are synchronous here and land in the page cache; nothing to wait
++ * for from the DSP's point of view.
++ */
++static uint32_t apps_std_fsync(void *data,
++			       const struct fastrpc_io_buffer *inbufs,
++			       struct fastrpc_io_buffer *outbufs)
++{
++#ifdef HEXAGONRPC_VERBOSE
++	const uint32_t *fd = inbufs[0].p;
++
++	printf("ignore fsync(%u)\n", *fd);
++#endif
++
++	return 0;
++}
++
++static uint32_t apps_std_fremove(void *data,
++				 const struct fastrpc_io_buffer *inbufs,
++				 struct fastrpc_io_buffer *outbufs)
++{
++	struct apps_std_ctx *ctx = data;
++	const char *name = inbufs[1].p;
++	int ret;
++
++	// The name must be NULL-terminated
++	if (name[inbufs[1].s - 1] != 0)
++		return AEE_EBADPARM;
++
++	ret = hexagonfs_unlink(ctx->fds, ctx->rootfd, ctx->rootfd, name);
++
++#ifdef HEXAGONRPC_VERBOSE
++	printf("remove(%s) -> %d\n", name, ret);
++#endif
++
++	if (ret) {
++		fprintf(stderr, "Could not remove %s: %s\n", name, strerror(-ret));
++		return AEE_EFAILED;
++	}
++
++	return 0;
++}
++
++/* Extended method (id > 30): the first word of the primary buffer is the method id. */
++static uint32_t apps_std_ftrunc(void *data,
++				const struct fastrpc_io_buffer *inbufs,
++				struct fastrpc_io_buffer *outbufs)
++{
++	struct apps_std_ctx *ctx = data;
++	const uint32_t *words = inbufs[0].p;
++	int ret;
++
++	ret = hexagonfs_ftruncate(ctx->fds, words[1], words[2]);
++
++#ifdef HEXAGONRPC_VERBOSE
++	printf("ftruncate(%u, %u) -> %d\n", words[1], words[2], ret);
++#endif
++
++	if (ret) {
++		fprintf(stderr, "Could not truncate: %s\n", strerror(-ret));
++		return AEE_EFAILED;
++	}
++
++	return 0;
++}
++
++static uint32_t apps_std_frename(void *data,
++				 const struct fastrpc_io_buffer *inbufs,
++				 struct fastrpc_io_buffer *outbufs)
++{
++	struct apps_std_ctx *ctx = data;
++	const char *oldname = inbufs[1].p;
++	const char *newname = inbufs[2].p;
++	int ret;
++
++	// Both names must be NULL-terminated
++	if (oldname[inbufs[1].s - 1] != 0 || newname[inbufs[2].s - 1] != 0)
++		return AEE_EBADPARM;
++
++	ret = hexagonfs_rename(ctx->fds, ctx->rootfd, ctx->rootfd, oldname, newname);
++
++#ifdef HEXAGONRPC_VERBOSE
++	printf("rename(%s, %s) -> %d\n", oldname, newname, ret);
++#endif
++
++	if (ret) {
++		fprintf(stderr, "Could not rename %s: %s\n", oldname, strerror(-ret));
++		return AEE_EFAILED;
++	}
++
++	return 0;
++}
++
+ static uint32_t apps_std_fopen_with_env(void *data,
+ 					const struct fastrpc_io_buffer *inbufs,
+ 					struct fastrpc_io_buffer *outbufs)
+ {
+ 	struct apps_std_ctx *ctx = data;
+ 	uint32_t *out = outbufs[0].p;
+-	char rw_mode;
+ 	int dirfd, fd;
+ 
+ 	// The name and environment variable must also be NULL-terminated
+@@ -165,17 +364,14 @@ static uint32_t apps_std_fopen_with_env(void *data,
+ 	 || ((const char *) inbufs[4].p)[inbufs[4].s - 1] != 0)
+ 		return AEE_EBADPARM;
+ 
+-	rw_mode = ((const char *) inbufs[4].p)[0];
+-	if (rw_mode == 'w' || rw_mode == 'a') {
+-		fprintf(stderr, "Tried to open %s for writing\n",
+-				(const char *) inbufs[3].p);
+-		return AEE_EUNSUPPORTED;
+-	}
+-
+ 	if (!strcmp(inbufs[1].p, "ADSP_LIBRARY_PATH")) {
+ 		dirfd = ctx->adsp_library_dirfd;
+ 	} else if (!strcmp(inbufs[1].p, "ADSP_AVS_CFG_PATH")) {
+ 		dirfd = ctx->adsp_avs_cfg_dirfd;
++	} else if (((const char *) inbufs[3].p)[0] == '/') {
++		/* An absolute name needs no search directory (the sensor
++		 * framework passes its own variable names with them). */
++		dirfd = ctx->rootfd;
+ 	} else {
+ 		fprintf(stderr, "Unknown search directory %s\n",
+ 				(const char *) inbufs[1].p);
+@@ -188,18 +384,19 @@ static uint32_t apps_std_fopen_with_env(void *data,
+ 		return AEE_EFAILED;
+ 	}
+ 
+-	fd = hexagonfs_openat(ctx->fds, ctx->rootfd, dirfd, inbufs[3].p);
++	fd = apps_std_open_mode(ctx, dirfd, inbufs[3].p, inbufs[4].p);
+ 	if (fd < 0) {
+-		fprintf(stderr, "Could not open %s: %s\n",
++		fprintf(stderr, "Could not open %s (%s): %s\n",
+ 				(const char *) inbufs[3].p,
+-				strerror(errno));
++				(const char *) inbufs[4].p,
++				strerror(-fd));
+ 		return AEE_EFAILED;
+ 	}
+ 
+ #ifdef HEXAGONRPC_VERBOSE
+-	printf("openat($%s, %s, %c) -> %d\n", (const char *) inbufs[1].p,
++	printf("openat($%s, %s, %s) -> %d\n", (const char *) inbufs[1].p,
+ 					      (const char *) inbufs[3].p,
+-					      rw_mode,
++					      (const char *) inbufs[4].p,
+ 					      fd);
+ #endif
+ 
+@@ -406,69 +603,25 @@ void fastrpc_apps_std_deinit(struct fastrpc_interface *iface)
+ }
+ 
+ static const struct fastrpc_function_impl apps_std_procs[] = {
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{
+-		.def = &apps_std_fflush_def,
+-		.impl = apps_std_fflush,
+-	},
+-	{
+-		.def = &apps_std_fclose_def,
+-		.impl = apps_std_fclose,
+-	},
+-	{
+-		.def = &apps_std_fread_def,
+-		.impl = apps_std_fread,
+-	},
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{
+-		.def = &apps_std_fseek_def,
+-		.impl = apps_std_fseek,
+-	},
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{
+-		.def = &apps_std_fopen_with_env_def,
+-		.impl = apps_std_fopen_with_env,
+-	},
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{
+-		.def = &apps_std_opendir_def,
+-		.impl = apps_std_opendir,
+-	},
+-	{
+-		.def = &apps_std_closedir_def,
+-		.impl = apps_std_closedir,
+-	},
+-	{
+-		.def = &apps_std_readdir_def,
+-		.impl = apps_std_readdir,
+-	},
+-	{ .def = NULL, .impl = NULL, },
+-	{ .def = NULL, .impl = NULL, },
+-	{
+-		.def = &apps_std_stat_def,
+-		.impl = apps_std_stat,
+-	},
++	[0] = { .def = &apps_std_fopen_def, .impl = apps_std_fopen, },
++	[2] = { .def = &apps_std_fflush_def, .impl = apps_std_fflush, },
++	[3] = { .def = &apps_std_fclose_def, .impl = apps_std_fclose, },
++	[4] = { .def = &apps_std_fread_def, .impl = apps_std_fread, },
++	[5] = { .def = &apps_std_fwrite_def, .impl = apps_std_fwrite, },
++	[9] = { .def = &apps_std_fseek_def, .impl = apps_std_fseek, },
++	[19] = { .def = &apps_std_fopen_with_env_def, .impl = apps_std_fopen_with_env, },
++	[23] = { .def = &apps_std_fsync_def, .impl = apps_std_fsync, },
++	[24] = { .def = &apps_std_fremove_def, .impl = apps_std_fremove, },
++	[26] = { .def = &apps_std_opendir_def, .impl = apps_std_opendir, },
++	[27] = { .def = &apps_std_closedir_def, .impl = apps_std_closedir, },
++	[28] = { .def = &apps_std_readdir_def, .impl = apps_std_readdir, },
++	[31] = { .def = &apps_std_stat_def, .impl = apps_std_stat, },
++	[32] = { .def = &apps_std_ftrunc_def, .impl = apps_std_ftrunc, },
++	[33] = { .def = &apps_std_frename_def, .impl = apps_std_frename, },
+ };
+ 
+ const struct fastrpc_interface apps_std_interface = {
+ 	.name = "apps_std",
+-	.n_procs = 32,
++	.n_procs = 34,
+ 	.procs = apps_std_procs,
+ };
+diff --git a/hexagonrpcd/interface/apps_std.c b/hexagonrpcd/interface/apps_std.c
+index 67b3ace..a2b3910 100644
+--- a/hexagonrpcd/interface/apps_std.c
++++ b/hexagonrpcd/interface/apps_std.c
+@@ -22,6 +22,20 @@
+ #include <stdint.h>
+ #include <libhexagonrpc/hexagonrpc.h>
+ 
++static struct hrpc_arg_def_interp4 apps_std_fopen_args[] = {
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++	{ HRPC_ARG_OUT_BLOB, sizeof(uint32_t) },
++};
++
++const struct hrpc_method_def_interp4 apps_std_fopen_def = {
++	.msg_id = 0,
++	.n_args = HRPC_ARRAY_SIZE(apps_std_fopen_args),
++	.args = apps_std_fopen_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
++
+ static struct hrpc_arg_def_interp4 apps_std_freopen_args[] = {
+ 	{ HRPC_ARG_WORD, sizeof(uint32_t) },
+ 	{ HRPC_ARG_OUT_BLOB, sizeof(uint32_t) },
+@@ -75,6 +89,21 @@ const struct hrpc_method_def_interp4 apps_std_fread_def = {
+ 	.inner_types = NULL,
+ };
+ 
++static struct hrpc_arg_def_interp4 apps_std_fwrite_args[] = {
++	{ HRPC_ARG_WORD, sizeof(uint32_t) },
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++	{ HRPC_ARG_OUT_BLOB, sizeof(uint32_t) },
++	{ HRPC_ARG_OUT_BLOB, sizeof(uint32_t) },
++};
++
++const struct hrpc_method_def_interp4 apps_std_fwrite_def = {
++	.msg_id = 5,
++	.n_args = HRPC_ARRAY_SIZE(apps_std_fwrite_args),
++	.args = apps_std_fwrite_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
++
+ static struct hrpc_arg_def_interp4 apps_std_fseek_args[] = {
+ 	{ HRPC_ARG_WORD, sizeof(uint32_t) },
+ 	{ HRPC_ARG_WORD, sizeof(uint32_t) },
+@@ -105,6 +134,30 @@ const struct hrpc_method_def_interp4 apps_std_fopen_with_env_def = {
+ 	.inner_types = NULL,
+ };
+ 
++static struct hrpc_arg_def_interp4 apps_std_fsync_args[] = {
++	{ HRPC_ARG_WORD, sizeof(uint32_t) },
++};
++
++const struct hrpc_method_def_interp4 apps_std_fsync_def = {
++	.msg_id = 23,
++	.n_args = HRPC_ARRAY_SIZE(apps_std_fsync_args),
++	.args = apps_std_fsync_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
++
++static struct hrpc_arg_def_interp4 apps_std_fremove_args[] = {
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++};
++
++const struct hrpc_method_def_interp4 apps_std_fremove_def = {
++	.msg_id = 24,
++	.n_args = HRPC_ARRAY_SIZE(apps_std_fremove_args),
++	.args = apps_std_fremove_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
++
+ static struct hrpc_arg_def_interp4 apps_std_opendir_args[] = {
+ 	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
+ 	{ HRPC_ARG_OUT_BLOB, sizeof(uint64_t) },
+@@ -182,3 +235,29 @@ const struct hrpc_method_def_interp4 apps_std_stat_def = {
+ 	.n_inner_types = 0,
+ 	.inner_types = NULL,
+ };
++
++static struct hrpc_arg_def_interp4 apps_std_ftrunc_args[] = {
++	{ HRPC_ARG_WORD, sizeof(uint32_t) },
++	{ HRPC_ARG_WORD, sizeof(uint32_t) },
++};
++
++const struct hrpc_method_def_interp4 apps_std_ftrunc_def = {
++	.msg_id = 32,
++	.n_args = HRPC_ARRAY_SIZE(apps_std_ftrunc_args),
++	.args = apps_std_ftrunc_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
++
++static struct hrpc_arg_def_interp4 apps_std_frename_args[] = {
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++};
++
++const struct hrpc_method_def_interp4 apps_std_frename_def = {
++	.msg_id = 33,
++	.n_args = HRPC_ARRAY_SIZE(apps_std_frename_args),
++	.args = apps_std_frename_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
+diff --git a/hexagonrpcd/interface/apps_std.h b/hexagonrpcd/interface/apps_std.h
+index b80a1ca..7f2ac06 100644
+--- a/hexagonrpcd/interface/apps_std.h
++++ b/hexagonrpcd/interface/apps_std.h
+@@ -24,16 +24,22 @@
+ 
+ #include <libhexagonrpc/hexagonrpc.h>
+ 
++extern struct hrpc_method_def_interp4 apps_std_fopen_def;
+ extern struct hrpc_method_def_interp4 apps_std_freopen_def;
+ extern struct hrpc_method_def_interp4 apps_std_fflush_def;
+ extern struct hrpc_method_def_interp4 apps_std_fclose_def;
+ extern struct hrpc_method_def_interp4 apps_std_fread_def;
++extern struct hrpc_method_def_interp4 apps_std_fwrite_def;
+ extern struct hrpc_method_def_interp4 apps_std_fseek_def;
+ extern struct hrpc_method_def_interp4 apps_std_fopen_with_env_def;
++extern struct hrpc_method_def_interp4 apps_std_fsync_def;
++extern struct hrpc_method_def_interp4 apps_std_fremove_def;
+ extern struct hrpc_method_def_interp4 apps_std_opendir_def;
+ extern struct hrpc_method_def_interp4 apps_std_closedir_def;
+ extern struct hrpc_method_def_interp4 apps_std_readdir_def;
+ extern struct hrpc_method_def_interp4 apps_std_mkdir_def;
+ extern struct hrpc_method_def_interp4 apps_std_stat_def;
++extern struct hrpc_method_def_interp4 apps_std_ftrunc_def;
++extern struct hrpc_method_def_interp4 apps_std_frename_def;
+ 
+ #endif /* INTERFACE_APPS_STD_H */
+-- 
+2.55.0
+

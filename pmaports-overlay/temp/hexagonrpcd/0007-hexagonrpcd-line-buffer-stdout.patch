@@ -1,0 +1,29 @@
+From 058deeffcbabbb8cd7fbd4256829addbcccaefdd Mon Sep 17 00:00:00 2001
+From: Aaron Bockelie <aaron@bockelie.com>
+Date: Tue, 22 Sep 2026 00:37:30 +0000
+Subject: [PATCH 7/7] hexagonrpcd: line-buffer stdout
+
+The per-call trace goes to stdout and errors go to stderr. When both land
+in the same file or journal, block-buffered stdout puts the trace lines
+thousands of bytes after the error they belong with. Line buffering keeps
+the two streams in order.
+---
+ hexagonrpcd/rpcd.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hexagonrpcd/rpcd.c b/hexagonrpcd/rpcd.c
+index 4860838..672c353 100644
+--- a/hexagonrpcd/rpcd.c
++++ b/hexagonrpcd/rpcd.c
+@@ -406,6 +406,8 @@ int main(int argc, char* argv[])
+ 		goto err_free_pids;
+ 	}
+ 
++	setvbuf(stdout, NULL, _IOLBF, 0);
++
+ 	printf("Starting %s (%s) on %s\n", argv[0], attach_sns? "INIT_ATTACH_SNS": "INIT_ATTACH", fastrpc_node);
+ 
+ 	fd = open(fastrpc_node, O_RDWR);
+-- 
+2.55.0
+

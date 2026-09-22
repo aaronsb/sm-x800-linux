@@ -2,7 +2,8 @@
 
 Measurement record: issue #33. Inventory with citations:
 `device-facts/sensor-survey-2026-09-21.md`. This page is the story of the
-first sensor flash, kernel r26 on 2026-09-21.
+sensor flashes: kernel r26 on 2026-09-21 for the hall switches and
+thermistors, r27 and r28 on 2026-09-22 for the SLPI.
 
 ## The inventory
 
@@ -74,18 +75,120 @@ cover line none. Both pads read the same levels stock reads at idle
 sensors are powered; what the magnets do to the pads is the open
 question, recorded on issue #33.
 
+## The SLPI route (r27, r28)
+
+The route the previous section planned was walked on 2026-09-22. The
+SLPI had been booting with the stock firmware since PR #23, and QRTR
+service 400, the Snapdragon Sensor Core, sat on the bus and answered
+nothing. `hexagonrpcd` 0.4.0 from Alpine, attached to `/dev/fastrpc-sdsp`
+and serving the stock `/vendor/etc/sensors` tree, showed in its journal
+what the hub was waiting for:
+
+| Request from the SLPI | What 0.4.0 did |
+|---|---|
+| `/sys/class/sensors/ssc_core/ssc_hw_rev`, the Samsung sysfs path named in `sns_reg_config` | no such file |
+| an AP-side FastRPC interface `sns_registry` | "Could not find local interface sns_registry" |
+| writes to `sns_reg_version` and `temp.json` in the registry's parent directory | "Tried to open ... for writing", refused |
+
+The revision path was the easy one: point that line at
+`/sys/devices/soc0/ssc_hw_rev` and serve "4", the Android `ro.revision`.
+The refused writes were retried once per second, and each retry produced
+the once-per-second kernel line `qcom_q6v5_pas 2400000.remoteproc:
+Handover signaled, but it already happened`. Pre-generating the registry
+with upstream's `tools/sscregistrygen` changed nothing: the hub writes
+its own.
+
+The fix is `hexagonrpcd` from upstream main 598b591 with seven patches.
+Five are upstream PR #26, write support for mapped directories and the
+registry's parent. One adds the `sns_registry` local interface: handle
+3, method 0, `get_property(name) -> value`, layout taken from
+disassembling the stock `libsns_registry_skel.so`. Live, the SLPI asks
+it for one property, `ro.revision`, four times, and only while
+regenerating the registry. The last patch line-buffers stdout. With the
+patched daemon the SLPI wrote `sns_reg_version`, wrote `temp.json` and
+renamed it into the registry 208 times for 141 groups, read everything
+back, and on later boots writes nothing.
+
+With the registry complete, the sensor process crashed 13 s after every
+SLPI boot, 6 of 6:
+
+```
+sns_com_port_i2c.c:241 ... status != I2C_ERROR_TRANSFER_TIMEOUT
+```
+
+The two rails the stock SLPI remoteproc node holds, pm8350c L2C
+(`sensor_vdd`, 1.8 V) and L13C (`sensor_vddio`, 3.0 V), were undeclared
+on mainline. The mainline SLPI node has no supply properties, so kernel
+r27 declares both always-on in the board DTS. With them, 60 s after an
+SLPI restart, no crash, and `ssccli` read the sensors. Tablet landscape
+in the keyboard dock, screen tilted back, dim room:
+
+| Sensor | Reading |
+|---|---|
+| accelerometer | X 8.45, Y -0.18, Z 5.03 m/s² |
+| light | 6 lux |
+| magnetometer | X 33, Y 227, Z -17 µT, uncalibrated |
+
+Once initialised the SLPI keeps serving without the daemon.
+
+`iio-sensor-proxy` 3.9 from Alpine, with its libssc backend, found the
+accelerometer, light and compass and attaches them to
+`/dev/fastrpc-adsp`. The mount matrix came from measuring with the
+identity matrix:
+
+| Pose | Raw accelerometer | Reported |
+|---|---|---|
+| flat, screen up | 0, -0.2, +9.8 | face-up |
+| landscape, camera edge up | +9.9, -0.2, -0.9 | left-up |
+| portrait, camera right | 0.1, +9.8, -0.7 | bottom-up |
+
+The panel is landscape-native (2800x1752, no rotation), so camera edge
+up has to be "normal". `ACCEL_MOUNT_MATRIX="0, 1, 0; -1, 0, 0; 0, 0, 1"`
+on the `fastrpc-*` misc devices does it. With it `monitor-sensor` in the
+dock reports orientation normal, tilt tilted-up, light 6 lux and a
+compass heading of about 340°.
+
+Packaging. `pmaports-overlay/temp/hexagonrpcd` is the Alpine aport as a
+git snapshot, version 0.5.0_git20260824, with the seven patches; it also
+installs `sscregistrygen`, which upstream builds and does not install.
+Same pkgname and a higher version than Alpine's, so apk prefers it; it
+goes away when a release carries the patches. The device package, r24,
+depends on `hexagonrpcd`, `libssc`, `iio-sensor-proxy`,
+`make-dynpart-mappings` and `device-mapper`. Its `-systemd` subpackage
+pulls in `hexagonrpcd-systemd` and a udev rule,
+`90-gts8pwifi-hexagonrpcd-sdsp.rules`, that starts
+`hexagonrpcd-sdsp.service` when `/dev/fastrpc-sdsp` appears; the unit's
+own path condition is evaluated before the SLPI boots and a failed
+condition is not retried. The mount matrix ships as
+`81-libssc-samsung-gts8pwifi.rules`.
+
+No proprietary file enters the repo. `gts8pwifi-fw-extract` maps the
+tablet's own `super` partition read-only with `make-dynpart-mappings`,
+mounts the vendor F2FS read-only, and copies `/vendor/etc/sensors` into
+`/usr/share/qcom/sm8450/Samsung/gts8pwifi/`: the config JSONs,
+`sns_reg.conf` with the revision line fixed, a `socinfo/` directory
+served as `/sys/devices/soc0`, and a registry pre-generated with
+`sscregistrygen`. An existing registry is left alone; it holds the
+SLPI's own state. The vendor image is F2FS with LZ4 compression, which
+needs `CONFIG_F2FS_FS_COMPRESSION` and `CONFIG_F2FS_FS_LZ4`, which kernel
+r28 carries. Verified on r28 in one boot: the udev rule started the
+packaged daemon with no retry loop, `gts8pwifi-fw-extract` mapped super,
+mounted vendor and rebuilt the 66 configs, socinfo and `sns_reg.conf`
+from the tablet's own copy, and iio-sensor-proxy reported orientation
+normal in the dock. Restarting the daemon while the SLPI runs breaks its
+FastRPC session, and the SLPI re-negotiates it with a burst of
+"Handover signaled" kernel lines; the extractor therefore leaves the
+daemon alone, since the SLPI reads the tree only at its own boot. `tools/sensors-from-super.sh`
+is the host fallback: it unpacks vendor from a `super.img` dump, copies
+the sensor tree and hands it to `gts8pwifi-fw-extract --sensors-from`
+over ssh.
+
 ## Next
 
-The motion, magnetometer and light sensors go through the SLPI, and
-postmarketOS already ships the stack other Qualcomm ports use for it:
-`hexagonrpcd` answers the SLPI's FastRPC file requests from a HexagonFS
-tree (the stock `/vendor/etc/sensors` configuration), `libssc` speaks
-the `sns_client` QMI service over QRTR, and `iio-sensor-proxy` has a
-libssc backend. The Fairphone 4 and SHIFT axolotl ports run exactly
-this. For this tablet it takes `CONFIG_FASTRPC`, the SLPI's fastrpc
-child already in `sm8450.dtsi`, a HexagonFS package built from the
-vendor dump's sensor configuration, and the two rails the hub expects
-(pm8350c L2C and L13C) declared. If the SLPI asks for files the dump
-lacks, hexagonrpcd logs the paths; that is the moment a stock session
-to copy the persist registry would pay off. The grip sensors have no
-driver and little use on a tablet.
+- Gyroscope: libssc exposes accelerometer, light, magnetometer and
+  proximity; the LSM6DSO's gyroscope is not yet read.
+- Magnetometer calibration: the dock's magnets dominate the raw field.
+- Send the `sns_registry` patch and the write support upstream to
+  linux-msm/hexagonrpc (PR #26 is the write half).
+- Wi-Fi thermistor: reproduce stock's per-thermistor µV table.
+- Hall switches: why the magnets did not toggle the pads under handling.

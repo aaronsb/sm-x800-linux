@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=23
+pkgrel=24
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -19,10 +19,16 @@ depends="
 	linux-firmware-ath11k
 	linux-firmware-qca
 	bluez-btmgmt
+	hexagonrpcd
+	hexagonrpcd-udev
+	libssc
+	iio-sensor-proxy
+	make-dynpart-mappings
+	device-mapper
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -47,8 +53,9 @@ package() {
 	install -Dm644 "$srcdir"/profile-locale.sh \
 		"$pkgdir"/etc/profile.d/locale.sh
 
-	# Extractor for device-signed blobs (zap shader): we ship the TOOL,
-	# the user dumps the firmware from their own device. See the script.
+	# Extractor for device-signed blobs (zap shader, DSP images) and the
+	# proprietary sensor registry configs: we ship the TOOL, the user
+	# dumps the firmware from their own device. See the script.
 	install -Dm755 "$srcdir"/fw-extract.sh \
 		"$pkgdir"/usr/bin/gts8pwifi-fw-extract
 
@@ -76,6 +83,11 @@ package() {
 	# tablet-sourced VBUS are never detected. See the script header.
 	install -Dm755 "$srcdir"/usb-host-wake.start \
 		"$pkgdir"/etc/local.d/usb-host-wake.start
+
+	# Sensors: accelerometer mount matrix for iio-sensor-proxy's libssc
+	# backend, keyed on the FastRPC node as device-fairphone-fp4 does.
+	install -Dm644 "$srcdir"/81-libssc-samsung-gts8pwifi.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/81-libssc-samsung-gts8pwifi.rules
 
 	# Audio: keep the CS35L45 amps out of runtime suspend (see the rule).
 	install -Dm644 "$srcdir"/90-gts8pwifi-cs35l45-no-hibernate.rules \
@@ -134,6 +146,7 @@ tools() {
 
 systemd() {
 	install_if="$pkgname=$pkgver-r$pkgrel systemd"
+	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd"
 	install -Dm644 "$srcdir"/netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/netinfo-console.service
 	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
@@ -151,6 +164,11 @@ systemd() {
 		"$subpkgdir"/usr/lib/systemd/system/gts8pwifi-bt-addr.service
 	install -Dm644 "$srcdir"/90-gts8pwifi-bt-addr.rules \
 		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8pwifi-bt-addr.rules
+
+	# Sensor hub: start hexagonrpcd-sdsp when /dev/fastrpc-sdsp appears
+	# (the unit's path condition is evaluated before the SLPI boots).
+	install -Dm644 "$srcdir"/90-gts8pwifi-hexagonrpcd-sdsp.rules \
+		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8pwifi-hexagonrpcd-sdsp.rules
 }
 
 sha512sums="
@@ -164,8 +182,8 @@ c1e9c670c7b5c8b671c1595f55a44ce1c71a3c812dbdb3700c9719c92cdc283a2d97a378e68432ad
 0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
 7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
 eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start
-3b61fb7323d5b36acb46e823831daa8c0d9f5f32a1444500b01c8ad0d06e7f3915a18d1040d21ecd2b22d7a858c4aebcf91e231201d2f8b1f8b0d0ff14940cc2  fw-extract.sh
-0fc069b5b51758ac37f78cfb467ed8b993c935f3a497fbad7ec6fa19577d0d695188d2a1f26d452703c710d3630649bb5d785e56d41632a76ac5919a567754f7  setup.sh
+d9ba9940c2bcd710df577917b7544568e8ef3bdb9b219cecab93a7e9615f82c9a08e7a98536757bc51cb4c9afd6d4cfd092ca4a3af63722c28a95d26c7f9a715  fw-extract.sh
+1dea2de386da72966de61a6c7cb43c98467a26e72e9e290fdd279177de5c3c712efac48c8c0c3dc86799740c00e4c8cb130a0c7baa719700bc6859ff96cbd0c0  setup.sh
 38159785ff05cea88aeec224869ae2b2aee2c29868e37066877e983d2393ef34207cd45ee770dadba3291b9ea015bda99e6368e9bf9d22031010c5fc25d08f64  90-gts8pwifi-cs35l45-no-hibernate.rules
 6ad6664d0653537474fa569df7845ee5316d15dc1baad0a648e81c57d6ae7c4c430154ce217b52be064a0ed7c81cbc4004d4ddcea71b6e246e7109e5c5106cbb  bt-addr.sh
 18ac8159cd2d48c73870b462ad7c16955f0c9a7d56e982b021ab583dc720d5d32ed387084682c1c1cd2072371ec8c3f1b287974c34945818edb993900bb5d193  bt-addr.service
@@ -174,4 +192,6 @@ bdff32b583aba5f9dea8505978ca8b29aaec938526c5e925edac7dcd44e608bcf5721917ad1346cf
 93575b3d483271bf7f2004f74c5c81ae5a28d961d7f5e9396a595f7223c09461e3bc7acffdb61cd95a2a3c76faa0dd5af79bced0aa45feafa661328216633ced  HiFi.conf
 40b8969e1b0c4f715a938bc61db4408eee195d4b20a014816502f4cf2f2ffe7c96146b45c9ca22ceb02ac524590f30a4dbcaa31a6fe9d8a415ff02706b1f34c7  devsudo-sudoers
 697f6e0b288a485792cdcb40f0ebff33fe405758d83310988c5dc0e3f07d01bb468e0e91936ea06fb42783e94b299500dac1fd8ce05200d650c341b2f77278ed  Samsung-Galaxy-Tab-S8-Plus-tplg.bin
+7d2f86f39aa4e95d2301b1870290066cdf947ad2c8b9b860b774f345c4294455ead6c279344f4753b92db3d10a97c8992a0469287e3c3db2a8252117d642f533  81-libssc-samsung-gts8pwifi.rules
+d33f880ef076fffbad053f33b190cde4768ed3f95e2b749349446e4693ac3c76249f661c5ef9c42fd665b8de06c37394482d0e3733e105f6ee4ab82557a9a254  90-gts8pwifi-hexagonrpcd-sdsp.rules
 "

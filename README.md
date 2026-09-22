@@ -52,7 +52,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Audio | ✅ working — four CS35L45 amps on Primary MI2S from the ADSP (AudioReach), stereo playback through PulseAudio/UCM; volume capped (no speaker-protection DSP yet). Three DMICs through the VA macro, powered from L12C (found 2026-09-21 with a pad probe); stereo capture of the bottom and back mics through UCM. Story: docs/10-audio.md |
 | Rear flash LED | ✅ working — PM8350C flash module, two channels as one white LED at `/sys/class/leds/white:flash` (kernel r12). Torch: `brightness` 0..255 for 0..500 mA total, stock's level is 77 (150 mA). Flash: `flash_brightness` up to 1.5 A, hardware timeout up to 1280 ms, fired with `flash_strobe`; the timer ends the pulse and `flash_fault` then reads `flash-timeout-exceeded`, which is the normal end of a strobe |
 | Cameras | 🟡 all three sensors stream RAW10 at 30 fps, session after session — mainline CAMSS on SM8450, the Hi847 driver converted to device tree, a new Hi1337 driver with tables from the stock configuration, and a camcc fix that parks the camera RCGs on XO when idle (kernel r25). `tools/camtest.sh uw|front|frontfull|rear` captures 3264x2448, 2032x1524 / 4000x3000 and 4128x3096; first frames in `docs/media/camera-*-first-frame.jpg`. The DW9808 lens (rear focus) and libcamera are next (ADR-001, issue #27). Story: docs/11-camera.md |
-| Sensors (incl. auto-rotate) | ❌ motion, magnetometer and light sensors sit behind the SLPI, which boots (stock image) but exposes nothing: they wait for the QMI registry stock feeds. Mainline has drivers for all three chips; the missing piece is a QRTR sensor client. Inventory: docs/12-sensors.md, issue #33 |
+| Sensors (incl. auto-rotate) | 🟡 accelerometer, light and magnetometer through the SLPI with hexagonrpcd (patched) and libssc, iio-sensor-proxy reports orientation and auto-rotate has what it needs (kernel r28, device r24, the served tree built from the tablet's own vendor partition at setup); gyroscope and calibration open. Story: docs/12-sensors.md, issue #33 |
 | Hall switches, thermistors | 🟡 cover and S Pen hall switches as EV_SW on gpio-keys; AP and Wi-Fi thermistors on the pmk8350 ADC (kernel r26). Wi-Fi reading uncalibrated (stock uses its own table). The switches read the stock idle levels but did not toggle under handling (issue #33) |
 
 ![btop on the console — 8 cores, WiFi, UTF-8, 120 Hz OLED](docs/media/btop-console.png)
@@ -88,8 +88,9 @@ because the door locks behind you:
   If your tablet has already updated past it, this door may simply be closed.
   Details and the full runbook: `docs/01-unlock-root-runbook.md`.
 - **This is a development platform, not a product.** No microphones, raw
-  camera frames only, no motion sensors. What works, works genuinely well — native display, GPU,
-  input, wireless — but you are signing up to be a porter, not a customer.
+  camera frames only, motion sensors through the SLPI with a patched daemon. What works, works
+  genuinely well — native display, GPU, input, wireless — but you are signing up to be a porter,
+  not a customer.
 
 And a sincere off-ramp: if any of the above reads as risk rather than fun,
 **Samsung DeX plus a Linux terminal/emulator app gets you a capable Linux

@@ -1,0 +1,366 @@
+From 1b26f444be3ae8a773aab65d6aa62bbb0e07ebcc Mon Sep 17 00:00:00 2001
+From: Aaron Bockelie <aaron@bockelie.com>
+Date: Tue, 22 Sep 2026 00:26:09 +0000
+Subject: [PATCH 6/7] hexagonrpcd: serve the sns_registry interface with a
+ fixed property table
+
+The Snapdragon Sensor Core calls remotectl_open("sns_registry") during
+boot and then get_property() for Android system properties. On Android
+libsns_registry_skel.so answers from property_get(). Without the
+interface the DSP logs "Could not find local interface sns_registry" and
+"Unsupported handle: 4294967295" on every boot.
+
+The method layout comes from the stock SM8450 skeleton:
+
+	long get_property(in sequence<char> prop_name,
+			  rout sequence<char> prop_value);
+
+Answer from a small table (ro.revision, ro.boot.hardware, ro.hardware,
+ro.product.model, ro.product.device) and return an empty string for
+unknown names, logging the requested name so the table can grow.
+---
+ hexagonrpcd/interface/sns_registry.c |  48 ++++++++++
+ hexagonrpcd/interface/sns_registry.h |  29 ++++++
+ hexagonrpcd/listener.h               |   1 +
+ hexagonrpcd/meson.build              |   2 +
+ hexagonrpcd/rpcd.c                   |   4 +-
+ hexagonrpcd/sns_registry.c           | 137 +++++++++++++++++++++++++++
+ hexagonrpcd/sns_registry.h           |  30 ++++++
+ 7 files changed, 250 insertions(+), 1 deletion(-)
+ create mode 100644 hexagonrpcd/interface/sns_registry.c
+ create mode 100644 hexagonrpcd/interface/sns_registry.h
+ create mode 100644 hexagonrpcd/sns_registry.c
+ create mode 100644 hexagonrpcd/sns_registry.h
+
+diff --git a/hexagonrpcd/interface/sns_registry.c b/hexagonrpcd/interface/sns_registry.c
+new file mode 100644
+index 0000000..aeebfbb
+--- /dev/null
++++ b/hexagonrpcd/interface/sns_registry.c
+@@ -0,0 +1,48 @@
++/*
++ * Sensor registry property interface - method definitions
++ *
++ * Copyright (C) 2026 HexagonRPC Contributors
++ *
++ * This file is part of HexagonRPC.
++ *
++ * HexagonRPC is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include <stdint.h>
++#include <libhexagonrpc/hexagonrpc.h>
++
++/*
++ * Reverse engineered from the stock libsns_registry_skel.so (SM8450):
++ *
++ *	interface sns_registry {
++ *		long get_property(in sequence<char> prop_name,
++ *				  rout sequence<char> prop_value);
++ *	}
++ *
++ * The primitive input buffer carries the two sequence lengths, the second
++ * input buffer the NUL-terminated property name, and the only output buffer
++ * receives the NUL-terminated value.
++ */
++static struct hrpc_arg_def_interp4 sns_registry_get_property_args[] = {
++	{ HRPC_ARG_BLOB_SEQ, sizeof(char) },
++	{ HRPC_ARG_OUT_BLOB_SEQ, sizeof(char) },
++};
++
++const struct hrpc_method_def_interp4 sns_registry_get_property_def = {
++	.msg_id = 0,
++	.n_args = HRPC_ARRAY_SIZE(sns_registry_get_property_args),
++	.args = sns_registry_get_property_args,
++	.n_inner_types = 0,
++	.inner_types = NULL,
++};
+diff --git a/hexagonrpcd/interface/sns_registry.h b/hexagonrpcd/interface/sns_registry.h
+new file mode 100644
+index 0000000..115576c
+--- /dev/null
++++ b/hexagonrpcd/interface/sns_registry.h
+@@ -0,0 +1,29 @@
++/*
++ * Sensor registry property interface - API
++ *
++ * Copyright (C) 2026 HexagonRPC Contributors
++ *
++ * This file is part of HexagonRPC.
++ *
++ * HexagonRPC is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#ifndef INTERFACE_SNS_REGISTRY_H
++#define INTERFACE_SNS_REGISTRY_H
++
++#include <libhexagonrpc/hexagonrpc.h>
++
++extern const struct hrpc_method_def_interp4 sns_registry_get_property_def;
++
++#endif /* INTERFACE_SNS_REGISTRY_H */
+diff --git a/hexagonrpcd/listener.h b/hexagonrpcd/listener.h
+index 8938b87..476f320 100644
+--- a/hexagonrpcd/listener.h
++++ b/hexagonrpcd/listener.h
+@@ -46,6 +46,7 @@ extern const struct fastrpc_interface localctl_interface;
+ 
+ extern const struct fastrpc_interface apps_mem_interface;
+ extern const struct fastrpc_interface apps_std_interface;
++extern const struct fastrpc_interface sns_registry_interface;
+ 
+ int run_fastrpc_listener(int fd,
+ 			 size_t n_ifaces,
+diff --git a/hexagonrpcd/meson.build b/hexagonrpcd/meson.build
+index 11244ef..8ae0aae 100644
+--- a/hexagonrpcd/meson.build
++++ b/hexagonrpcd/meson.build
+@@ -5,6 +5,7 @@ executable('hexagonrpcd',
+   'interface/adsp_listener.c',
+   'interface/apps_mem.c',
+   'interface/apps_std.c',
++  'interface/sns_registry.c',
+   'hexagonfs.c',
+   'hexagonfs_mapped.c',
+   'hexagonfs_plat_subtype_name.c',
+@@ -14,6 +15,7 @@ executable('hexagonrpcd',
+   'localctl.c',
+   'rpcd.c',
+   'rpcd_builder.c',
++  'sns_registry.c',
+   c_args : cflags,
+   include_directories : include,
+   install : true,
+diff --git a/hexagonrpcd/rpcd.c b/hexagonrpcd/rpcd.c
+index 38d5c00..4860838 100644
+--- a/hexagonrpcd/rpcd.c
++++ b/hexagonrpcd/rpcd.c
+@@ -43,6 +43,7 @@
+ #include "listener.h"
+ #include "localctl.h"
+ #include "rpcd_builder.h"
++#include "sns_registry.h"
+ 
+ static int register_fastrpc_listener(int fd)
+ {
+@@ -191,7 +192,7 @@ static void *start_reverse_tunnel(int fd, const char *device_dir, const char *ds
+ {
+ 	struct fastrpc_interface **ifaces;
+ 	struct hexagonfs_dirent *root_dir;
+-	size_t n_ifaces = 3;
++	size_t n_ifaces = 4;
+ 	int ret;
+ 
+ 	ifaces = malloc(sizeof(struct fastrpc_interface) * n_ifaces);
+@@ -210,6 +211,7 @@ static void *start_reverse_tunnel(int fd, const char *device_dir, const char *ds
+ 	// Dynamic interfaces with no hardcoded handle
+ 	ifaces[1] = fastrpc_apps_std_init(root_dir);
+ 	ifaces[2] = fastrpc_apps_mem_init(fd);
++	ifaces[3] = fastrpc_sns_registry_init();
+ 
+ 	ret = register_fastrpc_listener(fd);
+ 	if (ret)
+diff --git a/hexagonrpcd/sns_registry.c b/hexagonrpcd/sns_registry.c
+new file mode 100644
+index 0000000..21c21da
+--- /dev/null
++++ b/hexagonrpcd/sns_registry.c
+@@ -0,0 +1,137 @@
++/*
++ * Sensor registry property interface
++ *
++ * Copyright (C) 2026 HexagonRPC Contributors
++ *
++ * This file is part of HexagonRPC.
++ *
++ * HexagonRPC is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include <libhexagonrpc/error.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "interface/sns_registry.h"
++#include "iobuffer.h"
++#include "listener.h"
++#include "sns_registry.h"
++
++/*
++ * The Snapdragon Sensor Core opens this interface at boot and asks for
++ * Android system properties. On Android the skeleton answers from
++ * property_get(); here the answers come from a fixed table. Unknown names
++ * get an empty string, which is what property_get() returns for an unset
++ * property.
++ */
++struct sns_registry_property {
++	const char *name;
++	const char *value;
++};
++
++static const struct sns_registry_property sns_registry_properties[] = {
++	{ "ro.revision", "4" },
++	{ "ro.boot.hardware", "qcom" },
++	{ "ro.hardware", "qcom" },
++	{ "ro.product.model", "SM-X800" },
++	{ "ro.product.device", "gts8pwifi" },
++};
++
++static const char *sns_registry_lookup(const char *name)
++{
++	size_t i;
++
++	for (i = 0; i < HRPC_ARRAY_SIZE(sns_registry_properties); i++) {
++		if (!strcmp(sns_registry_properties[i].name, name))
++			return sns_registry_properties[i].value;
++	}
++
++	return NULL;
++}
++
++static uint32_t sns_registry_get_property(void *data,
++					  const struct fastrpc_io_buffer *inbufs,
++					  struct fastrpc_io_buffer *outbufs)
++{
++	const char *name = inbufs[1].p;
++	const char *value;
++	size_t len;
++
++#ifdef HEXAGONRPC_VERBOSE
++	printf("sns_registry_get_property: inbufs[0].s=%zu inbufs[1].s=%zu outbufs[0].s=%zu\n",
++	       inbufs[0].s, inbufs[1].s, outbufs[0].s);
++#endif
++
++	if (inbufs[1].s == 0 || name[inbufs[1].s - 1] != 0)
++		return AEE_EBADPARM;
++
++	if (outbufs[0].s == 0)
++		return AEE_EBADPARM;
++
++	memset(outbufs[0].p, 0, outbufs[0].s);
++
++	value = sns_registry_lookup(name);
++	if (value == NULL) {
++		fprintf(stderr, "sns_registry: unknown property %s, answering empty\n",
++			name);
++		return 0;
++	}
++
++	len = strlen(value);
++	if (len + 1 > outbufs[0].s) {
++		fprintf(stderr, "sns_registry: value of %s does not fit in %zu bytes\n",
++			name, outbufs[0].s);
++		return AEE_EBADPARM;
++	}
++
++	memcpy(outbufs[0].p, value, len + 1);
++
++	printf("sns_registry_get_property(%s) -> %s\n", name, value);
++
++	return 0;
++}
++
++struct fastrpc_interface *fastrpc_sns_registry_init(void)
++{
++	struct fastrpc_interface *iface;
++
++	iface = malloc(sizeof(struct fastrpc_interface));
++	if (iface == NULL)
++		return NULL;
++
++	memcpy(iface, &sns_registry_interface, sizeof(struct fastrpc_interface));
++	iface->data = NULL;
++
++	return iface;
++}
++
++void fastrpc_sns_registry_deinit(struct fastrpc_interface *iface)
++{
++	free(iface);
++}
++
++static const struct fastrpc_function_impl sns_registry_procs[] = {
++	{
++		.def = &sns_registry_get_property_def,
++		.impl = sns_registry_get_property,
++	},
++};
++
++const struct fastrpc_interface sns_registry_interface = {
++	.name = "sns_registry",
++	.n_procs = 1,
++	.procs = sns_registry_procs,
++};
+diff --git a/hexagonrpcd/sns_registry.h b/hexagonrpcd/sns_registry.h
+new file mode 100644
+index 0000000..dd2f85f
+--- /dev/null
++++ b/hexagonrpcd/sns_registry.h
+@@ -0,0 +1,30 @@
++/*
++ * Sensor registry property interface - context initialization
++ *
++ * Copyright (C) 2026 HexagonRPC Contributors
++ *
++ * This file is part of HexagonRPC.
++ *
++ * HexagonRPC is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#ifndef SNS_REGISTRY_H
++#define SNS_REGISTRY_H
++
++#include "listener.h"
++
++struct fastrpc_interface *fastrpc_sns_registry_init(void);
++void fastrpc_sns_registry_deinit(struct fastrpc_interface *iface);
++
++#endif
+-- 
+2.55.0
+

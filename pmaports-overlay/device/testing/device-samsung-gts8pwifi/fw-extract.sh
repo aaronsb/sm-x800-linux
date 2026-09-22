@@ -1,62 +1,234 @@
 #!/bin/sh
 # gts8pwifi-fw-extract — pull non-redistributable firmware off the device's
-# own stock partitions into /lib/firmware, then rebuild the initramfs.
+# own stock partitions into /lib/firmware, build the sensor hub's served
+# tree from the stock vendor image, then rebuild the initramfs.
 #
 # The cartridge-dump model: this port's repo and packages ship only OPEN or
 # redistributable content. Blobs that are Samsung-signed for THIS device
 # (the a730 GPU zap shader, the audio DSP and sensor hub images, which TrustZone will only
-# accept with Samsung's signature) are extracted at setup time from partitions the device
-# already carries — nothing copyrighted is ever distributed by us.
+# accept with Samsung's signature) and Qualcomm's proprietary sensor registry configs
+# are extracted at setup time from partitions the device already carries — nothing
+# copyrighted is ever distributed by us.
+#
+#   gts8pwifi-fw-extract                     apnhlos blobs + sensor tree from super
+#   gts8pwifi-fw-extract --sensors-from DIR  sensor tree only, DIR holding a copy of the
+#                                            stock /vendor/etc/sensors (config/ and
+#                                            sns_reg_config), see tools/sensors-from-super.sh
+#
+# Sensor tree: hexagonrpcd serves $HFS to the SLPI. It resolves that root
+# from the device tree (compatible samsung,gts8pwifi + qcom,sm8450, model
+# "Samsung ..."), so the daemon runs with no -R. Layout, from upstream
+# hexagonrpcd/rpcd_builder.c:
+#   sensors/config/*.json     stock /vendor/etc/sensors/config (66 SEE registry configs)
+#   sensors/sns_reg.conf      stock sns_reg_config, revision source pointed at socinfo
+#   sensors/persist/          writable by fastrpc; the SLPI keeps sns_reg_version here
+#   sensors/persist/registry/ the registry (pre-generated with sscregistrygen, the SLPI
+#                             rewrites it on its first boot)
+#   sensors/registry -> persist/registry   read-only path of the unpatched daemon
+#   socinfo/                  served as /sys/devices/soc0: values the stock kernel
+#                             exposes and mainline does not (hw_platform, ssc_hw_rev...)
+# An existing registry is left alone: it holds the SLPI's own state.
 #
 # Idempotent; run once after any userdata/rootfs reflash (see tools/README).
 
 set -e
 
 FWDIR=/lib/firmware/qcom/sm8450/gts8pwifi
-MNT=$(mktemp -d)
+HFS=/usr/share/qcom/sm8450/Samsung/gts8pwifi
+SUPER=/dev/disk/by-partlabel/super
+SOC_ID=457
+HW_PLATFORM=MTP
 
-cleanup() { umount "$MNT" 2>/dev/null || true; rmdir "$MNT" 2>/dev/null || true; }
+MNT=$(mktemp -d)
+VMNT=
+DM_CREATED=
+
+cleanup() {
+	if [ -n "$VMNT" ]; then
+		umount "$VMNT" 2>/dev/null || true
+		rmdir "$VMNT" 2>/dev/null || true
+	fi
+	for m in $DM_CREATED; do
+		dmsetup remove "$m" 2>/dev/null || true
+	done
+	umount "$MNT" 2>/dev/null || true
+	rmdir "$MNT" 2>/dev/null || true
+}
 trap cleanup EXIT
 
-echo ">> mounting apnhlos (stock firmware partition, read-only)"
-mount -o ro /dev/disk/by-partlabel/apnhlos "$MNT"
+die() { echo "!! $*" >&2; exit 1; }
 
-mkdir -p "$FWDIR"
-for f in a730_zap.mdt a730_zap.b00 a730_zap.b01 a730_zap.b02; do
-	if [ ! -f "$MNT/image/$f" ]; then
-		echo "!! $f not found in apnhlos/image — wrong partition layout?" >&2
-		exit 1
+stage_apnhlos() {
+	echo ">> mounting apnhlos (stock firmware partition, read-only)"
+	mount -o ro /dev/disk/by-partlabel/apnhlos "$MNT"
+
+	mkdir -p "$FWDIR"
+	for f in a730_zap.mdt a730_zap.b00 a730_zap.b01 a730_zap.b02; do
+		[ -f "$MNT/image/$f" ] || die "$f not found in apnhlos/image — wrong partition layout?"
+		cp "$MNT/image/$f" "$FWDIR/$f"
+		echo "   $f -> $FWDIR/"
+	done
+
+	# Audio DSP: split adsp.mdt + adsp.bNN segments (some segment numbers are
+	# absent by design; the mdt loader skips zero-size PT_LOADs). SM8450 ships
+	# no adsp_dtb. The *.jsn protection-domain maps are not needed by the
+	# in-kernel pd-mapper; they are kept beside the image for a userspace
+	# pd-mapper, should one ever be used.
+	echo ">> staging audio DSP image"
+	[ -f "$MNT/image/adsp.mdt" ] || die "adsp.mdt not found in apnhlos/image"
+	cp "$MNT"/image/adsp.mdt "$MNT"/image/adsp.b* "$FWDIR"/
+	cp "$MNT"/image/adspua.jsn "$MNT"/image/adspr.jsn "$FWDIR"/ 2>/dev/null || true
+	echo "   adsp.mdt + $(ls "$FWDIR"/adsp.b* | wc -l) segments -> $FWDIR/"
+
+	# Sensor hub: split slpi.mdt + slpi.bNN, same loader. Loaded from the rootfs
+	# after boot, so it does not need to ride in the initramfs.
+	echo ">> staging sensor hub image"
+	[ -f "$MNT/image/slpi.mdt" ] || die "slpi.mdt not found in apnhlos/image"
+	cp "$MNT"/image/slpi.mdt "$MNT"/image/slpi.b* "$FWDIR"/
+	echo "   slpi.mdt + $(ls "$FWDIR"/slpi.b* | wc -l) segments -> $FWDIR/"
+
+	umount "$MNT"
+
+	echo ">> regenerating initramfs (a7xx needs GPU firmware at bind time)"
+	mkinitfs
+}
+
+# Map the logical partitions inside super with device-mapper and mount
+# vendor read-only. make-dynpart-mappings opens super O_RDONLY, reads the
+# LP metadata and creates one linear dm target per logical partition; no
+# byte of super is written. The mount is ro + norecovery so F2FS replays
+# nothing. Only /vendor/etc/sensors is read (about 270 KB): the raw bulk
+# reads tools/README warns about are a different thing.
+map_vendor() {
+	command -v make-dynpart-mappings >/dev/null \
+		|| die "make-dynpart-mappings missing (apk add make-dynpart-mappings)"
+	[ -b "$SUPER" ] || [ -L "$SUPER" ] || die "$SUPER not present"
+
+	VDEV=
+	for n in vendor vendor_a; do
+		[ -e "/dev/mapper/$n" ] && VDEV=/dev/mapper/$n && break
+	done
+	if [ -z "$VDEV" ]; then
+		echo ">> mapping the logical partitions of super (metadata only)"
+		before=$(ls /dev/mapper)
+		make-dynpart-mappings "$SUPER" || die "make-dynpart-mappings failed on $SUPER"
+		# udev may still be creating the nodes
+		i=0
+		while [ $i -lt 10 ]; do
+			for n in vendor vendor_a; do
+				[ -e "/dev/mapper/$n" ] && VDEV=/dev/mapper/$n && break
+			done
+			[ -n "$VDEV" ] && break
+			sleep 1; i=$((i + 1))
+		done
+		[ -n "$VDEV" ] || die "no vendor mapping appeared under /dev/mapper"
+		for n in $(ls /dev/mapper); do
+			case " $before " in *" $n "*) ;; *) DM_CREATED="$DM_CREATED $n";; esac
+		done
 	fi
-	cp "$MNT/image/$f" "$FWDIR/$f"
-	echo "   $f -> $FWDIR/"
-done
+	command -v blockdev >/dev/null && blockdev --setro "$VDEV" 2>/dev/null || true
 
-# Audio DSP: split adsp.mdt + adsp.bNN segments (some segment numbers are
-# absent by design; the mdt loader skips zero-size PT_LOADs). SM8450 ships
-# no adsp_dtb. The *.jsn protection-domain maps are not needed by the
-# in-kernel pd-mapper; they are kept beside the image for a userspace
-# pd-mapper, should one ever be used.
-echo ">> staging audio DSP image"
-if [ ! -f "$MNT/image/adsp.mdt" ]; then
-	echo "!! adsp.mdt not found in apnhlos/image" >&2
-	exit 1
-fi
-cp "$MNT"/image/adsp.mdt "$MNT"/image/adsp.b* "$FWDIR"/
-cp "$MNT"/image/adspua.jsn "$MNT"/image/adspr.jsn "$FWDIR"/ 2>/dev/null || true
-echo "   adsp.mdt + $(ls "$FWDIR"/adsp.b* | wc -l) segments -> $FWDIR/"
+	VMNT=$(mktemp -d)
+	echo ">> mounting $VDEV (stock vendor, F2FS, read-only)"
+	mount -t f2fs -o ro,norecovery "$VDEV" "$VMNT" \
+		|| die "mounting vendor failed — kernel without F2FS, or super not the stock layout?"
+	[ -d "$VMNT/etc/sensors/config" ] || die "$VDEV has no etc/sensors/config"
+}
 
-# Sensor hub: split slpi.mdt + slpi.bNN, same loader. Loaded from the rootfs
-# after boot, so it does not need to ride in the initramfs.
-echo ">> staging sensor hub image"
-if [ ! -f "$MNT/image/slpi.mdt" ]; then
-	echo "!! slpi.mdt not found in apnhlos/image" >&2
-	exit 1
-fi
-cp "$MNT"/image/slpi.mdt "$MNT"/image/slpi.b* "$FWDIR"/
-echo "   slpi.mdt + $(ls "$FWDIR"/slpi.b* | wc -l) segments -> $FWDIR/"
+# The stock vendor image compresses most files (F2FS LZ4). A kernel built
+# without CONFIG_F2FS_FS_COMPRESSION mounts it and hands back garbage for
+# those files, so every copied config is checked for JSON.
+looks_like_json() {
+	c=$(head -c 256 "$1" | tr -d ' \t\r\n' | cut -c1)
+	[ "$c" = "{" ] || [ "$c" = "[" ]
+}
 
-echo ">> regenerating initramfs (a7xx needs GPU firmware at bind time)"
-mkinitfs
+# $1 = directory holding config/ and sns_reg_config
+build_sensor_tree() {
+	src=$1
+	[ -d "$src/config" ] || die "$src/config missing"
+	[ -f "$src/sns_reg_config" ] || die "$src/sns_reg_config missing"
+	grep -q '^fastrpc:' /etc/passwd \
+		|| die "user fastrpc missing — install hexagonrpcd first"
 
-echo ">> done. GPU + ADSP firmware staged; effective from the next boot of a"
-echo "   boot image built against this rootfs (or this rootfs's own /boot)."
+	echo ">> building the HexagonFS tree at $HFS"
+	rm -rf "$HFS/sensors/config" "$HFS/socinfo"
+	install -d -m755 "$HFS/sensors/config" "$HFS/socinfo"
+
+	n=0
+	for f in "$src"/config/*.json; do
+		[ -f "$f" ] || continue
+		looks_like_json "$f" || die "$(basename "$f") is not JSON: compressed F2FS files unreadable (kernel needs CONFIG_F2FS_FS_COMPRESSION + CONFIG_F2FS_FS_LZ4); use tools/sensors-from-super.sh from the host instead"
+		install -m644 "$f" "$HFS/sensors/config/"
+		n=$((n + 1))
+	done
+	[ $n -gt 0 ] || die "no *.json in $src/config"
+	echo "   $n sensor configs -> sensors/config/"
+
+	# Stock reads the SSC revision from a Samsung sysfs node; serve it from
+	# socinfo instead (the daemon maps socinfo/ as /sys/devices/soc0).
+	sed 's#^file=revision=.*#file=revision=/sys/devices/soc0/ssc_hw_rev#' \
+		"$src/sns_reg_config" > "$HFS/sensors/sns_reg.conf"
+	chmod 644 "$HFS/sensors/sns_reg.conf"
+	grep -q '^file=revision=/sys/devices/soc0/ssc_hw_rev$' "$HFS/sensors/sns_reg.conf" \
+		|| die "sns_reg_config has no file=revision= line"
+	echo "   sns_reg.conf (revision -> socinfo/ssc_hw_rev)"
+
+	# ssc_hw_rev is Android's ro.revision. The bootloader passes it as
+	# androidboot.revision when the kernel command line comes from ABL;
+	# our command line is baked into the DTS, so fall back to this unit's
+	# value.
+	rev=$(tr ' ' '\n' < /proc/cmdline | sed -n 's/^androidboot\.revision=//p' | head -1)
+	[ -n "$rev" ] || rev=4
+	printf '%s\n' "$SOC_ID" > "$HFS/socinfo/soc_id"
+	printf '%s\n' "$HW_PLATFORM" > "$HFS/socinfo/hw_platform"
+	printf 'Unknown\n' > "$HFS/socinfo/platform_subtype"
+	printf '0\n' > "$HFS/socinfo/platform_subtype_id"
+	printf '0\n' > "$HFS/socinfo/platform_version"
+	printf '%s\n' "$rev" > "$HFS/socinfo/ssc_hw_rev"
+	for f in revision family machine; do
+		[ -f "/sys/devices/soc0/$f" ] && cp "/sys/devices/soc0/$f" "$HFS/socinfo/$f"
+	done
+	chmod 644 "$HFS"/socinfo/*
+	echo "   socinfo/ (soc_id $SOC_ID, $HW_PLATFORM, ssc_hw_rev $rev)"
+
+	# The SLPI writes here (registry rewrite, sns_reg_version). 775 on the
+	# registry: the daemon renames a temporary file into it.
+	install -d -o fastrpc -g fastrpc -m755 "$HFS/sensors/persist"
+	install -d -o fastrpc -g fastrpc -m775 "$HFS/sensors/persist/registry"
+	ln -sfn persist/registry "$HFS/sensors/registry"
+
+	if [ -n "$(ls -A "$HFS/sensors/persist/registry")" ]; then
+		echo "   registry already populated, left as is (rm -rf $HFS/sensors/persist to regenerate)"
+	elif command -v sscregistrygen >/dev/null; then
+		sscregistrygen -p "$HW_PLATFORM" -s "$SOC_ID" \
+			"$HFS/sensors/config" "$HFS/sensors/persist/registry"
+		chown -R fastrpc:fastrpc "$HFS/sensors/persist/registry"
+		echo "   registry: $(ls "$HFS/sensors/persist/registry" | wc -l) files from sscregistrygen"
+	else
+		echo "   registry left empty (no sscregistrygen); the SLPI generates it"
+	fi
+
+	# No daemon restart here: the SLPI reads the tree once at its own boot,
+	# and restarting hexagonrpcd breaks its FastRPC session, which the SLPI
+	# re-negotiates with a burst of "Handover signaled" kernel messages.
+}
+
+case "$1" in
+--sensors-from)
+	[ -n "$2" ] || die "usage: gts8pwifi-fw-extract [--sensors-from DIR]"
+	build_sensor_tree "$2"
+	;;
+"")
+	stage_apnhlos
+	echo ">> sensor registry configs from the stock vendor image"
+	map_vendor
+	build_sensor_tree "$VMNT/etc/sensors"
+	;;
+*)
+	die "usage: gts8pwifi-fw-extract [--sensors-from DIR]"
+	;;
+esac
+
+echo ">> done. Firmware and the sensor tree are in place; effective from the"
+echo "   next boot (the SLPI reads its registry once, when it starts)."
