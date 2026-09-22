@@ -91,10 +91,17 @@ descriptors, and drains them every 2 s. It already owns blanking from a
 system unit with nobody logged in. Suspend is untested. systemd-logind is
 present with `HandlePowerKey=ignore` and `HandleLidSwitch=suspend`.
 
-Platform. Python 3.14 is on the image. `py3-evdev` is in Alpine's
-repository and not installed. libssc ships `libssc.so.2` and `ssccli`
-only, no Python or GObject bindings. `CONFIG_INPUT_UINPUT=m` is set, the
-module is loaded, and `/dev/uinput` is root 0600. `aplay` is present.
+Platform. libssc is a GObject C API on GLib and GIO: a sensor is created
+and opened asynchronously, reports through the GLib main loop, carries a
+`sample-rate` property, and is closed the same way. The image has
+`libssc.so.2` and `ssccli`; Alpine community ships `libssc-dev` with the
+headers and pkg-config file, and `libevdev` with its `-dev` package.
+pmbootstrap builds C in the device package cross-native, the way it
+builds the kernel; a Rust aport builds in the aarch64 chroot under qemu
+and fetches crates in prepare. The neighbouring components are C:
+hexagonrpcd, libssc, iio-sensor-proxy and the port's own kernel drivers.
+`CONFIG_INPUT_UINPUT=m` is set, the module is loaded, and `/dev/uinput`
+is root 0600. `aplay` is present.
 
 ## Decision
 
@@ -108,9 +115,9 @@ Inputs:
    the `/dev/input` directory.
 2. The two `gpio-keys` switches, read as evdev events and queried at
    start.
-3. Magnetometer samples through a short `ssccli --sensor magnetometer`
-   run, taken when input 1 or 2 changes and on a slow heartbeat. No
-   continuous stream.
+3. Magnetometer samples through libssc: open the sensor, take the
+   samples needed, close it. Taken when input 1 or 2 changes and on a
+   slow heartbeat. No continuous stream.
 
 Classification, one context at a time. The context is chosen by the
 keyboard device and tlmm 23, and the magnetometer decides only within
@@ -154,15 +161,31 @@ toggles blank and unblank. logind is set to `HandleLidSwitch=ignore`, and
 `HandlePowerKey=ignore` stays. No policy may suspend or power the panel
 down until issue #41 is closed and suspend has been measured.
 
-Language: Python first, with `py3-evdev` for the switches and the uinput
-device and `ssccli` as a subprocess. If the subprocess cost per sample or
-the latency from close to blank turns out to bite, the fallback is C with
-libevdev and libssc against `libssc.so.2`. The uinput contract is the
-same in both, so consumers do not change.
+The daemon is the same class of code as stm32-pogo.c and the Wacom pen
+driver in this port: hardware knowledge nothing generic can carry, owned
+by the port.
+
+Language: C. The daemon links libssc for the magnetometer and libevdev
+for the switches, the keyboard device and the uinput device, and runs a
+GLib main loop, which libssc needs anyway. It is built in the device
+package with pmbootstrap's cross-native toolchain. The reasons, as facts:
+libssc is a GLib C API with its own main loop and libevdev is C;
+pmbootstrap builds C cross-native in seconds while a Rust aport builds in
+the aarch64 chroot under qemu and fetches crates in prepare; and every
+neighbouring component, hexagonrpcd, libssc, iio-sensor-proxy and the
+port's kernel drivers, is C.
+
+Design constraint: the state machine lives in one source file with no
+GLib or libevdev types in it, plain C structs and functions. Its inputs
+are keyboard present, hall 23, hall 169, and magnetometer X and Z; its
+outputs are lid, pen and pen-forgotten. The sensor and uinput glue calls
+it. That file can be unit-tested on the host and lifted into another
+language later without touching the glue.
 
 Reversibility: cheap. The virtual device is the interface. The daemon
-behind it, its language and its thresholds can change without touching
-console-blank, logind or a future session layer.
+behind it and its thresholds can change without touching console-blank,
+logind or a future session layer, and the state machine file moves on
+its own.
 
 ## Consequences
 
@@ -182,6 +205,9 @@ console-blank, logind or a future session layer.
 - The classifier is gated by two hard signals before the magnetometer
   is consulted, and each context has only two or three rows to separate
   with deltas of 170 to 265 µT against a spread under 3.
+- The state machine is plain C in one file, so its table can be tested
+  on the host against the 2026-09-22 readings before the daemon runs on
+  the tablet.
 
 ### Negative
 
@@ -195,14 +221,12 @@ console-blank, logind or a future session layer.
 - Two devices report `SW_PEN_INSERTED`: the raw switch means "magnet at
   tlmm 23" and the virtual one means "pen on the strip". A consumer that
   wants the fused meaning has to pick the virtual device.
-- Python and `py3-evdev` join a console image whose other services are
-  shell scripts.
 - console-blank grows from an idle watcher into the display policy owner
   and gains a dependency on the daemon's device. Its enumerate-once
   start, already on issue #41, has to be fixed for it to see a device that
   appears later.
-- Each `ssccli` run is a process start and a fastrpc round trip on the
-  close-to-blank path. The C fallback exists for this.
+- Each sample is a libssc open, report and close over fastrpc on the
+  close-to-blank path. The latency from close to blank is unmeasured.
 
 ### Neutral
 
@@ -233,10 +257,13 @@ console-blank, logind or a future session layer.
 - Absolute thresholds from the 2026-09-22 table. Rejected: the same
   sensor read a clear-air total of 147 µT the day before and 270 µT that
   day.
-- C first with libevdev and libssc. Deferred, not rejected. Python with
-  `py3-evdev` and an `ssccli` subprocess gets the state machine measured
-  on the tablet sooner, and the uinput contract lets the C version replace
-  it.
+- Rust. Considered and not chosen. It was attractive for a long-running
+  root daemon over file descriptors and timers, and for a likely future
+  as a broader device-policy service with D-Bus, where the FFI cost would
+  be paid once. Its two costs: FFI bindings for libssc would have to be
+  written, and pmbootstrap would build it in the aarch64 chroot under
+  qemu rather than cross-native, which is slow. The state machine file
+  is the part that would move if that future arrives.
 
 ## Follow-ups
 
