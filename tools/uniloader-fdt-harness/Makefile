@@ -20,7 +20,10 @@ O              ?= build
 BLOB_DTB       ?= $(UL)/blob/dtb
 BLOB_CMDLINE   ?= $(UL)/blob/cmdline
 BLOB_RAMDISK   ?= $(UL)/blob/ramdisk
-RAMDISK_SIZE   := $(shell stat -c%s $(BLOB_RAMDISK))
+# Recursively expanded, and CFLAGS below with it, so `make clean` never asks
+# for the blob while a build without it stops with a clear message instead of
+# an empty -DRAMDISK_SIZE=UL that would defeat the #error in harness.c.
+RAMDISK_SIZE   = $(if $(wildcard $(BLOB_RAMDISK)),$(shell stat -c%s $(BLOB_RAMDISK)),$(error $(BLOB_RAMDISK) missing: run make uniloader first))
 
 CLANG   ?= clang
 LLD     ?= ld.lld
@@ -29,7 +32,7 @@ QEMU_USER ?= qemu-aarch64
 QEMU_SYS  ?= qemu-system-aarch64
 
 # Mirror uniLoader's KBUILD_CFLAGS: no -O flag (so -O0), its own headers only.
-CFLAGS  := $(TARGET) -march=armv8-a -O0 -Wall -Wundef -Wno-trigraphs \
+CFLAGS  = $(TARGET) -march=armv8-a -O0 -Wall -Wundef -Wno-trigraphs \
            -fno-strict-aliasing -fno-common -fno-stack-protector \
            -fno-builtin -ffreestanding -fno-pie -fno-PIC -nostdinc \
            -I$(UL)/lib/unic -I$(UL)/include -I$(UL)/include/lib/libfdt \

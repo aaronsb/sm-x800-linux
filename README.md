@@ -207,9 +207,10 @@ rootfs UUIDs read from the vendor_boot header, then appends
 `bootloader=uniloader` and anything in `BOOTARGS_EXTRA`; uniLoader sets
 `/chosen/bootargs` from it at boot. The DTS still carries the same tokens for
 now, so `make image` starts with the `uuids` gate: the rootfs UUIDs must match
-the DTS or the build stops and prints the two lines to change. A mismatch there
-is the single most common reason a freshly flashed system drops to the
-initramfs debug shell. Dropping the DTS copy is the follow-up (kernel pkgrel 29).
+the DTS or the build stops and prints the two lines to change. The `uuids` gate
+stays until the DTS copy is dropped (kernel pkgrel 29). A mismatch there was the
+most common cause of the initramfs debug shell while the DTS supplied the
+command line, and today the blob already carries the rootfs values.
 
 `make uniloader` picks the kernel apk by the APKBUILD's `pkgver-pkgrel`, never
 the newest file, and records it in `.stage/kernel-apk`; `install-tablet`

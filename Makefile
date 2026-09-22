@@ -219,7 +219,9 @@ deps: ## One-time setup: clone uniLoader (pinned), apply our port, install chroo
 	        git -C $(UL_SRC) apply "$$P" && echo ">> uniLoader: applied $$(basename $$p)"; \
 	    elif git -C $(UL_SRC) apply --check -R "$$P" 2>/dev/null; then \
 	        echo ">> uniLoader: $$(basename $$p) already applied"; \
-	    else echo "!! uniLoader: $$(basename $$p) neither applies nor is applied"; exit 1; fi; \
+	    else echo "!! uniLoader: $$(basename $$p) neither applies nor is applied"; \
+	        echo "   clone registered by hand the old way: git -C $(UL_SRC) checkout -- board/Kconfig board/Makefile"; \
+	        echo "   fresh clone:                           rm -rf $(UL_SRC) && make deps"; exit 1; fi; \
 	done
 	$(MAKE) --no-print-directory toolchain
 
@@ -357,7 +359,7 @@ cmdline-blob: ## Write reference/uniLoader/blob/cmdline from cmdline.in + rootfs
 	CMD=$$(sed -e '/^[[:space:]]*#/d' -e "s/@BOOT_UUID@/$$BOOT_UUID/g" -e "s/@ROOT_UUID@/$$ROOT_UUID/g" \
 	    $(CMDLINE_IN) | tr '\n' ' ' | sed -e 's/[[:space:]]\+/ /g' -e 's/^ //' -e 's/ $$//'); \
 	CMD="$$CMD bootloader=uniloader"; \
-	[ -z "$(strip $(BOOTARGS_EXTRA))" ] || CMD="$$CMD $(strip $(BOOTARGS_EXTRA))"; \
+	EXTRA='$(strip $(BOOTARGS_EXTRA))'; [ -z "$$EXTRA" ] || CMD="$$CMD $$EXTRA"; \
 	mkdir -p $(UL_SRC)/blob; printf '%s\0' "$$CMD" > $(UL_SRC)/blob/cmdline; \
 	echo ">> blob/cmdline: $$CMD"
 
@@ -388,7 +390,7 @@ bootimg: ## Package uniLoader into a flashable boot.img + tar
 	@set -e; \
 	mkdir -p $(BUILD); \
 	test -f $(STAGE)/uniLoader$(FLAVOR) || { echo "!! $(STAGE)/uniLoader$(FLAVOR) missing: run 'make uniloader'"; exit 1; }; \
-	test -f $(STAGE)/stock_ramdisk || { \
+	test -f $(STAGE)/stock_ramdisk -a $(STAGE)/stock_ramdisk -nt $(DUMPS)/boot.img || { \
 	  test -f $(DUMPS)/boot.img || { echo "!! $(DUMPS)/boot.img missing (make dumps)"; exit 1; }; \
 	  unpack_bootimg --boot_img $(DUMPS)/boot.img \
 	    --out $(STAGE)/stock >/dev/null; cp $(STAGE)/stock/ramdisk $(STAGE)/stock_ramdisk; }; \
@@ -482,6 +484,7 @@ install-tablet: ## Push boot.img + apks to TABLET (user@192.168.2.123) over ssh,
 	[ "$$have" = "$(KERNEL_APK)" ] \
 	    || { echo "!! $(STAGE)/kernel-apk says '$$have', APKBUILD wants $(KERNEL_APK): run 'make image' (or 'make boot') first"; exit 1; }; \
 	test -f $(BUILD)/boot.img || { echo "!! $(BUILD)/boot.img missing: run 'make boot'"; exit 1; }; \
+	test $(BUILD)/boot.img -nt $(STAGE)/uniLoader || { echo "!! $(BUILD)/boot.img is older than $(STAGE)/uniLoader: run 'make bootimg' (or 'make boot')"; exit 1; }; \
 	APKS="$(KERNEL_APK) $(DEVICE_APKS)"; \
 	for a in $$APKS; do test -f $$a || { echo "!! $$a missing: run 'make device'"; exit 1; }; done; \
 	for p in $(TEMP_PKGS); do \
@@ -489,13 +492,15 @@ install-tablet: ## Push boot.img + apks to TABLET (user@192.168.2.123) over ssh,
 	    for a in $(PKGS)/$$p-$$v.apk $(PKGS)/$$p-systemd-$$v.apk $(PKGS)/$$p-udev-$$v.apk; do \
 	        test -f $$a && APKS="$$APKS $$a" || echo ">> note: $$a not built, skipping"; done; done; \
 	IMG=boot-$(KVER)-r$(KREL).img; SIZE=$$(stat -c %s $(BUILD)/boot.img); \
-	NAMES=$$(for a in $$APKS; do printf '/home/user/%s ' $$(basename $$a); done); \
+	NAMES=$$(for a in $$APKS; do printf '$$HOME/%s ' $$(basename $$a); done); \
 	echo ">> $(TABLET): $$IMG ($$SIZE bytes) + $$(echo $$APKS | wc -w) apks"; \
-	scp -q $(BUILD)/boot.img $(TABLET):/home/user/$$IMG; \
-	scp -q $$APKS $(TABLET):/home/user/; \
+	scp -q $(BUILD)/boot.img $(TABLET):$$IMG; \
+	scp -q $$APKS $(TABLET):; \
 	ssh -t $(TABLET) "set -e; \
-	    sudo dd if=/home/user/$$IMG of=/dev/disk/by-partlabel/boot bs=4M conv=fsync status=none; \
-	    sudo cmp -n $$SIZE /home/user/$$IMG /dev/disk/by-partlabel/boot && echo '>> boot partition verified'; \
+	    sudo dd if=\$$HOME/$$IMG of=/dev/disk/by-partlabel/boot bs=4M conv=fsync status=none; \
+	    sudo cmp -n $$SIZE \$$HOME/$$IMG /dev/disk/by-partlabel/boot \
+	        || { echo '!! boot partition does not match the image, not installing'; exit 1; }; \
+	    echo '>> boot partition verified'; \
 	    sudo apk add --allow-untrusted $$NAMES; \
 	    $(if $(NOREBOOT),echo '>> NOREBOOT=1: not rebooting',sudo systemctl reboot)"
 

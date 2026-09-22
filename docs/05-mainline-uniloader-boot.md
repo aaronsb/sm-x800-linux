@@ -328,8 +328,10 @@ The command line blob picks them up from the rootfs `vendor_boot` header on ever
 `make uniloader`, so uniLoader always hands the kernel the flashed image's values.
 The DTS `bootargs` still carries a copy (§2.1), and `make image` starts with the
 `uuids` gate: it compares the rootfs values against the DTS, exits 1 on a
-mismatch, and prints the two lines to change. A mismatch there is the most
-common reason a freshly flashed system drops to the initramfs debug shell.
+mismatch, and prints the two lines to change. The `uuids` gate stays until the
+DTS copy is dropped (kernel pkgrel 29). A mismatch there was the most common
+cause of the initramfs debug shell while the DTS supplied the command line, and
+today the blob already carries the rootfs values.
 
 ## 8. What the first boot left open, and where it closed
 
