@@ -99,8 +99,9 @@ system unit with nobody logged in. Suspend is untested. systemd-logind is
 present with `HandlePowerKey=ignore` and `HandleLidSwitch=suspend`.
 
 Platform. libssc is a GObject C API on GLib and GIO: a sensor is created
-and opened asynchronously, reports through the GLib main loop, carries a
-`sample-rate` property, and is closed the same way. The image has
+and opened asynchronously or through `ssc_sensor_magnetometer_new_sync`,
+`open_sync` and `close_sync`, reports through the GLib main loop, carries
+a `sample-rate` property, and is closed the same way. The image has
 `libssc.so.2` and `ssccli`; Alpine community ships `libssc-dev` with the
 headers and pkg-config file, and `libevdev` with its `-dev` package.
 pmbootstrap builds C in the device package cross-native, the way it
@@ -145,11 +146,15 @@ that context:
 | tlmm 169 asserted | any | plain cover closed |
 
 A light reading above zero moves a lid-closed result to the open row of
-its context. The Z and X values in the table are the 2026-09-22 readings. The shipped
-thresholds are the deltas between rows of the same context, applied to a
-baseline the daemon holds for that context, since the clear-air field
-moved by 123 µT between two days. Bare against bare-reversed is the thin
-margin, 133 against 100 on Z, and X decides it.
+its context. The Z and X values in the table are the 2026-09-22
+readings. The shipped thresholds are the deltas between rows of the same
+context, applied to a baseline the daemon holds for that context, since
+the clear-air total moved from 147 to 270 µT across two days, a derived
+shift of 123 µT. Bare against bare-reversed is the thin margin, 133
+against 100 on Z, and X decides it. While the keyboard is present tlmm 23
+is not consulted: it read high once and low once in that state with the
+pen position unrecorded, so it is not used as a pen-in-holder signal
+while docked.
 
 Output: a uinput device carrying `SW_LID` and `SW_PEN_INSERTED`. `SW_LID`
 is 1 in the lid-closed and plain-cover-closed rows and 0 otherwise.
@@ -189,9 +194,9 @@ port's kernel drivers, is C.
 Design constraint: the state machine lives in one source file with no
 GLib or libevdev types in it, plain C structs and functions. Its inputs
 are keyboard present, hall 23, hall 169, magnetometer X and Z, and
-light; its outputs are lid, pen and pen-forgotten. The sensor and uinput glue calls
-it. That file can be unit-tested on the host and lifted into another
-language later without touching the glue.
+light; its outputs are lid, pen and pen-forgotten. The sensor and uinput
+glue calls it. That file can be unit-tested on the host and lifted into
+another language later without touching the glue.
 
 Reversibility: cheap. The virtual device is the interface. The daemon
 behind it and its thresholds can change without touching console-blank,
@@ -215,7 +220,8 @@ its own.
   SMP2P toggling of issue #46 stays a handful of lines per event.
 - The classifier is gated by two hard signals before the magnetometer
   is consulted, and each context has only two or three rows to separate
-  with deltas of 170 to 265 µT against a spread under 3.
+  with deltas derived from the table of 170 to 265 µT against a spread
+  under 3.
 - The state machine is plain C in one file, so its table can be tested
   on the host against the 2026-09-22 readings before the daemon runs on
   the tablet.
