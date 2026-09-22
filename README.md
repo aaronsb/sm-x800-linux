@@ -44,14 +44,14 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Volume up (pm8350 gpio6, gpio-keys) | 🟡 mapped and working on most boots — `KEY_VOLUMEUP` from the pm8350 GPIO line, active low with pull-up, as stock wires it. On some boots the PMIC latches two edges per press while the level never changes, so no event fires until the next reboot (issue #18; `tools/volup-trap/` records the next occurrence) |
 | `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
 | USB gadget | ❌ needs Type-C/`pmic_glink` described |
-| Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Story: device-facts/display-s6tuum1.md |
+| Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Leaving the panel DPMS off hangs the tablet about a minute later with a silent reset, so idle blanking ships as `console-blank` (device r26): black frame after `BLANK_MIN` idle minutes with the panel powered, wake on any input device present at boot (hot-plugged input is open, issue #41). Story: docs/08-native-display.md, device-facts/display-s6tuum1.md |
 | S Pen (Wacom WEZ01 EMR digitizer) | ✅ working — our `wacom-wez01` driver; position + pressure + tool. SE14's FIFO is silicon-disabled (forces broken GPI DMA), so we bit-bang i2c on its pins via `i2c-gpio`. Firmware `wez01_gts8p.bin` (harvested). Polish: query/calibration + axis verify. Story: device-facts/wacom-wez01.md |
 | GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition (`gts8pwifi-fw-extract`), firmware rides in the initramfs (a7xx loads SQE at bind time) |
 | Plasma Desktop 6 (KWin Wayland) | ✅ working — full KDE 6.7 desktop, KWin composited on the Adreno, Plasma Login Manager autostart; one command on a fresh install: `sudo gts8pwifi-setup plasma`. Polish gaps: tear bands under fast motion (panel idles at ~24 Hz LFD), no runtime 120 Hz switching yet |
 | Login experience | ✅ quiet boot (`loglevel=4`), generated `/etc/issue` banner with live IP (agetty needs `--issue-file` on Alpine), UTF-8 locale, keyboard autorepeat (kernel r42) |
 | Audio | ✅ working — four CS35L45 amps on Primary MI2S from the ADSP (AudioReach), stereo playback through PulseAudio/UCM; volume capped (no speaker-protection DSP yet). Three DMICs through the VA macro, powered from L12C (found 2026-09-21 with a pad probe); stereo capture of the bottom and back mics through UCM. Story: docs/10-audio.md |
 | Rear flash LED | ✅ working — PM8350C flash module, two channels as one white LED at `/sys/class/leds/white:flash` (kernel r12). Torch: `brightness` 0..255 for 0..500 mA total, stock's level is 77 (150 mA). Flash: `flash_brightness` up to 1.5 A, hardware timeout up to 1280 ms, fired with `flash_strobe`; the timer ends the pulse and `flash_fault` then reads `flash-timeout-exceeded`, which is the normal end of a strobe |
-| Cameras | 🟡 all three sensors stream RAW10 at 30 fps, session after session — mainline CAMSS on SM8450, the Hi847 driver converted to device tree, a new Hi1337 driver with tables from the stock configuration, and a camcc fix that parks the camera RCGs on XO when idle (kernel r25). `tools/camtest.sh uw|front|frontfull|rear` captures 3264x2448, 2032x1524 / 4000x3000 and 4128x3096; first frames in `docs/media/camera-*-first-frame.jpg`. The DW9808 lens (rear focus) and libcamera are next (ADR-001, issue #27). Story: docs/11-camera.md |
+| Cameras | 🟡 all three sensors stream RAW10 at 30 fps, session after session — mainline CAMSS on SM8450, the Hi847 driver converted to device tree, a new Hi1337 driver with tables from the stock configuration, and a camcc fix that parks the camera RCGs on XO when idle (kernel r25). `tools/camtest.sh uw|front|frontfull|rear` captures 3264x2448, 2032x1524 / 4000x3000 and 4128x3096; first frames in `docs/media/camera-*-first-frame.jpg`. The DW9808 lens on GENI i2c2 focuses the rear camera through `focus_absolute` and the module EEPROM reads at nvmem (kernel r29, `tools/lens-test.sh`); libcamera is next (ADR-001, issue #27). Story: docs/11-camera.md |
 | Sensors (incl. auto-rotate) | 🟡 accelerometer, light and magnetometer through the SLPI with hexagonrpcd (patched) and libssc, iio-sensor-proxy reports orientation and auto-rotate has what it needs (kernel r28, device r24, the served tree built from the tablet's own vendor partition at setup); gyroscope and calibration open. Story: docs/12-sensors.md, issue #33 |
 | Hall switches, thermistors | 🟡 cover and S Pen hall switches as EV_SW on gpio-keys; AP and Wi-Fi thermistors on the pmk8350 ADC (kernel r26), `gts8pwifi-therm` prints stock-table temperatures. The switches read the stock idle levels but did not toggle under handling (issue #33) |
 
@@ -249,9 +249,12 @@ These cost us many cycles — see `docs/05` §5:
   `/dev/disk/by-partlabel/boot`, never a hardcoded `sdX`; the tell is `cmp`
   failing against every image at once.
 - **Stage the recovery image before the first flash of a new bootloader.** Keep
-  a `pmos_uniloader_boot.tar` from a known-good build. If the new one loops,
-  enter download mode (power off, then Vol Up + Vol Down, plug USB) and
-  `odin4 -a root-build/pmos_uniloader_boot.tar` from that build.
+  a `pmos_uniloader_boot.tar` from a known-good build. `make boot` and
+  `make image` rewrite `root-build/pmos_uniloader_boot.tar` and
+  `root-build/uniloader/boot.img` in place, so copy the known-good pair aside
+  under a dated or pkgrel-suffixed name before rebuilding, for example
+  `pmos_uniloader_boot-r28-good.tar`. If the new one loops, enter download mode
+  (power off, then Vol Up + Vol Down, plug USB) and `odin4 -a` that saved tar.
 - **A camera register touched without its clock hangs the SoC.** Skipping the CPAS
   fast AHB or the VFE core clock in a power-cycle bisect froze the tablet (no ping)
   the moment a VFE register or its interrupt handler ran. Recovery is the Vol Down

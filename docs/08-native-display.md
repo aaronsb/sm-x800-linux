@@ -117,3 +117,72 @@ Adreno, installed onto the minimal image with one command
 (`gts8pwifi-setup plasma`, Plasma Login Manager autostarting on boot).
 
 ![Plasma 6 lock screen](media/plasma-lockscreen.png)
+
+## Postscript: idle blanking without DPMS (device r26)
+
+The console-only image leaves a login banner on an AMOLED for hours. On
+this panel a black frame is as off as the pixels get, so burn-in
+protection needs only "display nothing"; a full DPMS power-down, panel
+rail dropped and cold init on wake, is the power-saving option.
+
+The cheap route is the kernel's VT blank timer. fbcon paints black and
+calls fb_blank, and the DRM fbdev emulation turns every blank level into
+a DPMS change, so `setterm --blank` powers the panel down. On 2026-09-22
+on kernel r28 that hung the tablet. `setterm --term linux --blank 1`
+blanked the console on time and the DSI connector read `dpms=Off`; a
+touch and the volume and power keys brought nothing back, and the tablet
+reset itself within about half a minute. After the reboot, `panel-blank
+off` alone, DPMS off through `/sys/class/graphics/fb0/blank` with no wake
+attempt, reset it again about a minute later. Both resets are silent:
+the previous boot's journal ends at the last user-space line before the
+blank, there is no oops, `/sys/fs/pstore` is empty, no `/dev/watchdog`
+is exposed, and `panic=120` did not have time to act. The hang follows
+the power-down on a delay, not the wake. Candidates are the panel
+driver's sleep-in and rail drop while the DPU or DSI host still runs
+something periodic, or the touch controller losing its rail and storming
+its interrupt line. The cause is not found. The next step is a crash
+record: ramoops reserved memory in the DTS, or `dmesg -w` over ssh into
+a host file during the next `panel-blank off`. `consoleblank=` stays 0
+in `cmdline.in`, and `panel-blank off|on` remains the manual DPMS tool
+for that investigation.
+
+What shipped instead, in device r26, is `console-blank`, a `-systemd`
+unit from the device package. After `BLANK_MIN` minutes without input
+it unbinds fbcon from the framebuffer, which stops the cursor and any
+log line from painting, and zeroes `/dev/fb0`. The panel and its rails
+stay powered and the DRM connector stays On. Idle detection opens every
+`/dev/input/event*` once and holds the descriptors; evdev gives each
+reader its own queue, so the VT and getty see everything as before, and
+every two seconds the watcher drains each queue with a `dd` read cut
+off by `timeout` after 50 ms. Any bytes mean activity: the idle count restarts and
+a blanked console is rebound. The setting is `BLANK_MIN` in
+`/etc/conf.d/console-blank`, default 10, 0 disables;
+`systemctl restart console-blank` applies a change. By hand,
+`console-blank status` prints the setting, the console state and the
+panel dpms, `console-blank off` blanks now and `console-blank on`
+repaints.
+
+Measured the same day on kernel r28 with the r26 script as a transient
+unit and `BLANK_MIN=1`. The tablet sat blanked on the black-frame path
+from 04:43 to 13:42 with no hang and no reset. One Enter press on the
+cover keyboard rebound fbcon at 13:42:58 and the console came right up;
+it re-blanked at 13:44:22, 84 s after the wake, one idle minute plus the
+2 s poll. A touch at 15:00:04 brought it back as soon as the screen was
+touched. Total time blanked on this path was about 10 h 15 min in two
+stretches. Pen taps and volume presses go through the same descriptors
+and are untested.
+
+Two findings from the first boot of the packaged unit, installed at
+15:02 with the r28 kernel reinstall. `systemctl is-enabled
+console-blank` says disabled although multi-user.target pulls the unit
+in and it runs; systemd reports a vendor wants symlink under `/usr/lib`
+as disabled when no `/etc` symlink exists. Cosmetic; a preset file
+enabling the service would make the state read correctly. The watcher
+logged 6 input devices against 7 on the trial run: the script
+enumerates `/dev/input/event*` once at start, and the headset jack
+registers at 18.8 s, after the service started at 14.7 s. Anything that
+arrives later, hot-plugged USB or a Bluetooth keyboard included, will
+not wake the console. Fix candidates for device r27: rescan on each
+poll tick when the event node count changes, or a udev rule that
+restarts the unit on an input add. Issue #41 tracks both and the DPMS
+hang.
