@@ -166,8 +166,10 @@ check: ## Preflight: host tools, pmb init, uniLoader, dumps, harvest, apks (exit
 	    || echo "   --   $(KERNEL_APK) (make kernel)"; \
 	for a in $(DEVICE_APKS); do test -f $$a && echo "   ok   $$a" || echo "   --   $$a (make device)"; done; \
 	test -f $(COMBINED) && echo "   ok   $(COMBINED)" || echo "   --   $(COMBINED) (make rootfs)"; \
-	test $$rc -eq 0 && echo ">> ready for 'make image'" \
-	    || { echo "!! MISS items above block 'make image'"; exit 1; }
+	if test $$rc -eq 0 && ! test -f $(COMBINED); then \
+	    echo ">> ready for 'make boot' / 'make install-tablet'; 'make image' also needs 'make rootfs' ($(COMBINED))"; \
+	elif test $$rc -eq 0; then echo ">> ready for 'make image'"; \
+	else echo "!! MISS items above block 'make image'"; exit 1; fi
 
 check-tools: check ## Alias of check (old name)
 
