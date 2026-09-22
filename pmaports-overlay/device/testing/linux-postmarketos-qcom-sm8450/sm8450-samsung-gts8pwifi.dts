@@ -1052,7 +1052,8 @@
  * 0x21, four D-PHY lanes into CSIPHY1, MCLK3 on gpio103 at 19.2 MHz, reset
  * on gpio120 (active low), module LDO enable on gpio107 (5 ms on stock).
  * 4128x3096 on the same 704 MHz link. The DW9808 lens and the module EEPROM
- * sit on GENI I2C2, not on CCI, and follow later.
+ * sit on GENI I2C2, not on CCI (see &i2c2 below); lens-focus links the lens
+ * into the sensor's media graph as an ancillary entity.
  */
 &cci0_i2c1 {
 	camera@21 {
@@ -1070,6 +1071,8 @@
 		vddio-supply = <&cam_io_ldo>;
 		vdda-supply = <&cam_main_ldo>;
 		vddd-supply = <&cam_main_ldo>;
+
+		lens-focus = <&cam_main_lens>;
 
 		orientation = <1>;
 		rotation = <0>;
@@ -1123,6 +1126,47 @@
 				remote-endpoint = <&csiphy4_ep>;
 			};
 		};
+	};
+};
+
+/*
+ * Rear main lens actuator and module EEPROM (stock qcom,actuator0 and
+ * qcom,eeprom58 under qupv3_se2_i2c, i2c@988000, 400 kHz). Both are fed
+ * from the module LDO (stock cam_vaf 3.3 V and cam_vio 1.8 V behind
+ * CAM_LDO_EN gpio107 and CAM_IO_LDO_EN gpio117), which is cam_main_ldo
+ * with cam_io_ldo as its input. The bus shares wrapper qupv3_id_0 and
+ * gpi_dma0 with i2c4 and i2c5 above. Pin config from the stock
+ * qupv3_se2_i2c_active state.
+ *
+ * DW9808 (7-bit 0x0c, stock slave-addr 0x18): driven by dw9807-vcm with the
+ * dw9808 compatible from our dw9807-dw9808-vcc patch, which powers the rail
+ * around runtime PM and runs the stock SAC bring-up. It exposes
+ * focus_absolute (0 to 1023) on its subdev.
+ *
+ * P24C256F (7-bit 0x58, stock slave-addr 0xb0): 256 Kbit, 16-bit address,
+ * at24 as a plain 24c256. Stock reads 11024 bytes of module calibration
+ * (AF, LSC, AWB, PDAF) from it; read-only keeps the factory data safe.
+ */
+&qup_i2c2_data_clk {
+	drive-strength = <6>;
+	bias-pull-up;
+};
+
+&i2c2 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	cam_main_lens: lens@c {
+		compatible = "dongwoon,dw9808-vcm";
+		reg = <0x0c>;
+		vcc-supply = <&cam_main_ldo>;
+	};
+
+	eeprom@58 {
+		compatible = "atmel,24c256";
+		reg = <0x58>;
+		vcc-supply = <&cam_main_ldo>;
+		read-only;
 	};
 };
 
