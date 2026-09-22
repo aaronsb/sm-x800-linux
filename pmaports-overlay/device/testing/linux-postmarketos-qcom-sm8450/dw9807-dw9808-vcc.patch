@@ -1,0 +1,343 @@
+media: i2c: dw9807-vcm: DW9808 compatible, vcc supply, SAC bring-up
+
+The Dongwoon DW9808 is the lens driver of the Galaxy Tab S8+ (SM-X800)
+rear camera module. It answers at 7-bit 0x0c on a GENI I2C bus and uses
+the DW9807 register map: control at 0x02, the 10-bit position split over
+0x03 and 0x04, busy status at 0x05, SAC mode at 0x06 and ring timing at
+0x07. The mainline dw9807-vcm driver moves it as is. Two things it
+cannot do without help:
+
+1. Power. The lens shares the module rail with the sensor (stock names
+   it cam_vaf, 3.3 V, behind the CAM_LDO_EN pin, with the 1.8 V I/O
+   LDO behind it). Without a supply of its own the driver can only talk
+   to the chip while the sensor streams, and the probe-time runtime
+   suspend writes to a dead chip. An optional vcc-supply is enabled on
+   runtime resume, with the 10 ms settle stock allows, and disabled on
+   runtime suspend. With the supply described, probe leaves the device
+   suspended instead of writing power-down to an unpowered chip. System
+   sleep goes through pm_runtime_force_suspend and resume so the
+   regulator enable count stays balanced.
+
+2. Ringing control. The vendor camera stack brings the DW9808 up with
+   control 0x01 then 0x00, a 5 ms settle, mode 0x60, ring timing 0x05,
+   a stepped move to the start position and finally control 0x02, which
+   turns SAC ringing control on. The new dongwoon,dw9808-vcm compatible
+   selects that sequence on resume; the DW9807 path is unchanged apart
+   from the shared register write helper.
+
+The values come from the stock SM-X800 CamX actuator module decode
+(issue #27) and match the Tab S9 out-of-tree dw9808_vcm.c
+(nacht20-de/gts9wifi-fedora), which carries the same 13-write sequence.
+
+Binding: add the compatible and vcc-supply.
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/dongwoon,dw9807-vcm.yaml b/Documentation/devicetree/bindings/media/i2c/dongwoon,dw9807-vcm.yaml
+index aae246ca3..5896a6fa1 100644
+--- a/Documentation/devicetree/bindings/media/i2c/dongwoon,dw9807-vcm.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/dongwoon,dw9807-vcm.yaml
+@@ -5,22 +5,28 @@
+ $id: http://devicetree.org/schemas/media/i2c/dongwoon,dw9807-vcm.yaml#
+ $schema: http://devicetree.org/meta-schemas/core.yaml#
+ 
+-title: Dongwoon Anatech DW9807 voice coil lens driver
++title: Dongwoon Anatech DW9807 and DW9808 voice coil lens driver
+ 
+ maintainers:
+   - Sakari Ailus <sakari.ailus@linux.intel.com>
+ 
+ description: |
+   DW9807 is a 10-bit DAC with current sink capability. It is intended for
+-  controlling voice coil lenses.
++  controlling voice coil lenses. DW9808 shares the register map and adds
++  SAC ringing control that is programmed at power-up.
+ 
+ properties:
+   compatible:
+-    const: dongwoon,dw9807-vcm
++    enum:
++      - dongwoon,dw9807-vcm
++      - dongwoon,dw9808-vcm
+ 
+   reg:
+     maxItems: 1
+ 
++  vcc-supply:
++    description: Supply of the lens driver, usually the camera module rail.
++
+ required:
+   - compatible
+   - reg
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 6ebb27009..2a00447c1 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -928,10 +928,10 @@ config VIDEO_DW9768
+ 	  voice coil motors, controlled via I2C serial interface.
+ 
+ config VIDEO_DW9807_VCM
+-	tristate "DW9807 lens voice coil support"
++	tristate "DW9807/DW9808 lens voice coil support"
+ 	help
+-	  This is a driver for the DW9807 camera lens voice coil.
+-	  DW9807 is a 10 bit DAC with 100mA output current sink
++	  This is a driver for the DW9807 and DW9808 camera lens voice
++	  coils. DW9807 is a 10 bit DAC with 100mA output current sink
+ 	  capability. This is designed for linear control of
+ 	  voice coil motors, controlled via I2C serial interface.
+ 
+diff --git a/drivers/media/i2c/dw9807-vcm.c b/drivers/media/i2c/dw9807-vcm.c
+index 4148009e0..4221c61d0 100644
+--- a/drivers/media/i2c/dw9807-vcm.c
++++ b/drivers/media/i2c/dw9807-vcm.c
+@@ -7,6 +7,8 @@
+ #include <linux/iopoll.h>
+ #include <linux/module.h>
+ #include <linux/pm_runtime.h>
++#include <linux/property.h>
++#include <linux/regulator/consumer.h>
+ #include <media/v4l2-ctrls.h>
+ #include <media/v4l2-device.h>
+ 
+@@ -24,8 +26,14 @@
+  */
+ #define DW9807_CTRL_STEPS	16
+ #define DW9807_CTRL_DELAY_US	1000
++/* Settling time after the supply is switched on, before the first write. */
++#define DW9807_POWER_ON_DELAY_US	10000
++/* Settling time after the DW9808 leaves power-down during its bring-up. */
++#define DW9808_RESET_DELAY_US	5000
+ 
+ #define DW9807_CTL_ADDR		0x02
++#define DW9807_CTL_PD		BIT(0)
++#define DW9807_CTL_RING		BIT(1)
+ /*
+  * DW9807 separates two registers to control the VCM position.
+  * One for MSB value, another is LSB value.
+@@ -36,11 +44,37 @@
+ #define DW9807_MODE_ADDR	0x06
+ #define DW9807_RESONANCE_ADDR	0x07
+ 
++/*
++ * DW9808 SAC mode and ring timing, the values the vendor camera stack
++ * programs before it enables ringing control on this part.
++ */
++#define DW9808_MODE_VAL		0x60
++#define DW9808_RESONANCE_VAL	0x05
++
+ #define MAX_RETRY		10
+ 
++/**
++ * struct dw9807_chip_info - per-variant behaviour
++ * @sac_init: program the SAC mode and ring timing registers on power-up
++ *            and enable ringing control once the lens is in position
++ */
++struct dw9807_chip_info {
++	bool sac_init;
++};
++
++static const struct dw9807_chip_info dw9807_chip_info = {
++	.sac_init = false,
++};
++
++static const struct dw9807_chip_info dw9808_chip_info = {
++	.sac_init = true,
++};
++
+ struct dw9807_device {
+ 	struct v4l2_ctrl_handler ctrls_vcm;
+ 	struct v4l2_subdev sd;
++	struct regulator *vcc;
++	const struct dw9807_chip_info *info;
+ 	u16 current_val;
+ };
+ 
+@@ -73,6 +107,21 @@ static int dw9807_i2c_check(struct i2c_client *client)
+ 	return status_result;
+ }
+ 
++static int dw9807_write_reg(struct i2c_client *client, u8 reg, u8 val)
++{
++	const char tx_data[2] = { reg, val };
++	int ret;
++
++	ret = i2c_master_send(client, tx_data, sizeof(tx_data));
++	if (ret < 0) {
++		dev_err(&client->dev, "I2C write reg 0x%02x fail ret = %d\n",
++			reg, ret);
++		return ret;
++	}
++
++	return 0;
++}
++
+ static int dw9807_set_dac(struct i2c_client *client, u16 data)
+ {
+ 	const char tx_data[3] = {
+@@ -185,6 +234,25 @@ static int dw9807_probe(struct i2c_client *client)
+ 	if (dw9807_dev == NULL)
+ 		return -ENOMEM;
+ 
++	dw9807_dev->info = device_get_match_data(&client->dev);
++	if (!dw9807_dev->info)
++		dw9807_dev->info = &dw9807_chip_info;
++
++	/*
++	 * Optional supply. On camera modules the lens driver shares the
++	 * module rail with the sensor; when it is described here the driver
++	 * powers the chip itself around runtime PM, so the lens can be moved
++	 * with the sensor idle.
++	 */
++	dw9807_dev->vcc = devm_regulator_get_optional(&client->dev, "vcc");
++	if (IS_ERR(dw9807_dev->vcc)) {
++		if (PTR_ERR(dw9807_dev->vcc) != -ENODEV)
++			return dev_err_probe(&client->dev,
++					     PTR_ERR(dw9807_dev->vcc),
++					     "failed to get vcc supply\n");
++		dw9807_dev->vcc = NULL;
++	}
++
+ 	v4l2_i2c_subdev_init(&dw9807_dev->sd, client, &dw9807_ops);
+ 	dw9807_dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
+ 	dw9807_dev->sd.internal_ops = &dw9807_int_ops;
+@@ -203,9 +271,15 @@ static int dw9807_probe(struct i2c_client *client)
+ 	if (rval < 0)
+ 		goto err_cleanup;
+ 
+-	pm_runtime_set_active(&client->dev);
+-	pm_runtime_enable(&client->dev);
+-	pm_runtime_idle(&client->dev);
++	if (dw9807_dev->vcc) {
++		/* The supply is off; the first open powers the chip up. */
++		pm_runtime_set_suspended(&client->dev);
++		pm_runtime_enable(&client->dev);
++	} else {
++		pm_runtime_set_active(&client->dev);
++		pm_runtime_enable(&client->dev);
++		pm_runtime_idle(&client->dev);
++	}
+ 
+ 	return 0;
+ 
+@@ -236,7 +310,6 @@ static int __maybe_unused dw9807_vcm_suspend(struct device *dev)
+ 	struct i2c_client *client = to_i2c_client(dev);
+ 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+ 	struct dw9807_device *dw9807_dev = sd_to_dw9807_vcm(sd);
+-	const char tx_data[2] = { DW9807_CTL_ADDR, 0x01 };
+ 	int ret, val;
+ 
+ 	for (val = dw9807_dev->current_val & ~(DW9807_CTRL_STEPS - 1);
+@@ -248,13 +321,12 @@ static int __maybe_unused dw9807_vcm_suspend(struct device *dev)
+ 	}
+ 
+ 	/* Power down */
+-	ret = i2c_master_send(client, tx_data, sizeof(tx_data));
+-	if (ret < 0) {
+-		dev_err(&client->dev, "I2C write CTL fail ret = %d\n", ret);
+-		return ret;
+-	}
++	ret = dw9807_write_reg(client, DW9807_CTL_ADDR, DW9807_CTL_PD);
+ 
+-	return 0;
++	if (dw9807_dev->vcc)
++		regulator_disable(dw9807_dev->vcc);
++
++	return ret;
+ }
+ 
+ /*
+@@ -268,14 +340,43 @@ static int  __maybe_unused dw9807_vcm_resume(struct device *dev)
+ 	struct i2c_client *client = to_i2c_client(dev);
+ 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+ 	struct dw9807_device *dw9807_dev = sd_to_dw9807_vcm(sd);
+-	const char tx_data[2] = { DW9807_CTL_ADDR, 0x00 };
+ 	int ret, val;
+ 
+-	/* Power on */
+-	ret = i2c_master_send(client, tx_data, sizeof(tx_data));
+-	if (ret < 0) {
+-		dev_err(&client->dev, "I2C write CTL fail ret = %d\n", ret);
+-		return ret;
++	if (dw9807_dev->vcc) {
++		ret = regulator_enable(dw9807_dev->vcc);
++		if (ret) {
++			dev_err(dev, "failed to enable vcc: %d\n", ret);
++			return ret;
++		}
++		usleep_range(DW9807_POWER_ON_DELAY_US,
++			     DW9807_POWER_ON_DELAY_US + 1000);
++	}
++
++	if (dw9807_dev->info->sac_init) {
++		/*
++		 * DW9808 bring-up as the vendor stack does it: through
++		 * power-down and back, settle, then SAC mode and ring timing.
++		 */
++		ret = dw9807_write_reg(client, DW9807_CTL_ADDR, DW9807_CTL_PD);
++		if (ret)
++			goto err_power_off;
++		ret = dw9807_write_reg(client, DW9807_CTL_ADDR, 0x00);
++		if (ret)
++			goto err_power_off;
++		usleep_range(DW9808_RESET_DELAY_US, DW9808_RESET_DELAY_US + 500);
++		ret = dw9807_write_reg(client, DW9807_MODE_ADDR,
++				       DW9808_MODE_VAL);
++		if (ret)
++			goto err_power_off;
++		ret = dw9807_write_reg(client, DW9807_RESONANCE_ADDR,
++				       DW9808_RESONANCE_VAL);
++		if (ret)
++			goto err_power_off;
++	} else {
++		/* Power on */
++		ret = dw9807_write_reg(client, DW9807_CTL_ADDR, 0x00);
++		if (ret)
++			goto err_power_off;
+ 	}
+ 
+ 	for (val = dw9807_dev->current_val % DW9807_CTRL_STEPS;
+@@ -288,19 +389,35 @@ static int  __maybe_unused dw9807_vcm_resume(struct device *dev)
+ 		usleep_range(DW9807_CTRL_DELAY_US, DW9807_CTRL_DELAY_US + 10);
+ 	}
+ 
++	if (dw9807_dev->info->sac_init) {
++		/* Ringing control on, now that the lens is in position. */
++		ret = dw9807_write_reg(client, DW9807_CTL_ADDR,
++				       DW9807_CTL_RING);
++		if (ret)
++			goto err_power_off;
++	}
++
+ 	return 0;
++
++err_power_off:
++	if (dw9807_dev->vcc)
++		regulator_disable(dw9807_dev->vcc);
++
++	return ret;
+ }
+ 
+ static const struct of_device_id dw9807_of_table[] = {
+-	{ .compatible = "dongwoon,dw9807-vcm" },
++	{ .compatible = "dongwoon,dw9807-vcm", .data = &dw9807_chip_info },
++	{ .compatible = "dongwoon,dw9808-vcm", .data = &dw9808_chip_info },
+ 	/* Compatibility for older firmware, NEVER USE THIS IN FIRMWARE! */
+-	{ .compatible = "dongwoon,dw9807" },
++	{ .compatible = "dongwoon,dw9807", .data = &dw9807_chip_info },
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(of, dw9807_of_table);
+ 
+ static const struct dev_pm_ops dw9807_pm_ops = {
+-	SET_SYSTEM_SLEEP_PM_OPS(dw9807_vcm_suspend, dw9807_vcm_resume)
++	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
++				pm_runtime_force_resume)
+ 	SET_RUNTIME_PM_OPS(dw9807_vcm_suspend, dw9807_vcm_resume, NULL)
+ };
+ 
+@@ -317,5 +434,5 @@ static struct i2c_driver dw9807_i2c_driver = {
+ module_i2c_driver(dw9807_i2c_driver);
+ 
+ MODULE_AUTHOR("Chiang, Alan");
+-MODULE_DESCRIPTION("DW9807 VCM driver");
++MODULE_DESCRIPTION("DW9807/DW9808 VCM driver");
+ MODULE_LICENSE("GPL v2");
