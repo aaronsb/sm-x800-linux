@@ -1,13 +1,23 @@
 #!/bin/sh
-# console-blank: idle blanking for the VT console on the AMOLED panel.
+# console-blank: display policy for the VT console on the AMOLED panel.
 #
-# After BLANK_MIN minutes without input the console goes black: fbcon is
-# unbound from the framebuffer (that stops the blinking cursor and any log
-# line from painting) and the framebuffer is zeroed. On this panel an unlit
-# pixel is an off pixel, so that is the burn-in protection; the panel and
-# its rails stay powered and the DRM connector stays On. The next event on
-# any input device (touch, pen, keys, keyboard) rebinds fbcon, which
+# Idle: after BLANK_MIN minutes without input the console goes black: fbcon
+# is unbound from the framebuffer (that stops the blinking cursor and any
+# log line from painting) and the framebuffer is zeroed. On this panel an
+# unlit pixel is an off pixel, so that is the burn-in protection; the panel
+# and its rails stay powered and the DRM connector stays On. The next event
+# on any input device (touch, pen, keys, keyboard) rebinds fbcon, which
 # repaints the console.
+#
+# Lid: the folio-state daemon (foliod, ADR-002) publishes SW_LID on a
+# virtual input device named "folio-state". While it reads closed the
+# console is blanked and no input brings it back, the power button
+# included. When it returns to open the console comes back and the idle
+# count restarts. Without the device the idle policy alone applies.
+#
+# Power button: with the lid open, bytes on the pmic_pwrkey device toggle
+# the console, blank if visible and visible if blanked. Every other device
+# counts as activity. logind ignores the key (HandlePowerKey=ignore).
 #
 # DPMS is deliberately not used: on 2026-09-22 a DPMS off (VT blank timer
 # or panel-blank off) hung the tablet about a minute later and it reset
@@ -17,8 +27,10 @@
 # Idle detection: every input device is opened once and kept open, so evdev
 # queues its events for us (each open is its own client; the VT and getty
 # see everything as before). Each poll drains what is queued with a short
-# non-blocking read; any bytes at all mean activity. Devices that appear
-# after start are picked up by `systemctl restart console-blank`.
+# non-blocking read; any bytes at all mean activity. When the number of
+# event nodes changes the descriptors are closed and reopened, so a device
+# that appears late (the headset jack, a USB keyboard, a foliod restart) is
+# picked up on the next poll. The folio-state device is queried, not held.
 #
 # Setting: BLANK_MIN in /etc/conf.d/console-blank (0 disables, the daemon
 # then exits). Edit the file, then `systemctl restart console-blank`.
@@ -28,6 +40,8 @@ CONF=/etc/conf.d/console-blank
 FB=/dev/fb0
 POLL=2
 READ_WINDOW=0.05
+FOLIO_NAME=folio-state
+PWRKEY_NAME=pmic_pwrkey
 
 [ -r "$CONF" ] && . "$CONF"
 BLANK_MIN=${BLANK_MIN:-10}
@@ -42,13 +56,41 @@ find_fbcon() {
 	return 1
 }
 
-# Open every /dev/input/event* on its own descriptor, 3 upwards.
+# kernel name of an event node
+input_name() {
+	cat "/sys/class/input/${1##*/}/device/name" 2>/dev/null
+}
+
+count_inputs() {
+	n=0
+	for d in /dev/input/event*; do
+		[ -c "$d" ] && n=$((n + 1))
+	done
+	echo "$n"
+}
+
+# Open every /dev/input/event* on its own descriptor, 3 upwards. The
+# folio-state node is remembered in FOLIO and not held; the power key's
+# descriptor is remembered in PWR_FD.
 FDS=""
+PWR_FD=""
+FOLIO=""
+COUNT=0
 open_inputs() {
+	FDS=""
+	PWR_FD=""
+	FOLIO=""
+	COUNT=$(count_inputs)
 	fd=3
 	for d in /dev/input/event*; do
 		[ -c "$d" ] || continue
+		name=$(input_name "$d")
+		if [ "$name" = "$FOLIO_NAME" ]; then
+			FOLIO=$d
+			continue
+		fi
 		if eval "exec $fd<\"$d\""; then
+			[ "$name" = "$PWRKEY_NAME" ] && PWR_FD=$fd
 			FDS="$FDS $fd"
 			fd=$((fd + 1))
 		fi
@@ -56,15 +98,56 @@ open_inputs() {
 	[ -n "$FDS" ]
 }
 
-# true when any watched device delivered events since the last poll;
-# drains up to 64 KiB per device so a swipe does not count twice
-input_seen() {
-	seen=1
+close_inputs() {
 	for fd in $FDS; do
-		n=$(eval "timeout $READ_WINDOW dd bs=65536 count=1 <&$fd" 2>/dev/null | wc -c)
-		[ "$n" -gt 0 ] && seen=0
+		eval "exec $fd<&-"
 	done
-	return $seen
+	FDS=""
+	PWR_FD=""
+}
+
+# reopen everything when the number of event nodes changed
+rescan_inputs() {
+	[ "$(count_inputs)" -eq "$COUNT" ] && return 0
+	close_inputs
+	open_inputs || { echo "console-blank: no input devices to watch" >&2; exit 1; }
+	echo "console-blank: rescanned, watching $(echo $FDS | wc -w) input devices, folio-state ${FOLIO:-absent}"
+}
+
+# bytes queued on one descriptor since the last poll; drains up to 64 KiB
+# so a swipe does not count twice
+drain() {
+	eval "timeout $READ_WINDOW dd bs=65536 count=1 <&$1" 2>/dev/null | wc -c
+}
+
+# ACTIVITY=0 when any device other than the power key delivered events
+# since the last poll; POWER=0 when the power key did
+poll_inputs() {
+	ACTIVITY=1
+	POWER=1
+	for fd in $FDS; do
+		n=$(drain "$fd")
+		[ "$n" -gt 0 ] || continue
+		if [ "$fd" = "$PWR_FD" ]; then
+			POWER=0
+		else
+			ACTIVITY=0
+		fi
+	done
+}
+
+# open, closed, or none when there is no folio-state device
+lid_state() {
+	if [ -z "$FOLIO" ] || [ ! -c "$FOLIO" ]; then
+		echo none
+		return
+	fi
+	evtest --query "$FOLIO" EV_SW SW_LID >/dev/null 2>&1
+	case $? in
+		0) echo open ;;
+		10) echo closed ;;
+		*) echo none ;;
+	esac
 }
 
 console_on() {
@@ -88,6 +171,10 @@ status() {
 	for c in /sys/class/drm/card*-DSI-*/dpms; do
 		[ -r "$c" ] && echo "panel dpms: $(cat "$c")"
 	done
+	for d in /dev/input/event*; do
+		[ "$(input_name "$d")" = "$FOLIO_NAME" ] && FOLIO=$d
+	done
+	echo "lid: $(lid_state)${FOLIO:+ ($FOLIO)}"
 }
 
 run() {
@@ -103,10 +190,34 @@ run() {
 	open_inputs || { echo "console-blank: no input devices to watch" >&2; exit 1; }
 	limit=$((BLANK_MIN * 60))
 	idle=0
-	echo "console-blank: blank after $BLANK_MIN min, watching $(echo $FDS | wc -w) input devices, polling every $POLL s"
+	lid=open
+	echo "console-blank: blank after $BLANK_MIN min, watching $(echo $FDS | wc -w) input devices, polling every $POLL s, folio-state ${FOLIO:-absent}"
 	while :; do
 		sleep "$POLL"
-		if input_seen; then
+		rescan_inputs
+		prev=$lid
+		lid=$(lid_state)
+		if [ "$lid" = closed ]; then
+			# folio closed: dark, and nothing typed or pressed brings it back
+			poll_inputs
+			console_on && blank
+			idle=0
+			continue
+		fi
+		if [ "$prev" = closed ]; then
+			# folio opened: light up, discard what arrived while closed
+			poll_inputs
+			console_on || unblank
+			idle=0
+			continue
+		fi
+		poll_inputs
+		if [ "$POWER" -eq 0 ]; then
+			if console_on; then blank; else unblank; fi
+			idle=0
+			continue
+		fi
+		if [ "$ACTIVITY" -eq 0 ]; then
 			idle=0
 			console_on || unblank
 			continue

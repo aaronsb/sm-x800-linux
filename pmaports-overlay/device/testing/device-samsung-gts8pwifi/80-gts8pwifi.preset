@@ -1,0 +1,5 @@
+# The -systemd subpackage ships multi-user.target.wants symlinks under
+# /usr/lib; without these lines systemctl is-enabled reports the units
+# disabled although they start (issue #41).
+enable console-blank.service
+enable netinfo-console.service
