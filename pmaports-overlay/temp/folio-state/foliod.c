@@ -32,7 +32,8 @@
  * for any key the environment does not set: HEARTBEAT_S,
  * ATTACHED_HEARTBEAT_S, LIGHT_VETO_LUX, PEN_DZ_BARE, PEN_DZ_DOCKED,
  * REVERSED_DZ, REVERSED_DX, CLOSED_DZ, BASE_Z_BARE, BASE_X_BARE,
- * BASE_Z_DOCKED, MAG_SAMPLES, SAMPLE_TIMEOUT_S, PEN_FORGOTTEN.
+ * BASE_Z_DOCKED, BASELINE_WINDOW, FALLBACK_AFTER, MAG_SAMPLES,
+ * SAMPLE_TIMEOUT_S, PEN_FORGOTTEN.
  *
  * `foliod --once` samples, prints the inputs and the classification and
  * exits without creating the virtual device.
@@ -112,6 +113,7 @@ struct daemon {
 	bool abandoned;		/* timed out and published; only closing now */
 	bool rerun;		/* a trigger arrived during the sample */
 	guint sample_timeout_id;
+	const char *sample_reason;	/* the trigger that started this sample */
 	unsigned mag_n;
 	double mag_sx;
 	double mag_sz;
@@ -265,6 +267,10 @@ static void configure(struct daemon *d)
 	env_float("BASE_Z_BARE", &cfg.base_z_bare);
 	env_float("BASE_X_BARE", &cfg.base_x_bare);
 	env_float("BASE_Z_DOCKED", &cfg.base_z_docked);
+	env_float("BASELINE_WINDOW", &cfg.baseline_window);
+	env_uint("FALLBACK_AFTER", &cfg.fallback_after);
+	if (cfg.fallback_after == 0)
+		cfg.fallback_after = 1;
 	folio_state_init(&d->st, &cfg);
 
 	d->heartbeat_s = 60;
@@ -363,11 +369,12 @@ static void print_once(const struct daemon *d, const struct folio_input *in,
 /* Step the classifier with the hard signals and whatever the sample in
  * progress has collected, publish, and re-arm the heartbeat for the
  * context that came out. */
-static void step_and_publish(struct daemon *d, bool use_sample)
+static void step_and_publish(struct daemon *d, bool use_sample, const char *reason)
 {
 	struct folio_input in = d->hard;
 	struct folio_output o;
 
+	in.sensors_absent = !d->mag && !d->mag_creating;
 	in.mag_valid = use_sample && d->mag_ok;
 	in.mag_x = in.mag_valid ? d->mag_x : 0.0f;
 	in.mag_z = in.mag_valid ? d->mag_z : 0.0f;
@@ -397,13 +404,13 @@ static void step_and_publish(struct daemon *d, bool use_sample)
 			       in.keyboard_present, in.hall23, in.hall169,
 			       in.mag_z, in.mag_x, d->st.last_base_z,
 			       d->st.last_dz, d->st.last_dx, light,
-			       d->trigger_reason ? d->trigger_reason : "start");
+			       reason ? reason : "start");
 		else
 			logmsg("%s: lid %s, pen %s (kb %d hall23 %d hall169 %d, no magnetometer sample) [%s]",
 			       folio_context_name(o.context),
 			       o.lid_closed ? "closed" : "open", pen_name(&o),
 			       in.keyboard_present, in.hall23, in.hall169,
-			       d->trigger_reason ? d->trigger_reason : "start");
+			       reason ? reason : "start");
 	}
 	if (o.pen_forgotten && d->pen_forgotten_log)
 		logmsg("pen forgotten: lid closed and the last open sample saw no pen on the strip");
@@ -432,11 +439,33 @@ static void fail_add(struct daemon *d, const char *fmt, ...)
 	va_end(ap);
 }
 
-static void fail_report(struct daemon *d)
+/* One line per distinct failure text per minute. */
+static void fail_log(struct daemon *d, const char *text)
 {
 	time_t now = time(NULL);
 
-	if (!d->fail[0]) {
+	if (strcmp(text, d->last_fail) == 0 &&
+	    now - d->last_fail_time < FAIL_LOG_INTERVAL_S) {
+		d->fail_suppressed++;
+		return;
+	}
+	if (d->fail_suppressed)
+		logmsg("%s (%u identical line%s suppressed)", text,
+		       d->fail_suppressed, d->fail_suppressed == 1 ? "" : "s");
+	else
+		logmsg("%s", text);
+	d->fail_suppressed = 0;
+	strncpy(d->last_fail, text, sizeof(d->last_fail) - 1);
+	d->last_fail[sizeof(d->last_fail) - 1] = '\0';
+	d->last_fail_time = now;
+}
+
+/* Called once per sample: a sample succeeded when both sensors reported. */
+static void fail_report(struct daemon *d)
+{
+	char line[300];
+
+	if (d->mag_ok && d->light_ok) {
 		if (d->failed_samples) {
 			logmsg("sensors recovered after %u failed sample%s",
 			       d->failed_samples, d->failed_samples == 1 ? "" : "s");
@@ -450,20 +479,10 @@ static void fail_report(struct daemon *d)
 		return;
 	}
 	d->failed_samples++;
-	if (strcmp(d->fail, d->last_fail) == 0 &&
-	    now - d->last_fail_time < FAIL_LOG_INTERVAL_S) {
-		d->fail_suppressed++;
-		return;
-	}
-	if (d->fail_suppressed)
-		logmsg("sample failed: %s (%u identical line%s suppressed)", d->fail,
-		       d->fail_suppressed, d->fail_suppressed == 1 ? "" : "s");
-	else
-		logmsg("sample failed: %s", d->fail);
-	d->fail_suppressed = 0;
-	strncpy(d->last_fail, d->fail, sizeof(d->last_fail) - 1);
-	d->last_fail[sizeof(d->last_fail) - 1] = '\0';
-	d->last_fail_time = now;
+	if (!d->fail[0])
+		return;	/* the reason was logged where it happened */
+	snprintf(line, sizeof(line), "sample failed: %s", d->fail);
+	fail_log(d, line);
 }
 
 /* ------------------------------------------------------------------ */
@@ -522,7 +541,12 @@ static void mag_new_cb(GObject *src, GAsyncResult *res, gpointer data)
 	d->mag_creating = false;
 	d->mag = ssc_sensor_magnetometer_new_finish(res, &err);
 	if (!d->mag) {
-		fail_add(d, "magnetometer unavailable: %s", err ? err->message : "unknown");
+		char line[300];
+
+		/* logged here: the sample that asked may already be abandoned */
+		snprintf(line, sizeof(line), "magnetometer unavailable: %s",
+			 err ? err->message : "unknown");
+		fail_log(d, line);
 		g_clear_error(&err);
 	} else {
 		g_signal_connect(d->mag, "measurement", G_CALLBACK(mag_measurement), d);
@@ -540,7 +564,11 @@ static void light_new_cb(GObject *src, GAsyncResult *res, gpointer data)
 	d->light_creating = false;
 	d->light = ssc_sensor_light_new_finish(res, &err);
 	if (!d->light) {
-		fail_add(d, "light sensor unavailable: %s", err ? err->message : "unknown");
+		char line[300];
+
+		snprintf(line, sizeof(line), "light sensor unavailable: %s",
+			 err ? err->message : "unknown");
+		fail_log(d, line);
 		g_clear_error(&err);
 	} else {
 		g_signal_connect(d->light, "measurement", G_CALLBACK(light_measurement), d);
@@ -576,7 +604,7 @@ static void sample_finish(struct daemon *d)
 	}
 	if (!d->abandoned) {
 		fail_report(d);
-		step_and_publish(d, true);
+		step_and_publish(d, true, d->sample_reason);
 	}
 	d->phase = PH_IDLE;
 	d->sampling = false;
@@ -622,7 +650,6 @@ static void light_open_cb(GObject *src, GAsyncResult *res, gpointer data)
 	if (!ssc_sensor_light_open_finish(SSC_SENSOR_LIGHT(src), res, &err)) {
 		fail_add(d, "light open: %s", err ? err->message : "unknown");
 		g_clear_error(&err);
-		d->phase = PH_IDLE;
 		sample_finish(d);
 		return;
 	}
@@ -639,7 +666,6 @@ static void light_close_cb(GObject *src, GAsyncResult *res, gpointer data)
 		fail_add(d, "light close: %s", err ? err->message : "unknown");
 		g_clear_error(&err);
 	}
-	d->phase = PH_IDLE;
 	sample_finish(d);
 }
 
@@ -676,7 +702,6 @@ static void sample_advance(struct daemon *d)
 		return;
 	case PH_LIGHT_OPEN:
 		if (!d->light || d->abandoned) {
-			d->phase = PH_IDLE;
 			sample_finish(d);
 			return;
 		}
@@ -718,7 +743,7 @@ static gboolean sample_timeout(gpointer data)
 		d->mag_z = (float)(d->mag_sz / d->mag_n);
 	}
 	fail_report(d);
-	step_and_publish(d, true);
+	step_and_publish(d, true, d->sample_reason);
 	d->abandoned = true;
 
 	/* a sensor left open waiting for a report is closed now; a phase
@@ -739,12 +764,13 @@ static void sample_start(struct daemon *d)
 		d->rerun = true;
 		/* the sensors are known slow: do not hold the hard signals */
 		if (d->abandoned || d->phase == PH_WAIT_SENSORS)
-			step_and_publish(d, false);
+			step_and_publish(d, false, d->trigger_reason);
 		return;
 	}
 	d->sampling = true;
 	d->abandoned = false;
 	d->rerun = false;
+	d->sample_reason = d->trigger_reason;
 	d->mag_n = 0;
 	d->mag_sx = 0.0;
 	d->mag_sz = 0.0;

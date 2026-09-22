@@ -30,20 +30,30 @@
  * dZ and dX are the sample minus the context's baseline. The clear-air
  * total moved from 147 to 270 microtesla across two days on this sensor,
  * so absolute numbers are only seeds: each baseline starts at the table
- * value and is replaced by the first sample the seed classifies as open
- * with no pen, then re-learned the same way after every context change.
- * The attached baseline is seeded from the docked baseline because the
- * attached-open row is unmeasured and closed is derived from docked-open.
+ * value, is set by the first sample the seed classifies as open with no
+ * pen, and from then on follows such samples with an exponential moving
+ * average of weight 1/8, so slow drift is tracked. A sample farther than
+ * baseline_window from the seed on Z is never learned, so a transitional
+ * reading during a lift cannot become the baseline. A context change
+ * starts the learning over. The attached baseline is seeded from the
+ * docked baseline because the attached-open row is unmeasured and closed
+ * is derived from docked-open.
+ *
+ * The reversed verdict has the thinnest margin, 33 on Z and 48 on X
+ * against a 50 microtesla rotation effect, so it needs two consecutive
+ * samples before it is published or stops the baseline from learning.
  *
  * A light reading above light_veto_lux moves a magnetometer "closed" to
  * the open row of its context. Hall 169 is a hard signal and is not vetoed.
  * While the keyboard is present hall 23 is not consulted.
  *
- * Without a magnetometer sample the classifier runs on the hard signals:
- * keyboard present is open, hall 23 asserted without the keyboard is
- * closed, hall 23 clear is open. The pen cannot be seen and holds its last
- * value. The attached rows and the closed rows also hold the pen, since
- * neither can see the strip.
+ * Without a magnetometer sample the keyboard still means open and hall 23
+ * clear still means open. In the attached context the lid holds its last
+ * value until fallback_after consecutive samples have failed, or the
+ * daemon reports that it has no magnetometer at all; then hall 23 asserted
+ * without the keyboard means closed. The pen cannot be seen and holds its
+ * last value. The attached rows and the closed rows also hold the pen,
+ * since neither can see the strip.
  *
  * pen_forgotten is an edge: true on the step that closes the lid when the
  * last open sample that could see the pen saw none.
@@ -58,13 +68,15 @@ void folio_config_defaults(struct folio_config *cfg)
 {
 	cfg->pen_dz_bare = 112.0f;	/* half of +225 */
 	cfg->pen_dz_docked = 130.0f;	/* half of +265 */
-	cfg->reversed_dz = 15.0f;	/* half of -30 */
-	cfg->reversed_dx = 25.0f;	/* half of -50 */
+	cfg->reversed_dz = 25.0f;	/* measured -33 */
+	cfg->reversed_dx = 40.0f;	/* measured -48 */
 	cfg->closed_dz = 85.0f;		/* half of -170 */
 	cfg->light_veto_lux = 2.0f;
 	cfg->base_z_bare = 133.0f;
 	cfg->base_x_bare = 206.0f;
 	cfg->base_z_docked = -305.0f;
+	cfg->baseline_window = 150.0f;
+	cfg->fallback_after = 3;
 }
 
 void folio_state_init(struct folio_state *st, const struct folio_config *cfg)
@@ -73,8 +85,11 @@ void folio_state_init(struct folio_state *st, const struct folio_config *cfg)
 	st->cfg = *cfg;
 	st->bare.z = cfg->base_z_bare;
 	st->bare.x = cfg->base_x_bare;
+	st->bare.seed_z = cfg->base_z_bare;
 	st->docked.z = cfg->base_z_docked;
+	st->docked.seed_z = cfg->base_z_docked;
 	st->attached.z = cfg->base_z_docked;
+	st->attached.seed_z = cfg->base_z_docked;
 	st->last_open_pen = FOLIO_PEN_UNKNOWN;
 }
 
@@ -100,14 +115,25 @@ static enum folio_context pick_context(const struct folio_input *in)
 	return FOLIO_CTX_BARE;
 }
 
-static void learn(struct folio_baseline *b, float z, float x)
+/* Feed an open, no-pen sample to a baseline: the first one sets it, later
+ * ones move it by an eighth of the difference. Samples too far from the
+ * seed are transitional readings and are ignored. */
+static void learn(struct folio_baseline *b, float window, float z, float x)
 {
-	if (b->learned)
+	float off = z - b->seed_z;
+
+	if (off > window || off < -window)
 		return;
-	b->z = z;
-	b->x = x;
-	b->learned = true;
+	if (!b->learned) {
+		b->z = z;
+		b->x = x;
+		b->learned = true;
+		return;
+	}
+	b->z += (z - b->z) / 8.0f;
+	b->x += (x - b->x) / 8.0f;
 }
+
 
 void folio_state_step(struct folio_state *st, const struct folio_input *in,
 		      struct folio_output *out)
@@ -116,6 +142,7 @@ void folio_state_step(struct folio_state *st, const struct folio_input *in,
 	enum folio_context ctx = pick_context(in);
 	struct folio_output o = st->out;
 	bool pen_seen = false;	/* this step classified the pen */
+	bool looks_reversed = false;
 	bool mag_closed = false;
 
 	o.pen_forgotten = false;
@@ -124,8 +151,14 @@ void folio_state_step(struct folio_state *st, const struct folio_input *in,
 	st->last_dz = 0.0f;
 	st->last_dx = 0.0f;
 
+	if (in->mag_valid)
+		st->failed_streak = 0;
+	else
+		st->failed_streak++;
+
 	/* A context change discards the learned baseline of the new context. */
 	if (!st->have_prev || ctx != st->prev_context) {
+		st->reversed_streak = 0;
 		switch (ctx) {
 		case FOLIO_CTX_BARE:
 			st->bare.learned = false;
@@ -135,6 +168,7 @@ void folio_state_step(struct folio_state *st, const struct folio_input *in,
 			break;
 		case FOLIO_CTX_ATTACHED:
 			st->attached.z = st->docked.z;
+			st->attached.seed_z = st->docked.z;
 			st->attached.learned = false;
 			break;
 		}
@@ -152,7 +186,8 @@ void folio_state_step(struct folio_state *st, const struct folio_input *in,
 			o.pen_docked = dz >= cfg->pen_dz_docked;
 			pen_seen = true;
 			if (!o.pen_docked)
-				learn(&st->docked, in->mag_z, in->mag_x);
+				learn(&st->docked, cfg->baseline_window,
+				      in->mag_z, in->mag_x);
 		}
 		break;
 
@@ -166,12 +201,15 @@ void folio_state_step(struct folio_state *st, const struct folio_input *in,
 			st->last_dx = dx;
 			st->last_base_z = st->bare.z;
 			o.pen_docked = dz >= cfg->pen_dz_bare;
-			o.pen_reversed = !o.pen_docked &&
+			looks_reversed = !o.pen_docked &&
 					 dz <= -cfg->reversed_dz &&
 					 dx <= -cfg->reversed_dx;
+			st->reversed_streak = looks_reversed ? st->reversed_streak + 1 : 0;
+			o.pen_reversed = st->reversed_streak >= 2;
 			pen_seen = true;
 			if (!o.pen_docked && !o.pen_reversed)
-				learn(&st->bare, in->mag_z, in->mag_x);
+				learn(&st->bare, cfg->baseline_window,
+				      in->mag_z, in->mag_x);
 		}
 		break;
 
@@ -182,13 +220,18 @@ void folio_state_step(struct folio_state *st, const struct folio_input *in,
 			st->last_dz = dz;
 			st->last_base_z = st->attached.z;
 			mag_closed = dz <= -cfg->closed_dz;
-		} else {
+		} else if (in->sensors_absent ||
+			   st->failed_streak >= cfg->fallback_after) {
 			/* hard-signal fallback: no keyboard and a magnet at tlmm 23 */
 			mag_closed = true;
+		} else {
+			/* one missed sample is not a lid change */
+			mag_closed = st->have_prev && st->out.lid_closed;
 		}
 		/* a vetoed "closed" is still a closed reading, not a baseline */
 		if (in->mag_valid && !mag_closed)
-			learn(&st->attached, in->mag_z, in->mag_x);
+			learn(&st->attached, cfg->baseline_window,
+			      in->mag_z, in->mag_x);
 		if (mag_closed && in->light_valid &&
 		    in->light_lux > cfg->light_veto_lux)
 			mag_closed = false;

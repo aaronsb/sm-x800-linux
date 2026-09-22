@@ -30,10 +30,12 @@
 # Idle detection: every input device is opened once and kept open, so evdev
 # queues its events for us (each open is its own client; the VT and getty
 # see everything as before). Each poll drains what is queued with a short
-# non-blocking read; any bytes at all mean activity. When the number of
-# event nodes changes the descriptors are closed and reopened, so a device
-# that appears late (the headset jack, a USB keyboard, a foliod restart) is
-# picked up on the next poll. The folio-state device is queried, not held.
+# non-blocking read; any bytes at all mean activity. Each poll compares the
+# list of event nodes and their names with the last one and reopens the
+# descriptors when it differs, so a device that appears late (the headset
+# jack, a USB keyboard) or is replaced within one poll (a foliod restart)
+# is picked up on the next tick. The folio-state device is queried, not
+# held.
 #
 # Setting: BLANK_MIN in /etc/conf.d/console-blank (0 disables, the daemon
 # then exits). Edit the file, then `systemctl restart console-blank`.
@@ -45,6 +47,7 @@ POLL=2
 READ_WINDOW=0.05
 FOLIO_NAME=folio-state
 PWRKEY_NAME=pmic_pwrkey
+KICK_S=3
 
 [ -r "$CONF" ] && . "$CONF"
 BLANK_MIN=${BLANK_MIN:-10}
@@ -64,12 +67,12 @@ input_name() {
 	cat "/sys/class/input/${1##*/}/device/name" 2>/dev/null
 }
 
-count_inputs() {
-	n=0
+# one line: every event node with its name, so a replaced node shows too
+input_signature() {
 	for d in /dev/input/event*; do
-		[ -c "$d" ] && n=$((n + 1))
+		[ -c "$d" ] && printf '%s:%s;' "$d" "$(input_name "$d")"
 	done
-	echo "$n"
+	echo
 }
 
 # Open every /dev/input/event* on its own descriptor, 3 upwards. The
@@ -78,12 +81,12 @@ count_inputs() {
 FDS=""
 PWR_FD=""
 FOLIO=""
-COUNT=0
+SIG=""
 open_inputs() {
 	FDS=""
 	PWR_FD=""
 	FOLIO=""
-	COUNT=$(count_inputs)
+	SIG=$(input_signature)
 	fd=3
 	for d in /dev/input/event*; do
 		[ -c "$d" ] || continue
@@ -109,9 +112,9 @@ close_inputs() {
 	PWR_FD=""
 }
 
-# reopen everything when the number of event nodes changed
+# reopen everything when the set of event nodes or their names changed
 rescan_inputs() {
-	[ "$(count_inputs)" -eq "$COUNT" ] && return 0
+	[ "$(input_signature)" = "$SIG" ] && return 0
 	close_inputs
 	open_inputs || { echo "console-blank: no input devices to watch" >&2; exit 1; }
 	echo "console-blank: rescanned, watching $(echo $FDS | wc -w) input devices, folio-state ${FOLIO:-absent}"
@@ -139,8 +142,13 @@ poll_inputs() {
 	done
 }
 
-# ask foliod for a sample now; it decides what the lid is
+# ask foliod for a sample now, at most once per KICK_S; it decides what
+# the lid is
+LAST_KICK=0
 kick_foliod() {
+	now=$(date +%s)
+	[ $((now - LAST_KICK)) -ge "$KICK_S" ] || return 0
+	LAST_KICK=$now
 	pid=$(systemctl show -p MainPID --value folio-state 2>/dev/null)
 	[ -n "$pid" ] && [ "$pid" != 0 ] && kill -USR1 "$pid" 2>/dev/null
 }

@@ -33,6 +33,7 @@ struct folio_input {
 	float mag_z;
 	bool light_valid;	/* light_lux holds a fresh sample */
 	float light_lux;
+	bool sensors_absent;	/* the daemon has no magnetometer object at all */
 };
 
 struct folio_output {
@@ -45,8 +46,10 @@ struct folio_output {
 
 /*
  * Thresholds are deltas from a per-context baseline, in microtesla. The
- * defaults are half the differences between rows of the 2026-09-22 table.
- * The base_* values seed each baseline until a sample re-learns it.
+ * defaults are half the differences between rows of the 2026-09-22 table,
+ * except the reversed margins, which are widened against the 50 microtesla
+ * a rotation moves between axes. The base_* values seed each baseline
+ * until a sample re-learns it.
  */
 struct folio_config {
 	float pen_dz_bare;	/* bare: pen on the strip adds about +225 on Z */
@@ -58,12 +61,15 @@ struct folio_config {
 	float base_z_bare;	/* 2026-09-22: bare, pen away, Z 133 */
 	float base_x_bare;	/* X 206 */
 	float base_z_docked;	/* in folio, open, docked, pen away, Z -305 */
+	float baseline_window;	/* a baseline may sit at most this far from its seed on Z */
+	unsigned fallback_after;	/* consecutive samples without a magnetometer before hall 23 alone means closed */
 };
 
 struct folio_baseline {
 	float z;
 	float x;
-	bool learned;		/* re-learned from the first open, no-pen sample after a context change */
+	float seed_z;		/* what the baseline started from in this context */
+	bool learned;		/* set by the first open, no-pen sample after a context change, then tracked */
 };
 
 enum folio_pen_seen {
@@ -81,6 +87,8 @@ struct folio_state {
 	enum folio_context prev_context;
 	struct folio_output out;	/* last output, pen_forgotten cleared */
 	enum folio_pen_seen last_open_pen;	/* pen state at the last open sample that could see it */
+	unsigned reversed_streak;	/* consecutive bare samples that look reversed */
+	unsigned failed_streak;	/* consecutive steps without a magnetometer sample */
 	/* diagnostics from the last step, for --once and the journal */
 	float last_dz;
 	float last_dx;

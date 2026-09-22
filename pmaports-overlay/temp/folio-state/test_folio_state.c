@@ -98,12 +98,37 @@ static void test_bare_pen(void)
 	o = step(false, false, false, BARE_PEN_X, BARE_PEN_Z, true, LIGHT_OPEN);
 	CHECK(!o.lid_closed && o.pen_docked && !o.pen_reversed);
 
+	/* reversed needs two consecutive samples */
+	o = step(false, false, false, BARE_REV_X, BARE_REV_Z, true, LIGHT_OPEN);
+	CHECK(!o.lid_closed && !o.pen_docked && !o.pen_reversed);
 	o = step(false, false, false, BARE_REV_X, BARE_REV_Z, true, LIGHT_OPEN);
 	CHECK(!o.lid_closed && !o.pen_docked && o.pen_reversed);
 
 	o = step(false, false, false, BARE_X, BARE_Z, true, LIGHT_OPEN);
 	CHECK(!o.lid_closed && !o.pen_docked && !o.pen_reversed);
 	CHECK(!o.pen_forgotten);
+}
+
+/* One reversed-looking sample is published as no pen and does not stop
+ * the baseline from learning; two in a row do. */
+static void test_reversed_streak(void)
+{
+	struct folio_output o;
+	float z_after_one;
+
+	reset();
+	step(false, false, false, BARE_X, BARE_Z, true, LIGHT_OPEN);
+	o = step(false, false, false, BARE_REV_X, BARE_REV_Z, true, LIGHT_OPEN);
+	CHECK(!o.pen_reversed);
+	z_after_one = st.bare.z;
+	CHECK(z_after_one < BARE_Z && z_after_one > BARE_REV_Z);
+	o = step(false, false, false, BARE_REV_X, BARE_REV_Z, true, LIGHT_OPEN);
+	CHECK(o.pen_reversed);
+	CHECK(st.bare.z == z_after_one);
+	/* a no-pen sample in between resets the streak */
+	step(false, false, false, BARE_X, BARE_Z, true, LIGHT_OPEN);
+	o = step(false, false, false, BARE_REV_X, BARE_REV_Z, true, LIGHT_OPEN);
+	CHECK(!o.pen_reversed);
 }
 
 /* Bare with the pen already on the strip at the first sample: the seed
@@ -264,7 +289,9 @@ static void test_hall169(void)
 	CHECK(!o.lid_closed);
 }
 
-/* SLPI down: hard signals only, pen holds. */
+/* SLPI down: keyboard and hall 23 clear still mean open, the pen holds,
+ * and hall 23 asserted means closed only once fallback_after samples in
+ * a row have failed. */
 static void test_no_magnetometer(void)
 {
 	struct folio_output o;
@@ -276,9 +303,89 @@ static void test_no_magnetometer(void)
 	o = step_nomag(true, true, false);
 	CHECK(!o.lid_closed && o.pen_docked);
 	o = step_nomag(false, true, false);
+	CHECK(!o.lid_closed && o.pen_docked);
+	o = step_nomag(false, true, false);
 	CHECK(o.lid_closed && o.pen_docked && !o.pen_forgotten);
 	o = step_nomag(false, false, false);
 	CHECK(!o.lid_closed && o.pen_docked);
+}
+
+/* Attached and open, then the sensors miss: the lid holds open for two
+ * samples and falls back to closed on the third. */
+static void test_fallback_count(void)
+{
+	struct folio_output o;
+
+	reset();
+	step(true, false, false, DOCK_X, DOCK_Z, true, LIGHT_OPEN);
+	o = step(false, true, false, DOCK_X, DOCK_Z - 20.0f, true, LIGHT_OPEN);
+	CHECK(o.context == FOLIO_CTX_ATTACHED && !o.lid_closed);
+
+	o = step_nomag(false, true, false);
+	CHECK(!o.lid_closed);
+	o = step_nomag(false, true, false);
+	CHECK(!o.lid_closed);
+	o = step_nomag(false, true, false);
+	CHECK(o.lid_closed);
+
+	/* a good sample resets the count */
+	o = step(false, true, false, DOCK_X, DOCK_Z - 20.0f, true, LIGHT_OPEN);
+	CHECK(!o.lid_closed);
+	o = step_nomag(false, true, false);
+	CHECK(!o.lid_closed);
+}
+
+/* No magnetometer object at all: the fallback applies at once. */
+static void test_sensors_absent(void)
+{
+	struct folio_input in = { .hall23 = true, .sensors_absent = true };
+	struct folio_output o;
+
+	reset();
+	step(true, false, false, DOCK_X, DOCK_Z, true, LIGHT_OPEN);
+	folio_state_step(&st, &in, &o);
+	CHECK(o.context == FOLIO_CTX_ATTACHED && o.lid_closed);
+}
+
+/* A sample outside baseline_window of the seed is never a baseline, and
+ * the closed reading that follows still reads closed. */
+static void test_baseline_window(void)
+{
+	struct folio_output o;
+
+	reset();
+	step(true, false, false, DOCK_X, DOCK_Z, true, LIGHT_OPEN);
+
+	/* -400 against seed -305: a closed reading, not a baseline */
+	o = step(false, true, false, CLOSED_X, -400.0f, true, LIGHT_CLOSED);
+	CHECK(o.lid_closed && !st.attached.learned);
+	o = step(false, true, false, CLOSED_X, CLOSED_Z, true, LIGHT_CLOSED);
+	CHECK(o.lid_closed);
+
+	/* -100 classifies open but sits 205 from the seed: rejected */
+	reset();
+	step(true, false, false, DOCK_X, DOCK_Z, true, LIGHT_OPEN);
+	o = step(false, true, false, DOCK_X, -100.0f, true, LIGHT_OPEN);
+	CHECK(!o.lid_closed && !st.attached.learned && st.attached.z == DOCK_Z);
+	o = step(false, true, false, CLOSED_X, CLOSED_Z, true, LIGHT_CLOSED);
+	CHECK(o.lid_closed);
+}
+
+/* A learned baseline follows slow drift with weight 1/8. */
+static void test_baseline_drift(void)
+{
+	struct folio_output o;
+	int i;
+
+	reset();
+	step(true, false, false, DOCK_X, DOCK_Z, true, LIGHT_OPEN);
+	CHECK(st.docked.z == DOCK_Z);
+	for (i = 0; i < 20; i++)
+		step(true, false, false, DOCK_X, DOCK_Z + 40.0f, true, LIGHT_OPEN);
+	CHECK(st.docked.z > DOCK_Z + 35.0f && st.docked.z < DOCK_Z + 40.0f);
+	/* the pen threshold moved with it */
+	o = step(true, false, false, DOCK_PEN_X, DOCK_PEN_Z, true, LIGHT_OPEN);
+	CHECK(o.pen_docked);
 }
 
 /* The bare baseline is re-learned after a trip through the dock. */
@@ -308,6 +415,11 @@ int main(void)
 	test_start_closed();
 	test_hall169();
 	test_no_magnetometer();
+	test_fallback_count();
+	test_sensors_absent();
+	test_baseline_window();
+	test_baseline_drift();
+	test_reversed_streak();
 	test_relearn();
 
 	printf("folio_state: %d checks, %d failures\n", checks, failures);
