@@ -280,16 +280,31 @@
 
 	/*
 	 * Manual switch for tablet-sourced USB VBUS (the MAX77705 OTG boost,
-	 * see charger@69). regulator-output is the mainline convention for a
-	 * userspace-switched rail: it surfaces
+	 * the usb-otg-vbus regulator of charger@69). regulator-output is the
+	 * mainline convention for a userspace-switched rail: it surfaces
 	 *     /sys/devices/platform/vbus-otg/state
-	 * (helper: `vbus-otg on|off`). Default off; the driver refuses to
-	 * enable while a charger input is present. Automatic switching is
-	 * Type-C/TCPM territory — a later increment.
+	 * (helper: `vbus-otg on|off`). Default off; the charger refuses to
+	 * enable it while a charger input is present. Switching by Type-C
+	 * attach is ADR-003 stage 3.
 	 */
 	vbus-otg {
 		compatible = "regulator-output";
 		vout-supply = <&max77705_otg_vbus>;
+	};
+
+	/*
+	 * The 2S-parallel pack as the charger programs it (ADR-003). The
+	 * float voltage is stock's battery,chg_float_voltage (4380 mV); the
+	 * upstream charger would fall back to 4.2 V without this node.
+	 * Design capacity is the gauge's DesignCap (3520 x 2.5 mAh); stock's
+	 * battery_full_capacity policy value is 9800 mAh. The minimum is the
+	 * gauge's V_empty.
+	 */
+	battery: battery {
+		compatible = "simple-battery";
+		constant-charge-voltage-max-microvolt = <4380000>;
+		charge-full-design-microamp-hours = <8800000>;
+		voltage-min-design-microvolt = <3350000>;
 	};
 
 	/*
@@ -1319,7 +1334,7 @@
  * and nothing switches it. VBUS on this device is NOT pmic_glink — it is
  * the MAX77705 companion PMIC's OTG boost (charger @ i2c5 0x69, CHG_CNFG_00
  * mode field; see the &i2c5 comment), driven from userspace through
- * max77705-otg.c. A SELF-POWERED hub sidesteps that entirely: it powers its
+ * the charger's usb-otg-vbus regulator. A SELF-POWERED hub sidesteps that entirely: it powers its
  * own downstream ports and presents its D+ pull-up to us, so enumeration
  * proceeds without us sourcing VBUS. That makes USB ethernet (r8152/
  * ax88179/cdc_ether, all modules) and USB HID keyboards reachable.
@@ -1431,12 +1446,11 @@
 
 /*
  * i2c5 hosts the MAX77705 Samsung companion PMIC (stock qupv3_se5_i2c):
- * top/sys @0x66 (the DT reg), MUIC @0x25, charger @0x69, fuel gauge @0x36.
- * This is the chip that owns Type-C, VBUS sourcing (OTG boost) and charging.
- * Bus enabled first for register-level verification from userspace; the
- * OTG-boost regulator driver comes next (docs/07 open threads). Same QUP
- * plumbing rules as i2c8: wrapper (qupv3_id_0) and GPI DMA (gpi_dma0) must
- * both be enabled or the leaf silently never probes.
+ * top @0x66, CCIC (Type-C/PD) @0x25, charger @0x69, fuel gauge @0x36.
+ * Ownership is ADR-003: the upstream MFD, charger and gauge drivers
+ * (stage 2); the CCIC stays undescribed until the stage 3 Type-C driver.
+ * Same QUP plumbing rules as i2c8: wrapper (qupv3_id_0) and GPI DMA
+ * (gpi_dma0) must both be enabled or the leaf silently never probes.
  */
 &gpi_dma0 {
 	status = "okay";
@@ -1450,18 +1464,38 @@
 	status = "okay";
 
 	/*
-	 * Minimal OTG-boost-only driver at the charger client address (see
-	 * max77705-otg.c). Verified live before the driver existed: writing
-	 * the CHG_CNFG_00 mode nibble 0x05 -> 0x0F sourced VBUS and a
-	 * bus-powered HID keyboard enumerated. The MFD top (charging
-	 * policy, MUIC, PD) is deliberately NOT described; the chip charges
-	 * on its power-on defaults (4.35 V float, 2.1 A, 1.8 A input).
+	 * MAX77705 top: the one interrupt line (stock max77705,irq-gpio,
+	 * pm8350c GPIO 5, active low) and a regmap-irq domain with CHG 0,
+	 * TOP 1, FG 2, USBC 3. This chip reads PMICREV 0x02 (PASS2), which
+	 * upstream rejects without max77705-mfd-pass2.patch.
 	 */
-	charger@69 {
-		compatible = "samsung,max77705-otg";
-		reg = <0x69>;
+	max77705: pmic@66 {
+		compatible = "maxim,max77705";
+		reg = <0x66>;
+		interrupt-parent = <&pm8350c_gpios>;
+		interrupts = <5 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		pinctrl-0 = <&max77705_irq_default>;
+		pinctrl-names = "default";
+	};
 
-		max77705_otg_vbus: otg-vbus {
+	/*
+	 * Upstream charger. At probe it enables buck + charge (mode 0x5),
+	 * sets the float voltage from the battery node, input thresholds
+	 * 4.5 V, OTG limit 900 mA, and turns the watchdog off; it leaves
+	 * the fast-charge current at the chip's 2.1 A. The OTG boost is its
+	 * usb-otg-vbus regulator (max77705-charger-otg-regulator.patch):
+	 * boost bits ORed onto the mode, refused while CHGIN is present.
+	 */
+	max77705_charger: charger@69 {
+		compatible = "maxim,max77705-charger";
+		reg = <0x69>;
+		monitored-battery = <&battery>;
+		interrupt-parent = <&max77705>;
+		interrupts = <0>;
+
+		max77705_otg_vbus: usb-otg-vbus {
 			regulator-name = "usb_otg_vbus";
 		};
 	};
@@ -1471,14 +1505,27 @@
 	 * (fuelgauge,fg_resistor = 5, Samsung units of 0.4 mOhm: current LSB
 	 * 0.78125 mA, capacity LSB 2.5 mAh, so a 2 mOhm sense resistor) and
 	 * the gauge keeps it across a reboot into mainline: Status POR is
-	 * clear, so max17042 loads nothing and only reads. No interrupt: the
-	 * gauge's alert cascades through the MFD top at 0x66, which is not
-	 * described, and the driver then parks the SOC alert threshold.
+	 * clear, so max17042 loads nothing and only reads. Its alert
+	 * cascades through the top (FG, 2).
 	 */
 	fuel-gauge@36 {
 		compatible = "maxim,max77705-battery";
 		reg = <0x36>;
 		shunt-resistor-micro-ohms = <2000>;
+		interrupt-parent = <&max77705>;
+		interrupts = <2>;
+		power-supplies = <&max77705_charger>;
+	};
+};
+
+/* MAX77705 interrupt line, as stock's if_pmic_irq state. */
+&pm8350c_gpios {
+	max77705_irq_default: max77705-irq-default-state {
+		pins = "gpio5";
+		function = "normal";
+		input-enable;
+		bias-disable;
+		power-source = <1>;
 	};
 };
 

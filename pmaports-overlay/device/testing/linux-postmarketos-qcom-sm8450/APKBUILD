@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=31
+pkgrel=32
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -40,7 +40,6 @@ source="
 	fts1ba90a.c
 	stm32-pogo.c
 	wacom-wez01.c
-	max77705-otg.c
 	panel-samsung-s6tuum1.c
 	sc8280xp-mi2s-codec-fmt-sysclk.patch
 	sm8450-camss.patch
@@ -51,6 +50,8 @@ source="
 	dw9807-dw9808-vcc.patch
 	q6v5-handover-ratelimit.patch
 	max17042-max77705-i2c-id.patch
+	max77705-mfd-pass2.patch
+	max77705-charger-otg-regulator.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -88,12 +89,6 @@ prepare() {
 	cp "$srcdir"/wacom-wez01.c drivers/input/touchscreen/wacom-wez01.c
 	if ! grep -q "wacom-wez01.o" drivers/input/touchscreen/Makefile; then
 		echo 'obj-y += wacom-wez01.o' >> drivers/input/touchscreen/Makefile
-	fi
-
-	# MAX77705 OTG VBUS boost (USB host-mode power), same pattern.
-	cp "$srcdir"/max77705-otg.c drivers/regulator/max77705-otg.c
-	if ! grep -q "max77705-otg.o" drivers/regulator/Makefile; then
-		echo 'obj-y += max77705-otg.o' >> drivers/regulator/Makefile
 	fi
 
 	# S6TUUM1 panel driver (native display), same pattern. The panel dir
@@ -142,12 +137,11 @@ package() {
 sha512sums="
 47e63679363261a864d271277340a6f2d45f544e1a056be4159df081f4f6537d0efa865c4af26611ab33a3079ee65db88ec2f6bc0e5fff43e0c043cde0cd91e1  linux-7.2.tar.xz
 54e93ffbd3738e91d178485de1fc53bf8232114586efa5826f2c36a9a43ca06559ac91a5ec061a666819a81904418c29bd6a4e3838f82174a6e80d196e0c30ef  sm8450.config
-f2962a94e4269a71f5f4809195e0f0d814da0641250e17c22e4308d02f81383a8c4812ad5abb39d33a5985618d970192d3bf161e80463cd82f8b6b3f6a40be1e  pmos.config
-6ac6e14ef3a3ecad473d011bc0892b21199da11ad0458de7172c5acf96bde8dd4b21ea1809413c248c60fb2a6d80c6af54efd35664cc633a1fbb1165e80ca46f  sm8450-samsung-gts8pwifi.dts
+9b4c11fb426c267a5f4caa47f346c76ba7499d0d48e41138ecef076ed8827665c2a77d6609acb0f514c1315087d0ca75fe95002d689f690dc56e16090a0f9907  pmos.config
+fd43e4422d95f8ee4d4c6e47237bb67f2e4886dd8ed4d5173974fab7b32beb0410cff46419f32a8c06ef0902c6ac2416cc0f67a7e89cbe4a0262b50e224a5c38  sm8450-samsung-gts8pwifi.dts
 c44407cf686d4cb04477f23b375aa94e5ee0fd6b54223b62d6d4ff3f84e03a0ec3963563cbc4fe775836abb1eb5b0edcf2cf4cb19644b219b06b3ee481175a13  fts1ba90a.c
 e081f10b88cb67df2f9653a117c5fcc8a5b98d54ddf2a29217d573331b647b55d17fe7dad1a01d023ee0e9ea0f7743514ee28ffa1571d874078ace0e3c4583d9  stm32-pogo.c
 3c8404133d5c56ac3275c21804be6095c722813810bc4b43bc36020fc440a59245a3618e7ce76f8c8ca794746b3e993237f8c113a06a5f056653fd9d0b9ffb80  wacom-wez01.c
-eafe3ac70d1330972f5f9e3f6fc828c3dff00beba6526da55884b0ce9593a0cf991a9ae1a21fd7aef3a24981d5dc4d5d7fc593e93e1103250b0cae2b9ecc2f77  max77705-otg.c
 99ad67e5288c5fb6377a1677326109fab337f5f483defe32774fb61e3632a2f53d3f95e76233f86189dfce95b65dd2cff3de04709e72b9fbe3b4c44f2ea756d2  panel-samsung-s6tuum1.c
 b0c91048ac0b0fe02973910d1d55878a9d6cb1b3bd1499e7f7b0f1ef17a42ab068345a046c3186ecdabb08e93524f271023868287ba564be1e51581bddb48da7  sc8280xp-mi2s-codec-fmt-sysclk.patch
 b5f29fe42d4c910d59052e350b54583466f4988e0bbe5ac35135d20d952fc9e07c0cd5a5fc02bb30463d9287f7529d1beccaeff0e067fc33bbeadcca911987f1  sm8450-camss.patch
@@ -158,4 +152,6 @@ b5f29fe42d4c910d59052e350b54583466f4988e0bbe5ac35135d20d952fc9e07c0cd5a5fc02bb30
 fef69db2dec426bfbef7a6584928c109259e8c78bbe08a72ca1b89a05957d132300a9cf8c1be9e71f966a6b04c38a1dc833ab25a89f15c83297fab6850ffd8a4  dw9807-dw9808-vcc.patch
 9220a6fef8f85e85ded4f24aa1fde180791567b7859a5fa8b32f6d4cbcfdb1eaa19ddda3baef888230407062ec02d190682a31ab2e406f2a7938549f3c94dfae  q6v5-handover-ratelimit.patch
 d010cb467b8d301a6df9052a9a56ff68b7c13cc081e041b3c3fd40f31f4829c345cb8cc00ca60c8bd1bcf6d2739f6c12a89ee3266e15ee8de033e0ee53b4c50e  max17042-max77705-i2c-id.patch
+404083ebe468040eb3dec4e16a62b3a190cb572f70e2784534b3320d57ad0382a609b14102e0d799ae1be776a82ece1a9951bca63be40cbcccf021f657240a12  max77705-mfd-pass2.patch
+6092f5140ea077387f88dc2c4e4263916ff246441ff84bf3cc8e6169fff0bed8969558bae05cf3da497ce9a0fdf4b91294f76a4cf8fa4c03697e1a318dcbda7e  max77705-charger-otg-regulator.patch
 "
