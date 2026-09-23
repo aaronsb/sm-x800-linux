@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=34
+pkgrel=35
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -54,6 +54,7 @@ source="
 	max77705-charger-otg-regulator.patch
 	max77705-charger-battery-info.patch
 	max77705-charger-otg-shutdown.patch
+	max77705-typec.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -158,4 +159,5 @@ d010cb467b8d301a6df9052a9a56ff68b7c13cc081e041b3c3fd40f31f4829c345cb8cc00ca60c8b
 6092f5140ea077387f88dc2c4e4263916ff246441ff84bf3cc8e6169fff0bed8969558bae05cf3da497ce9a0fdf4b91294f76a4cf8fa4c03697e1a318dcbda7e  max77705-charger-otg-regulator.patch
 e0be1bf60e87ebf3c33dc14a7fbaa89a8dd0377660db0125b25d220bc39926cc3d2a13ad01f77d44d8ad3a9d4a614583f9354ed9be696e649d8679f11adc0b97  max77705-charger-battery-info.patch
 166f3061ec098ad984e47079e27f8e7bcc1e14d251dbf64a57ff549ae5d16bce324937dc29039813626dbc76285e07f076ace3fbb8c25a1d9ed53e5bf7ee97f8  max77705-charger-otg-shutdown.patch
+f860bb02d354053aa1f82b2f845d0f1c5745afca211a03230312175a4faee66551de09a01ae498f6b9b13be626309537de28037e6309fb346eeda1e77279be6d  max77705-typec.patch
 "

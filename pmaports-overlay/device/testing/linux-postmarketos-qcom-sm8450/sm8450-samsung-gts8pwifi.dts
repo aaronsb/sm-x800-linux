@@ -25,6 +25,7 @@
 #include <dt-bindings/media/video-interfaces.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
+#include <dt-bindings/usb/pd.h>
 
 #include "sm8450.dtsi"
 #include "pm8350.dtsi"
@@ -276,20 +277,6 @@
 		enable-active-high;
 		startup-delay-us = <5000>;
 		vin-supply = <&cam_io_ldo>;
-	};
-
-	/*
-	 * Manual switch for tablet-sourced USB VBUS (the MAX77705 OTG boost,
-	 * the usb-otg-vbus regulator of charger@69). regulator-output is the
-	 * mainline convention for a userspace-switched rail: it surfaces
-	 *     /sys/devices/platform/vbus-otg/state
-	 * (helper: `vbus-otg on|off`). Default off; the charger refuses to
-	 * enable it while a charger input is present. Switching by Type-C
-	 * attach is ADR-003 stage 3.
-	 */
-	vbus-otg {
-		compatible = "regulator-output";
-		vout-supply = <&max77705_otg_vbus>;
 	};
 
 	/*
@@ -1310,7 +1297,7 @@
 };
 
 /*
- * USB — host mode behind a self-powered hub, USB 2.0 only.
+ * USB — dual role, USB 2.0 only, roles switched by the MAX77705 CCIC.
  *
  * v7.2's sm8450.dtsi uses the FLATTENED dwc3 binding: the single node usb_1
  * (usb@a600000, "qcom,sm8450-dwc3" + "qcom,snps-dwc3") carries both the
@@ -1333,25 +1320,21 @@
  * 2. qcom,select-utmi-as-pipe-clk. With the SuperSpeed phy gone there is no
  *    pipe clock, so the qcom glue must be told to clock from UTMI instead.
  *
- * Host mode, for use with an EXTERNALLY POWERED USB-C dongle/hub.
+ * Roles (ADR-003 stage 3). The Type-C controller is not pmic_glink here:
+ * it is the MAX77705 CCIC (typec@25 on &i2c5, max77705-usbc). Its
+ * connector's port@0 endpoint links to usb_1's HS port below, and that
+ * graph is how the driver finds dwc3's role switch: host when the CCIC
+ * reports a sink partner (it then turns on VBUS through the charger's OTG
+ * boost), device when it reports a source or a PD DR swap to UFP, none
+ * when detached. dr_mode is "otg" and the dtsi's usb-role-switch is kept.
  *
- * Plain host mode failed earlier because the tablet must supply 5V VBUS
- * and nothing switches it. VBUS on this device is NOT pmic_glink — it is
- * the MAX77705 companion PMIC's OTG boost (charger @ i2c5 0x69, CHG_CNFG_00
- * mode field; see the &i2c5 comment), driven from userspace through
- * the charger's usb-otg-vbus regulator. A SELF-POWERED hub sidesteps that entirely: it powers its
- * own downstream ports and presents its D+ pull-up to us, so enumeration
- * proceeds without us sourcing VBUS. That makes USB ethernet (r8152/
- * ax88179/cdc_ether, all modules) and USB HID keyboards reachable.
- *
- * Peripheral (gadget) mode was used first for USB networking to a PC. Switch
- * dr_mode back to "peripheral" for that; note dwc3 wants VBUS detection
- * before it enables its D+ pull-up, which this DTS does not describe.
- *
- * The dtsi sets usb-role-switch on usb_1 for boards with a Type-C
- * controller behind pmic_glink. This board describes no role-switch
- * consumer, and the 6.13 core node that was tested never had the property,
- * so it is deleted here to keep dwc3 in plain fixed-role host mode.
+ * Until r33 this node was fixed in host mode with usb-role-switch deleted,
+ * because nothing on this board consumed the switch and VBUS was a manual
+ * userspace rail (the vbus-otg regulator-output node, now removed: it and
+ * the CCIC driver would both hold the regulator, and a userspace enable
+ * would keep VBUS up across a detach). Before that, gadget mode used
+ * dr_mode = "peripheral"; the role switch now gives dwc3 the attach event
+ * it lacked then.
  *
  * Do NOT /delete-node/ ports here: usb_1_qmpphy's port@1 endpoint has
  * remote-endpoint = <&usb_1_dwc3_ss>, and dtc validates phandles even for
@@ -1361,18 +1344,20 @@
  * because usb_1_qmpphy is disabled and we no longer list it in phys.
  */
 &usb_1 {
-	dr_mode = "host";
+	dr_mode = "otg";
 	maximum-speed = "high-speed";
 
 	/* USB 2.0 only — do not reference the disabled SuperSpeed phy. */
 	phys = <&usb_1_hsphy>;
 	phy-names = "usb2-phy";
 
-	/delete-property/ usb-role-switch;
-
 	qcom,select-utmi-as-pipe-clk;
 
 	status = "okay";
+};
+
+&usb_1_dwc3_hs {
+	remote-endpoint = <&max77705_typec_hs>;
 };
 
 &usb_1_hsphy {
@@ -1453,7 +1438,7 @@
  * i2c5 hosts the MAX77705 Samsung companion PMIC (stock qupv3_se5_i2c):
  * top @0x66, CCIC (Type-C/PD) @0x25, charger @0x69, fuel gauge @0x36.
  * Ownership is ADR-003: the upstream MFD, charger and gauge drivers
- * (stage 2); the CCIC stays undescribed until the stage 3 Type-C driver.
+ * (stage 2) and the max77705-usbc Type-C driver on the CCIC (stage 3).
  * Same QUP plumbing rules as i2c8: wrapper (qupv3_id_0) and GPI DMA
  * (gpi_dma0) must both be enabled or the leaf silently never probes.
  */
@@ -1502,6 +1487,54 @@
 
 		max77705_otg_vbus: usb-otg-vbus {
 			regulator-name = "usb_otg_vbus";
+		};
+	};
+
+	/*
+	 * MAX77705 CCIC: Type-C detection and the PD policy engine run in its
+	 * own firmware (5F.00), driven through a mailbox (max77705-usbc.c).
+	 * Like the charger and gauge it is its own I2C client with its
+	 * interrupt from the top's USBC source (3). The driver switches VBUS
+	 * with the charger's OTG boost on a sink attach, sets dwc3's role, and
+	 * as a sink picks a fixed PDO of at most 9 V and 15 W, lowering the
+	 * charger input limit (maxim,charger) before asking for more voltage.
+	 * Those limits are enforced in the driver whatever the node says;
+	 * sink-pdos are stock's max77705,snkcap_data without its variable
+	 * and PPS entries, and the driver drops any non-fixed or >9 V entry.
+	 */
+	typec@25 {
+		compatible = "maxim,max77705-usbc";
+		reg = <0x25>;
+		interrupt-parent = <&max77705>;
+		interrupts = <3>;
+		vbus-supply = <&max77705_otg_vbus>;
+		maxim,charger = <&max77705_charger>;
+
+		connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE |
+						PDO_FIXED_HIGHER_CAP |
+						PDO_FIXED_USB_COMM |
+						PDO_FIXED_DATA_SWAP)
+				     PDO_FIXED(9000, 2000, 0)>;
+			op-sink-microwatt = <15000000>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					max77705_typec_hs: endpoint {
+						remote-endpoint = <&usb_1_dwc3_hs>;
+					};
+				};
+			};
 		};
 	};
 
