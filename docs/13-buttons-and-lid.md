@@ -343,6 +343,36 @@ the follow-ups. The packaging consequence is immediate: a hand install
 of device r27 needs `systemctl restart systemd-logind` or a reboot before
 the drop-in takes effect. `make install-tablet` reboots.
 
+## Deliberate suspends and the wake sources
+
+Three suspends on 2026-09-23 (issue #49), each from an open folio:
+
+| move while asleep | wakes | console after thaw, r27 |
+|---|---|---|
+| power button | yes | lit, then blanked |
+| folio front cover closed and reopened | no | n/a |
+| tablet lifted off the folio's back panel | yes, tlmm 23 | lit |
+
+Closing the front cover moves no hall switch; the close is visible only
+to the magnetometer, which sits on the SLPI and cannot wake the SoC.
+Tlmm 23 edges when the tablet leaves or rejoins the folio's back panel
+and wakes the system through the PDC. With this folio, only the power
+button and lifting the tablet off wake it.
+
+The power-button wake blanked the console under r27: the wake press
+stays queued on console-blank's `pmic_pwrkey` descriptor and the first
+poll after thaw read it as a toggle. **Device r28** reads
+`/sys/power/suspend_stats/success` each poll; when the count moves it
+drops everything queued across the sleep and, with the lid not closed,
+lights the console. Verified on the tablet: power-button wake, console
+lit and kept lit, journal `resumed from suspend 4, lid open`; the
+awake toggle unchanged.
+
+Suspending over ssh: logind refuses `systemctl suspend` while an ssh
+session is open, since sshd's PAM session holds a block inhibitor and
+polkit denies root `-i`. `sudo systemctl start systemd-suspend.service`
+suspends without the inhibitor check.
+
 ## By hand
 
 ```sh
@@ -379,8 +409,11 @@ the magnet moves.
   lines per event; a ratelimit in the kernel handler is the upstream
   shape.
 - Lid close to suspend. Suspend and resume work, issue #49, and a policy
-  that uses them belongs in an ADR-002 amendment. Until then logind
+  that uses them belongs in an ADR-002 amendment. Opening the front
+  cover cannot wake the tablet, so a lid-close suspend would need the
+  power button or lifting the tablet off to come back. Until then logind
   ignores the lid and console-blank owns the display.
+- DPU vblank timeouts after one resume in three, issue #51.
 - The pen-forgotten notification. An `aplay` tone is the first
   candidate; today it is a journal line.
 - The power button counts bytes on the `pmic_pwrkey` descriptor, so a

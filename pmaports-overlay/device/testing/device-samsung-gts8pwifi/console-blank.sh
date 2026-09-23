@@ -22,6 +22,13 @@
 # the console, blank if visible and visible if blanked. Every other device
 # counts as activity. logind ignores the key (HandlePowerKey=ignore).
 #
+# Resume: the press that wakes the system from suspend is queued on the
+# held pmic_pwrkey descriptor and would read as a toggle on the first poll
+# after thaw, blanking the console the operator just woke (#49). Each poll
+# compares the kernel's count of successful suspends with the last one;
+# when it moved, everything queued across the sleep is discarded and, with
+# the lid not closed, the console is lit.
+#
 # DPMS is deliberately not used: on 2026-09-22 a DPMS off (VT blank timer
 # or panel-blank off) hung the tablet about a minute later and it reset
 # itself, twice. Issue #41 tracks that. panel-blank off/on remains the
@@ -48,6 +55,7 @@ READ_WINDOW=0.05
 FOLIO_NAME=folio-state
 PWRKEY_NAME=pmic_pwrkey
 KICK_S=3
+SUSPEND_STATS=/sys/power/suspend_stats/success
 
 [ -r "$CONF" ] && . "$CONF"
 BLANK_MIN=${BLANK_MIN:-10}
@@ -142,6 +150,19 @@ poll_inputs() {
 	done
 }
 
+# successful suspends since boot; empty when the kernel does not count
+suspend_count() {
+	cat "$SUSPEND_STATS" 2>/dev/null
+}
+
+# true once per resume: the suspend count moved since the last call
+SUSPENDS=""
+resumed() {
+	n=$(suspend_count)
+	[ "$n" != "$SUSPENDS" ] || return 1
+	SUSPENDS=$n
+}
+
 # ask foliod for a sample now, at most once per KICK_S; it decides what
 # the lid is
 LAST_KICK=0
@@ -208,12 +229,25 @@ run() {
 	limit=$((BLANK_MIN * 60))
 	idle=0
 	lid=open
+	SUSPENDS=$(suspend_count)
 	echo "console-blank: blank after $BLANK_MIN min, watching $(echo $FDS | wc -w) input devices, polling every $POLL s, folio-state ${FOLIO:-absent}"
 	while :; do
 		sleep "$POLL"
 		rescan_inputs
 		prev=$lid
 		lid=$(lid_state)
+		if resumed; then
+			# back from suspend: drop the wake press and anything else
+			# queued across the sleep; a closed lid falls through and
+			# keeps the console dark
+			poll_inputs
+			echo "console-blank: resumed from suspend $SUSPENDS, lid $lid"
+			if [ "$lid" != closed ]; then
+				console_on || unblank
+				idle=0
+				continue
+			fi
+		fi
 		if [ "$lid" = closed ]; then
 			# folio closed: dark, and nothing typed or pressed brings it
 			# back; foliod is told there was input so it re-checks the lid
