@@ -1,0 +1,690 @@
+usb: typec: max77705: review fixes for VBUS, events, recovery and the mailbox
+
+From review of the Type-C driver on the Galaxy Tab S8+:
+
+- VBUS could stay on while the port was a sink. PRSWAP_SWAPTOSRC enabled
+  it without looking at CCStat, a hard reset as sink never turned it
+  off, and CC updates that left CCStat unchanged (or moved to audio or
+  debug) never checked it. VBUS is now on only while CCStat is SOURCE:
+  every CC update turns it off otherwise, the hard-reset path does too,
+  the enable itself refuses outside SOURCE, and the swap-to-source
+  enable goes through the same checked path.
+- PDMsg and SYSMsg are reports, not levels: the next message overwrites
+  PD_STATUS0 and USBC_STATUS2, and the work read them after the fact,
+  so bursts were coalesced and a BOOT_WDT/BOOT_POR could be missed. The
+  interrupt handler now reads them with the interrupt that announced
+  them and queues the event in a small kfifo, which the work drains in
+  order. An overflow triggers a resync from levels, and a dropped reset
+  report is kept in a flag. As a backstop, the work compares the
+  interrupt masks with those read back after hw_init; a CCIC reset puts
+  them back to their defaults, so a mismatch re-initializes.
+- The recovery cap was permanent: after 8 CCIC resets, over any length of
+  uptime, the driver stopped re-initializing and carried on with a
+  firmware that had forgotten its settings. Recovery is now rate limited
+  (4 per 60 s). Past the limit, or when hw_init fails, the port is held
+  safe (VBUS off, charger input limit at 500 mA, events ignored) and
+  recovery is tried again once the window has passed.
+- vbus_on could disagree with the hardware. It now tracks the enable
+  reference this driver holds; the regulator core keeps that reference
+  when a disable fails, so the next update retries. VBUS found on at
+  probe is switched off by taking and dropping a reference before the
+  first state sync, and detach logs if the boost is still on.
+- A late APCmdRes from a timed-out command could complete the next
+  command's wait, and a repeated opcode such as CTRL1_W passes the echo
+  check. After a timeout the command path waits 50 ms and re-arms the
+  completion before it releases the mailbox.
+- After a swap to source the enable can be refused with -EBUSY while the
+  old source's VBUS decays. The enable is retried from vbus_work, which
+  re-checks CCStat, up to 10 times at 100 ms.
+- The probe-time poll kept UIC bits for the first sync, including the
+  BOOT_POR that the probe's own hw_init answers, which cost a needless
+  re-initialization. Those bits are dropped; the first sync reads levels.
+
+diff --git a/drivers/usb/typec/max77705.c b/drivers/usb/typec/max77705.c
+index 8937fd3c3..480504d65 100644
+--- a/drivers/usb/typec/max77705.c
++++ b/drivers/usb/typec/max77705.c
+@@ -24,6 +24,7 @@
+ #include <linux/i2c.h>
+ #include <linux/interrupt.h>
+ #include <linux/jiffies.h>
++#include <linux/kfifo.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+@@ -169,7 +170,16 @@ enum max77705_ccistat {
+ #define MAX77705_PD_RETRY_MS		500
+ #define MAX77705_PD_BACKOFF_MS		60000
+ #define MAX77705_VBUS_RESTORE_MS	760	/* pd.c:1232 */
+-#define MAX77705_MAX_RECOVERIES		8
++/* VBUS enable refused (-EBUSY while the old source's VBUS decays): retry */
++#define MAX77705_VBUS_RETRY_MS		100
++#define MAX77705_VBUS_RETRIES		10
++/* CCIC resets recovered per window before the port is held in a safe state */
++#define MAX77705_RECOVERY_BURST		4
++#define MAX77705_RECOVERY_WINDOW_MS	60000
++/* after a command timeout, how long a late APCmdRes is waited out */
++#define MAX77705_CMD_SETTLE_MS		50
++/* interrupt events queued between the handler and the work */
++#define MAX77705_EV_FIFO_SIZE		16
+ 
+ /*
+  * Sink capabilities when the connector node has no sink-pdos: stock's
+@@ -183,6 +193,18 @@ static const u32 max77705_default_snk_pdos[] = {
+ 	PDO_FIXED(9000, 2000, 0),
+ };
+ 
++/*
++ * One interrupt, as the handler saw it. PDMsg and SYSMsg are reports, not
++ * levels: a later message overwrites PD_STATUS0 and USBC_STATUS2, so they
++ * are read in the handler, with the interrupt that announced them.
++ */
++struct max77705_usbc_ev {
++	u8 uic;
++	u8 pd;
++	u8 pdmsg;
++	u8 sysmsg;
++};
++
+ struct max77705_usbc {
+ 	struct device *dev;
+ 	struct regmap *regmap;
+@@ -190,15 +212,18 @@ struct max77705_usbc {
+ 	struct work_struct work;
+ 	struct delayed_work pd_retry_work;
+ 	struct delayed_work vbus_work;
++	struct delayed_work recover_work;
+ 
+ 	/* serializes the mailbox and all port state below */
+ 	struct mutex lock;
+ 	struct completion cmd_done;
+ 	bool irq_ready;
+ 
+-	/* interrupt bits collected by the handler, consumed by the work */
++	/* events queued by the handler, consumed in order by the work */
+ 	spinlock_t ev_lock;
+-	u8 ev_uic, ev_pd;
++	DECLARE_KFIFO(ev_fifo, struct max77705_usbc_ev, MAX77705_EV_FIFO_SIZE);
++	bool ev_overflow;	/* an event was dropped: resync from levels */
++	bool ev_reset_lost;	/* a dropped event reported a CCIC reset */
+ 
+ 	struct typec_port *port;
+ 	struct typec_partner *partner;
+@@ -214,8 +239,14 @@ struct max77705_usbc {
+ 
+ 	enum max77705_ccstat ccstat;
+ 	u8 cc_status0;
+-	bool vbus_on;
++	bool vbus_on;		/* we hold an enable reference on vbus */
++	unsigned int vbus_retries;
++
++	/* CCIC reset recovery, rate limited */
+ 	unsigned int recoveries;
++	unsigned long recovery_window;
++	bool halted;		/* held safe: VBUS off, input limit low */
++	u8 masks[4];		/* UIC/CC/PD/VDM_INT_M as read after hw_init */
+ 
+ 	/* sink PD state, reset on detach */
+ 	bool pd_contract;
+@@ -308,11 +339,12 @@ static int max77705_usbc_wait_cmd(struct max77705_usbc *u)
+ 
+ 	/*
+ 	 * Before the interrupt is requested (probe), poll UIC_INT. The read
+-	 * clears it, so keep the other bits for the first state sync.
++	 * clears it; the other bits are dropped. The only one the work acts
++	 * on is SYSMsg, and a BOOT_POR reported now is the reset hw_init is
++	 * already answering; CC and PD state are synced from levels after.
+ 	 */
+ 	ret = regmap_read_poll_timeout(u->regmap, MAX77705_UIC_INT, val,
+-				       ({ u->ev_uic |= val & ~MAX77705_UIC_APCMDRES;
+-					  val & MAX77705_UIC_APCMDRES; }),
++				       val & MAX77705_UIC_APCMDRES,
+ 				       MAX77705_CMD_POLL_US,
+ 				       MAX77705_CMD_TIMEOUT_MS * USEC_PER_MSEC);
+ 	return ret;
+@@ -359,6 +391,16 @@ static int max77705_usbc_cmd(struct max77705_usbc *u, u8 op,
+ 	ret = max77705_usbc_wait_cmd(u);
+ 	if (ret) {
+ 		dev_warn(u->dev, "opcode 0x%02x: no response (%d)\n", op, ret);
++		/*
++		 * A late APCmdRes for this command would complete the next
++		 * command's wait, and a repeated opcode (CTRL1_W) passes the
++		 * echo check. Wait it out and discard it while the mailbox is
++		 * still ours.
++		 */
++		if (u->irq_ready) {
++			msleep(MAX77705_CMD_SETTLE_MS);
++			reinit_completion(&u->cmd_done);
++		}
+ 		return ret;
+ 	}
+ 
+@@ -447,34 +489,71 @@ static void max77705_usbc_restore_ilim(struct max77705_usbc *u)
+ 
+ /* VBUS */
+ 
+-static void max77705_usbc_vbus_set(struct max77705_usbc *u, bool on)
++/*
++ * vbus_on tracks the enable reference this driver holds on the OTG
++ * regulator. The regulator core keeps the reference when a disable fails,
++ * so vbus_on stays true then and the next call to turn VBUS off retries.
++ */
++static int max77705_usbc_vbus_set(struct max77705_usbc *u, bool on)
+ {
+ 	int ret;
+ 
+ 	if (!u->vbus || u->vbus_on == on)
+-		return;
++		return 0;
+ 
+ 	if (on) {
++		if (u->halted)
++			return -EPERM;
++
++		/* VBUS is sourced only while the port is the source. */
++		if (WARN_ON_ONCE(u->ccstat != MAX77705_CC_SOURCE))
++			return -EINVAL;
++
+ 		ret = regulator_enable(u->vbus);
+ 		if (ret) {
+ 			/*
+-			 * -EBUSY: the charger sees CHGIN, so the partner is
+-			 * powering the bus. Do not retry; the next attach
+-			 * transition tries again.
++			 * -EBUSY: the charger sees CHGIN, so something is
++			 * powering the bus (the partner, or its VBUS still
++			 * decaying after a swap). The caller may retry.
+ 			 */
+ 			dev_warn(u->dev, "VBUS not sourced (%d)\n", ret);
+-			return;
++			return ret;
+ 		}
+ 	} else {
+ 		ret = regulator_disable(u->vbus);
+ 		if (ret) {
+-			dev_err(u->dev, "failed to stop VBUS (%d)\n", ret);
+-			return;
++			dev_err(u->dev, "failed to stop VBUS (%d), will retry\n", ret);
++			return ret;
+ 		}
+ 	}
+ 
+ 	u->vbus_on = on;
+ 	dev_dbg(u->dev, "VBUS %s\n", on ? "on" : "off");
++	return 0;
++}
++
++static void max77705_usbc_vbus_off(struct max77705_usbc *u)
++{
++	cancel_delayed_work(&u->vbus_work);
++	max77705_usbc_vbus_set(u, false);
++}
++
++/*
++ * Source VBUS now if the port is the source; if the charger refuses (a
++ * partner's VBUS still decaying), retry from vbus_work a bounded number
++ * of times. vbus_work re-checks CCStat on each try.
++ */
++static void max77705_usbc_vbus_source(struct max77705_usbc *u,
++				      unsigned int delay_ms)
++{
++	u->vbus_retries = 0;
++
++	if (!delay_ms && u->ccstat == MAX77705_CC_SOURCE &&
++	    !max77705_usbc_vbus_set(u, true))
++		return;
++
++	queue_delayed_work(u->wq, &u->vbus_work,
++			   msecs_to_jiffies(delay_ms ?: MAX77705_VBUS_RETRY_MS));
+ }
+ 
+ static void max77705_usbc_vbus_work(struct work_struct *work)
+@@ -483,8 +562,15 @@ static void max77705_usbc_vbus_work(struct work_struct *work)
+ 					       struct max77705_usbc, vbus_work);
+ 
+ 	mutex_lock(&u->lock);
+-	if (u->ccstat == MAX77705_CC_SOURCE)
+-		max77705_usbc_vbus_set(u, true);
++	if (u->ccstat == MAX77705_CC_SOURCE && !u->halted &&
++	    max77705_usbc_vbus_set(u, true)) {
++		if (++u->vbus_retries < MAX77705_VBUS_RETRIES)
++			queue_delayed_work(u->wq, &u->vbus_work,
++					   msecs_to_jiffies(MAX77705_VBUS_RETRY_MS));
++		else
++			dev_warn(u->dev, "VBUS not sourced after %u tries\n",
++				 u->vbus_retries);
++	}
+ 	mutex_unlock(&u->lock);
+ }
+ 
+@@ -574,8 +660,11 @@ static void max77705_usbc_pd_reset(struct max77705_usbc *u)
+ 
+ static void max77705_usbc_detach(struct max77705_usbc *u)
+ {
+-	cancel_delayed_work(&u->vbus_work);
+-	max77705_usbc_vbus_set(u, false);
++	max77705_usbc_vbus_off(u);
++
++	/* Nothing else enables the OTG regulator; it must be off now. */
++	if (u->vbus && !u->vbus_on && regulator_is_enabled(u->vbus) > 0)
++		dev_err(u->dev, "VBUS still on after detach\n");
+ 
+ 	if (u->partner) {
+ 		typec_unregister_partner(u->partner);
+@@ -612,6 +701,13 @@ static void max77705_usbc_update_cc(struct max77705_usbc *u, u8 cc_status0)
+ 
+ 	u->cc_status0 = cc_status0;
+ 
++	/*
++	 * VBUS only while we are the source, checked on every update, not
++	 * just on a change of CCStat.
++	 */
++	if (ccstat != MAX77705_CC_SOURCE)
++		max77705_usbc_vbus_off(u);
++
+ 	if (ccstat == MAX77705_CC_NONE) {
+ 		if (old != MAX77705_CC_NONE) {
+ 			dev_dbg(u->dev, "detached\n");
+@@ -635,7 +731,6 @@ static void max77705_usbc_update_cc(struct max77705_usbc *u, u8 cc_status0)
+ 
+ 	switch (ccstat) {
+ 	case MAX77705_CC_SINK:
+-		max77705_usbc_vbus_set(u, false);
+ 		typec_set_pwr_role(u->port, TYPEC_SINK);
+ 		typec_set_pwr_opmode(u->port, max77705_usbc_opmode(cc_status0));
+ 		if (old == MAX77705_CC_NONE) {
+@@ -654,7 +749,7 @@ static void max77705_usbc_update_cc(struct max77705_usbc *u, u8 cc_status0)
+ 			max77705_usbc_restore_ilim(u);
+ 			max77705_usbc_pd_reset(u);
+ 		}
+-		max77705_usbc_vbus_set(u, true);
++		max77705_usbc_vbus_source(u, 0);
+ 		break;
+ 	case MAX77705_CC_AUDIO:
+ 	case MAX77705_CC_DEBUG:
+@@ -875,12 +970,14 @@ static void max77705_usbc_hard_reset(struct max77705_usbc *u)
+ {
+ 	if (u->ccstat == MAX77705_CC_SOURCE) {
+ 		/* Drop VBUS and bring it back, as pd.c:1221-1270 does. */
+-		max77705_usbc_vbus_set(u, false);
+-		queue_delayed_work(u->wq, &u->vbus_work,
+-				   msecs_to_jiffies(MAX77705_VBUS_RESTORE_MS));
++		max77705_usbc_vbus_off(u);
++		max77705_usbc_vbus_source(u, MAX77705_VBUS_RESTORE_MS);
+ 		return;
+ 	}
+ 
++	/* Not the source: whatever happened before, VBUS is not ours. */
++	max77705_usbc_vbus_off(u);
++
+ 	if (u->ccstat != MAX77705_CC_SINK)
+ 		return;
+ 
+@@ -937,11 +1034,16 @@ static void max77705_usbc_pdmsg(struct max77705_usbc *u, u8 msg)
+ 	case MAX77705_PDMSG_VBUS_TURN_OFF:
+ 	case MAX77705_PDMSG_PRSWAP_SRCTOSWAP:
+ 	case MAX77705_PDMSG_PRSWAP_SWAPTOSNK:
+-		cancel_delayed_work(&u->vbus_work);
+-		max77705_usbc_vbus_set(u, false);
++		max77705_usbc_vbus_off(u);
+ 		break;
+ 	case MAX77705_PDMSG_PRSWAP_SWAPTOSRC:
+-		max77705_usbc_vbus_set(u, true);
++		/*
++		 * Only as the source: CC_STATUS0 is read before this report
++		 * is handled, so CCStat is current. If the firmware has not
++		 * moved to SOURCE yet, or the partner's VBUS has not decayed,
++		 * vbus_work retries and re-checks CCStat.
++		 */
++		max77705_usbc_vbus_source(u, 0);
+ 		break;
+ 	default:
+ 		break;
+@@ -980,6 +1082,12 @@ static int max77705_usbc_hw_init(struct max77705_usbc *u)
+ 	if (ret)
+ 		return ret;
+ 
++	/* Kept to notice a CCIC reset that no SYSMsg reported. */
++	ret = regmap_bulk_read(u->regmap, MAX77705_UIC_INT_M, u->masks,
++			       sizeof(u->masks));
++	if (ret)
++		return ret;
++
+ 	ret = max77705_usbc_cmd_byte(u, MAX77705_OP_FACTORY_TEST,
+ 				     MAX77705_AUTO_VBUS_OFF);
+ 	if (ret)
+@@ -1003,92 +1111,212 @@ static int max77705_usbc_hw_init(struct max77705_usbc *u)
+ 				      MAX77705_ALTMODE_SRC_VDM);
+ }
+ 
+-static void max77705_usbc_sysmsg(struct max77705_usbc *u)
++static bool max77705_sysmsg_is_reset(u8 msg)
+ {
+-	unsigned int msg;
+-	int ret;
++	return msg == MAX77705_SYSMSG_BOOT_WDT || msg == MAX77705_SYSMSG_BOOT_POR;
++}
+ 
+-	if (regmap_read(u->regmap, MAX77705_USBC_STATUS2, &msg))
+-		return;
++/*
++ * The CCIC cannot be trusted to follow policy: VBUS off, the input limit
++ * at the safe floor, and the port ignored until a re-initialization
++ * succeeds.
++ */
++static void max77705_usbc_fail_safe(struct max77705_usbc *u, const char *why)
++{
++	dev_err(u->dev, "%s: holding the port safe (VBUS off, input limit %d uA)\n",
++		why, MAX77705_ILIM_SAFE_UA);
+ 
+-	if (msg != MAX77705_SYSMSG_BOOT_WDT && msg != MAX77705_SYSMSG_BOOT_POR) {
+-		if (msg)
+-			dev_dbg(u->dev, "SYSMsg 0x%02x\n", msg);
+-		return;
++	if (u->ccstat != MAX77705_CC_NONE)
++		max77705_usbc_detach(u);
++	else
++		max77705_usbc_vbus_off(u);
++
++	if (u->chg_psy)
++		max77705_usbc_set_ilim(u, MAX77705_ILIM_SAFE_UA);
++
++	u->halted = true;
++
++	/* Try again once the recovery window has passed. */
++	queue_delayed_work(u->wq, &u->recover_work,
++			   msecs_to_jiffies(MAX77705_RECOVERY_WINDOW_MS));
++}
++
++/*
++ * After a CCIC watchdog or power-on reset, redo hw_init. At most
++ * MAX77705_RECOVERY_BURST times per MAX77705_RECOVERY_WINDOW_MS; a CCIC
++ * resetting faster than that is held safe until the window has passed.
++ */
++static void max77705_usbc_recover(struct max77705_usbc *u, const char *what)
++{
++	unsigned long window = msecs_to_jiffies(MAX77705_RECOVERY_WINDOW_MS);
++	int ret;
++
++	if (!u->recoveries || time_after(jiffies, u->recovery_window + window)) {
++		u->recovery_window = jiffies;
++		u->recoveries = 0;
+ 	}
+ 
+-	if (u->recoveries >= MAX77705_MAX_RECOVERIES) {
+-		dev_err_ratelimited(u->dev, "CCIC reset (0x%02x), recovery limit reached\n",
+-				    msg);
++	if (u->recoveries >= MAX77705_RECOVERY_BURST) {
++		if (!u->halted)
++			max77705_usbc_fail_safe(u, "CCIC reset too often");
+ 		return;
+ 	}
+ 	u->recoveries++;
+ 
+-	dev_warn(u->dev, "CCIC %s, re-initializing\n",
+-		 msg == MAX77705_SYSMSG_BOOT_WDT ? "watchdog reset" : "power-on reset");
++	dev_warn(u->dev, "CCIC %s, re-initializing\n", what);
+ 
+ 	/* The firmware has forgotten any contract and our settings. */
+ 	if (u->ccstat != MAX77705_CC_NONE)
+ 		max77705_usbc_detach(u);
+ 
+ 	ret = max77705_usbc_hw_init(u);
+-	if (ret)
++	if (ret) {
+ 		dev_err(u->dev, "re-initialization failed (%d)\n", ret);
++		if (!u->halted)
++			max77705_usbc_fail_safe(u, "CCIC not initialized");
++		return;
++	}
++
++	if (u->halted) {
++		dev_info(u->dev, "CCIC re-initialized, resuming\n");
++		u->halted = false;
++		max77705_usbc_restore_ilim(u);
++	}
+ }
+ 
+-static void max77705_usbc_work(struct work_struct *work)
++/*
++ * Belt and braces for a reset whose SYSMsg was never seen: the interrupt
++ * masks return to their reset values with the firmware, so masks other
++ * than those read back after hw_init mean the CCIC has reset since.
++ */
++static bool max77705_usbc_masks_lost(struct max77705_usbc *u)
+ {
+-	struct max77705_usbc *u = container_of(work, struct max77705_usbc, work);
+-	unsigned int cc_status0, pd_status0;
+-	unsigned long flags;
+-	u8 uic, pd;
++	u8 masks[sizeof(u->masks)];
+ 
+-	spin_lock_irqsave(&u->ev_lock, flags);
+-	uic = u->ev_uic;
+-	pd = u->ev_pd;
+-	u->ev_uic = 0;
+-	u->ev_pd = 0;
+-	spin_unlock_irqrestore(&u->ev_lock, flags);
++	if (regmap_bulk_read(u->regmap, MAX77705_UIC_INT_M, masks, sizeof(masks)))
++		return false;
+ 
+-	mutex_lock(&u->lock);
++	if (!memcmp(masks, u->masks, sizeof(masks)))
++		return false;
+ 
+-	if (uic & MAX77705_UIC_SYSMSG)
+-		max77705_usbc_sysmsg(u);
++	dev_warn(u->dev, "interrupt masks %*ph, expected %*ph\n",
++		 (int)sizeof(masks), masks, (int)sizeof(u->masks), u->masks);
++	return true;
++}
+ 
+-	/*
+-	 * CC and PD state are read as levels, so a CC_INT event needs no
+-	 * record of its own; the PD events add triggers.
+-	 */
+-	if (regmap_read(u->regmap, MAX77705_CC_STATUS0, &cc_status0) ||
+-	    regmap_read(u->regmap, MAX77705_PD_STATUS0, &pd_status0))
+-		goto out;
++/*
++ * Handle one interrupt event. CC and data-role state are read as levels
++ * here; PDMsg and SYSMsg come from the event, as read by the handler.
++ */
++static void max77705_usbc_handle_ev(struct max77705_usbc *u,
++				    const struct max77705_usbc_ev *ev)
++{
++	unsigned int cc_status0;
++
++	if ((ev->uic & MAX77705_UIC_SYSMSG) && ev->sysmsg) {
++		if (max77705_sysmsg_is_reset(ev->sysmsg))
++			max77705_usbc_recover(u, ev->sysmsg == MAX77705_SYSMSG_BOOT_WDT ?
++					      "watchdog reset" : "power-on reset");
++		else
++			dev_dbg(u->dev, "SYSMsg 0x%02x\n", ev->sysmsg);
++	}
++
++	if (u->halted)
++		return;
++
++	if (regmap_read(u->regmap, MAX77705_CC_STATUS0, &cc_status0))
++		return;
+ 
+ 	max77705_usbc_update_cc(u, cc_status0);
+ 
+-	if (pd & MAX77705_PD_DATAROLE)
++	if (ev->pd & MAX77705_PD_DATAROLE)
+ 		max77705_usbc_update_data_role(u);
+ 
+-	if (pd & MAX77705_PD_PDMSG)
+-		max77705_usbc_pdmsg(u, pd_status0);
++	if (ev->pd & MAX77705_PD_PDMSG)
++		max77705_usbc_pdmsg(u, ev->pdmsg);
+ 
+-	if ((pd & MAX77705_PD_PSRDY) ||
+-	    ((pd & MAX77705_PD_PDMSG) && pd_status0 == MAX77705_PDMSG_SNK_PSRDY) ||
++	if ((ev->pd & MAX77705_PD_PSRDY) ||
++	    ((ev->pd & MAX77705_PD_PDMSG) && ev->pdmsg == MAX77705_PDMSG_SNK_PSRDY) ||
+ 	    (u->ccstat == MAX77705_CC_SINK && !u->pd_contract))
+ 		max77705_usbc_pd_ready(u);
++}
++
++static void max77705_usbc_recover_work(struct work_struct *work)
++{
++	struct max77705_usbc *u = container_of(to_delayed_work(work),
++					       struct max77705_usbc, recover_work);
++	struct max77705_usbc_ev ev = { };
++
++	mutex_lock(&u->lock);
++	if (u->halted) {
++		max77705_usbc_recover(u, "held after resets");
++		/* Pick up whatever is attached now. */
++		max77705_usbc_handle_ev(u, &ev);
++	}
++	mutex_unlock(&u->lock);
++}
++
++static void max77705_usbc_work(struct work_struct *work)
++{
++	struct max77705_usbc *u = container_of(work, struct max77705_usbc, work);
++	struct max77705_usbc_ev ev;
++	bool overflow, reset_lost, got, any = false;
++	unsigned long flags;
++
++	mutex_lock(&u->lock);
++
++	for (;;) {
++		spin_lock_irqsave(&u->ev_lock, flags);
++		got = kfifo_get(&u->ev_fifo, &ev);
++		spin_unlock_irqrestore(&u->ev_lock, flags);
++		if (!got)
++			break;
++
++		max77705_usbc_handle_ev(u, &ev);
++		any = true;
++	}
++
++	spin_lock_irqsave(&u->ev_lock, flags);
++	overflow = u->ev_overflow;
++	reset_lost = u->ev_reset_lost;
++	u->ev_overflow = false;
++	u->ev_reset_lost = false;
++	spin_unlock_irqrestore(&u->ev_lock, flags);
++
++	if (overflow)
++		dev_warn(u->dev, "interrupt events dropped, resyncing\n");
++
++	if (reset_lost || max77705_usbc_masks_lost(u)) {
++		max77705_usbc_recover(u, reset_lost ? "reset (queued late)" :
++				      "reset (masks lost)");
++		any = false;
++	}
++
++	/*
++	 * The first run after probe, an overflow and a recovery resync from
++	 * levels; the PD handlers are idempotent.
++	 */
++	if (!any || overflow) {
++		memset(&ev, 0, sizeof(ev));
++		max77705_usbc_handle_ev(u, &ev);
++	}
+ 
+-out:
+ 	mutex_unlock(&u->lock);
+ }
+ 
+ /*
+  * Nested in the MAX77705 top's interrupt thread. Reading the four
+  * interrupt registers clears them (stock max77705-irq.c:339-341). Mailbox
+- * commands wait for APCmdRes here, so all other work is deferred.
++ * commands wait for APCmdRes here, so all other work is deferred; the
++ * PDMsg and SYSMsg reports are read now, before a later message can
++ * overwrite them, and queued in order.
+  */
+ static irqreturn_t max77705_usbc_irq(int irq, void *data)
+ {
+ 	struct max77705_usbc *u = data;
++	struct max77705_usbc_ev ev = { };
+ 	unsigned long flags;
++	unsigned int val;
+ 	u8 ints[4];
+ 
+ 	if (regmap_bulk_read(u->regmap, MAX77705_UIC_INT, ints, sizeof(ints)))
+@@ -1097,13 +1325,24 @@ static irqreturn_t max77705_usbc_irq(int irq, void *data)
+ 	if (ints[0] & MAX77705_UIC_APCMDRES)
+ 		complete(&u->cmd_done);
+ 
+-	ints[0] &= ~MAX77705_UIC_APCMDRES;
+-	if (!ints[0] && !ints[1] && !ints[2])
++	ev.uic = ints[0] & ~MAX77705_UIC_APCMDRES;
++	ev.pd = ints[2];
++	if (!ev.uic && !ints[1] && !ev.pd)
+ 		return IRQ_HANDLED;
+ 
++	if ((ev.uic & MAX77705_UIC_SYSMSG) &&
++	    !regmap_read(u->regmap, MAX77705_USBC_STATUS2, &val))
++		ev.sysmsg = val;
++	if ((ev.pd & MAX77705_PD_PDMSG) &&
++	    !regmap_read(u->regmap, MAX77705_PD_STATUS0, &val))
++		ev.pdmsg = val;
++
+ 	spin_lock_irqsave(&u->ev_lock, flags);
+-	u->ev_uic |= ints[0];
+-	u->ev_pd |= ints[2];
++	if (!kfifo_put(&u->ev_fifo, ev)) {
++		u->ev_overflow = true;
++		if (max77705_sysmsg_is_reset(ev.sysmsg))
++			u->ev_reset_lost = true;
++	}
+ 	spin_unlock_irqrestore(&u->ev_lock, flags);
+ 
+ 	queue_work(u->wq, &u->work);
+@@ -1218,10 +1457,13 @@ static void max77705_usbc_teardown(void *data)
+ 	cancel_work_sync(&u->work);
+ 	cancel_delayed_work_sync(&u->pd_retry_work);
+ 	cancel_delayed_work_sync(&u->vbus_work);
++	cancel_delayed_work_sync(&u->recover_work);
+ 
+ 	mutex_lock(&u->lock);
+ 	if (u->ccstat != MAX77705_CC_NONE)
+ 		max77705_usbc_detach(u);
++	else
++		max77705_usbc_vbus_off(u);
+ 	mutex_unlock(&u->lock);
+ 
+ 	typec_unregister_port(u->port);
+@@ -1253,6 +1495,8 @@ static int max77705_usbc_probe(struct i2c_client *client)
+ 	INIT_WORK(&u->work, max77705_usbc_work);
+ 	INIT_DELAYED_WORK(&u->pd_retry_work, max77705_usbc_pd_retry_work);
+ 	INIT_DELAYED_WORK(&u->vbus_work, max77705_usbc_vbus_work);
++	INIT_DELAYED_WORK(&u->recover_work, max77705_usbc_recover_work);
++	INIT_KFIFO(u->ev_fifo);
+ 
+ 	u->regmap = devm_regmap_init_i2c(client, &max77705_usbc_regmap_config);
+ 	if (IS_ERR(u->regmap))
+@@ -1277,6 +1521,26 @@ static int max77705_usbc_probe(struct i2c_client *client)
+ 		u->vbus = NULL;
+ 	}
+ 
++	/*
++	 * VBUS left on (a previous instance of this driver, the bootloader):
++	 * a consumer can only drop a reference it holds, so take one and
++	 * drop it, which switches the boost off. The enable does not touch
++	 * the hardware when it is already on. The first state sync turns it
++	 * back on if a sink is attached. If the disable fails the core keeps
++	 * our reference, and vbus_on records that so the sync retries.
++	 */
++	if (u->vbus && regulator_is_enabled(u->vbus) > 0) {
++		dev_warn(dev, "VBUS on at probe, switching it off\n");
++		ret = regulator_enable(u->vbus);
++		if (ret)
++			return dev_err_probe(dev, ret, "cannot take over VBUS\n");
++		ret = regulator_disable(u->vbus);
++		if (ret) {
++			dev_err(dev, "failed to stop VBUS (%d), will retry\n", ret);
++			u->vbus_on = true;
++		}
++	}
++
+ 	/* Without the charger the sink stays at 5 V; see pd_request(). */
+ 	u->chg_psy = devm_power_supply_get_by_reference(dev, "maxim,charger");
+ 	if (!u->chg_psy)
