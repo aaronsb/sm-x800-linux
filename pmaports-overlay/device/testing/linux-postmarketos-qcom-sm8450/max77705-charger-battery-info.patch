@@ -1,0 +1,89 @@
+power: supply: max77705_charger: honour the battery's charge limits, fix the input limit write
+
+Three fixes found bringing the charger up on the Galaxy Tab S8+:
+
+- The float voltage came only from voltage-max-design-microvolt. A
+  simple-battery node that states constant-charge-voltage-max-microvolt,
+  the property that names the charge voltage, was ignored and the
+  charger fell back to 4.2 V. Prefer constant-charge-voltage-max, then
+  voltage-max-design, then 4.2 V.
+- The fast-charge current was never set at probe, so it stayed at
+  whatever the chip held; on this tablet that was 100 mA after a
+  reboot into mainline. Apply constant-charge-current-max-microamp
+  when the battery gives one, capped at the 6-bit field's 3.15 A.
+- The input limit was written as uA / 25000, but CHGIN_LIM code n
+  limits the input to (n + 1) x 25 mA, which is how the getter already
+  reads it. A write of 1800000 read back 1825000. Write code - 1.
+
+diff --git a/drivers/power/supply/max77705_charger.c b/drivers/power/supply/max77705_charger.c
+index 57e50e39d..67da4d9ea 100644
+--- a/drivers/power/supply/max77705_charger.c
++++ b/drivers/power/supply/max77705_charger.c
+@@ -416,6 +416,17 @@ static int max77705_get_input_current(struct max77705_charger_data *chg,
+ 	return 0;
+ }
+ 
++static int max77705_set_input_current(struct max77705_charger_data *chg, int val)
++{
++	unsigned int regval;
++
++	/* CHGIN_LIM code n limits the input to (n + 1) x 25 mA */
++	regval = clamp_val(val, MAX77705_CURRENT_CHGIN_MIN, MAX77705_CURRENT_CHGIN_MAX) /
++		 MAX77705_CURRENT_CHGIN_STEP - 1;
++
++	return regmap_field_write(chg->rfield[MAX77705_CHG_CHGIN_LIM], regval);
++}
++
+ static int max77705_get_charge_current(struct max77705_charger_data *chg,
+ 					int *val)
+ {
+@@ -512,11 +523,7 @@ static int max77705_set_property(struct power_supply *psy,
+ 					   val->intval);
+ 		break;
+ 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+-		err = max77705_set_integer(chg, MAX77705_CHG_CHGIN_LIM,
+-					   MAX77705_CURRENT_CHGIN_MIN,
+-					   MAX77705_CURRENT_CHGIN_MAX,
+-					   MAX77705_CURRENT_CHGIN_STEP,
+-					   val->intval);
++		err = max77705_set_input_current(chg, val->intval);
+ 		break;
+ 	default:
+ 		err = -EINVAL;
+@@ -622,13 +629,31 @@ static int max77705_charger_initialize(struct max77705_charger_data *chg)
+ 	if (err)
+ 		goto err;
+ 
+-	/* cv voltage 4.2V or 4.35V */
+-	/* MINVSYS 3.6V(default) */
+-	if (info->voltage_max_design_uv < 0) {
++	/*
++	 * cv voltage: the battery's charge voltage if given, else its
++	 * design maximum, else 4.2V. MINVSYS 3.6V(default)
++	 */
++	if (info->constant_charge_voltage_max_uv > 0) {
++		max77705_set_float_voltage(chg, info->constant_charge_voltage_max_uv);
++	} else if (info->voltage_max_design_uv > 0) {
++		max77705_set_float_voltage(chg, info->voltage_max_design_uv);
++	} else {
+ 		dev_warn(chg->dev, "missing battery:voltage-max-design-microvolt\n");
+ 		max77705_set_float_voltage(chg, 4200000);
+-	} else {
+-		max77705_set_float_voltage(chg, info->voltage_max_design_uv);
++	}
++
++	/*
++	 * fast-charge current from the battery, else left as found; the
++	 * 6-bit CHG_CC field tops out at 63 x 50 mA
++	 */
++	if (info->constant_charge_current_max_ua > 0) {
++		err = max77705_set_integer(chg, MAX77705_CHG_CC_LIM,
++					   MAX77705_CURRENT_CHGIN_MIN,
++					   63 * MAX77705_CURRENT_CHG_STEP,
++					   MAX77705_CURRENT_CHG_STEP,
++					   info->constant_charge_current_max_ua);
++		if (err)
++			goto err;
+ 	}
+ 
+ 	err = regmap_field_write(chg->rfield[MAX77705_VCHGIN], MAX77705_VCHGIN_4_5);
