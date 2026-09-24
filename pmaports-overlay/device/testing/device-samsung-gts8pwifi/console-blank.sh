@@ -26,8 +26,10 @@
 # held pmic_pwrkey descriptor and would read as a toggle on the first poll
 # after thaw, blanking the console the operator just woke (#49). Each poll
 # compares the kernel's count of successful suspends with the last one;
-# when it moved, everything queued across the sleep is discarded and, with
-# the lid not closed, the console is lit.
+# when it moved, everything queued across the sleep is discarded, foliod
+# is asked to sample the lid (it may have closed while asleep) and, with
+# the lid not closed, the console is lit. The wake press's release can
+# arrive after that drain, so the power key is ignored for one more poll.
 #
 # DPMS is deliberately not used: on 2026-09-22 a DPMS off (VT blank timer
 # or panel-blank off) hung the tablet about a minute later and it reset
@@ -230,6 +232,7 @@ run() {
 	idle=0
 	lid=open
 	SUSPENDS=$(suspend_count)
+	pwr_quiet=0
 	echo "console-blank: blank after $BLANK_MIN min, watching $(echo $FDS | wc -w) input devices, polling every $POLL s, folio-state ${FOLIO:-absent}"
 	while :; do
 		sleep "$POLL"
@@ -241,6 +244,9 @@ run() {
 			# queued across the sleep; a closed lid falls through and
 			# keeps the console dark
 			poll_inputs
+			pwr_quiet=1
+			LAST_KICK=0
+			kick_foliod
 			echo "console-blank: resumed from suspend $SUSPENDS, lid $lid"
 			if [ "$lid" != closed ]; then
 				console_on || unblank
@@ -265,6 +271,9 @@ run() {
 			continue
 		fi
 		poll_inputs
+		# the wake press's release, one poll after a resume
+		[ "$pwr_quiet" -gt 0 ] && POWER=1
+		pwr_quiet=0
 		if [ "$POWER" -eq 0 ]; then
 			if console_on; then blank; else unblank; fi
 			idle=0
