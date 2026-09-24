@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=28
+pkgrel=29
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -30,7 +30,7 @@ depends="
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service 80-gts8pwifi.preset 50-gts8pwifi-logind.conf"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service 80-gts8pwifi.preset 50-gts8pwifi-logind.conf usb-gadget.sh usb-gadget.service"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -102,6 +102,11 @@ package() {
 	install -Dm755 "$srcdir"/usb-host-wake.start \
 		"$pkgdir"/etc/local.d/usb-host-wake.start
 
+	# The tablet as a USB device to a PC: NCM ethernet and ACM serial on
+	# one configfs gadget. The unit and the usb0 address are in -systemd.
+	install -Dm755 "$srcdir"/usb-gadget.sh \
+		"$pkgdir"/usr/bin/gts8pwifi-usb-gadget
+
 	# Sensors: accelerometer mount matrix for iio-sensor-proxy's libssc
 	# backend, keyed on the FastRPC node as device-fairphone-fp4 does.
 	install -Dm644 "$srcdir"/81-libssc-samsung-gts8pwifi.rules \
@@ -164,7 +169,8 @@ tools() {
 
 systemd() {
 	install_if="$pkgname=$pkgver-r$pkgrel systemd"
-	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd folio-state-systemd"
+	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd folio-state-systemd
+		unudhcpd-systemd"
 	install -Dm644 "$srcdir"/netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/netinfo-console.service
 	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
@@ -199,6 +205,14 @@ systemd() {
 	install -Dm644 "$srcdir"/90-gts8pwifi-bt-addr.rules \
 		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8pwifi-bt-addr.rules
 
+	# USB gadget: built when the UDC appears (usb-gadget.target), with
+	# unudhcpd@usb0 and a serial getty on ttyGS0 pulled in by the unit.
+	install -Dm644 "$srcdir"/usb-gadget.service \
+		"$subpkgdir"/usr/lib/systemd/system/gts8pwifi-usb-gadget.service
+	install -d "$subpkgdir"/usr/lib/systemd/system/usb-gadget.target.wants
+	ln -sf ../gts8pwifi-usb-gadget.service \
+		"$subpkgdir"/usr/lib/systemd/system/usb-gadget.target.wants/gts8pwifi-usb-gadget.service
+
 	# Sensor hub: start hexagonrpcd-sdsp when /dev/fastrpc-sdsp appears
 	# (the unit's path condition is evaluated before the SLPI boots).
 	install -Dm644 "$srcdir"/90-gts8pwifi-hexagonrpcd-sdsp.rules \
@@ -232,6 +246,8 @@ d33f880ef076fffbad053f33b190cde4768ed3f95e2b749349446e4693ac3c76249f661c5ef9c42f
 0213fb75fcb149b59e7df804b81e386d44969f4197eff3820ad0b611a5c2455a95911c3c6f2106fbe1c8cacbc0cc53ce88b72ab31451cb7866223e70a68dd14d  console-blank.sh
 0b6e024f5e69b99d45a5b570c5655922c0653cf2aad141de31d5c3133a277ebf666c6e1ff2f0bcf259869044796fe54fe38e7e40b421cf589144be663d303964  console-blank.conf
 e87c2aa23a9d58bcc38ede1259588aec91f3bf266eaa2d11182dfba2210a587b292ffc1937c1e3e4c7a075d390ea9c789f2a1b9d6ef35ad12e92fb915207ce07  console-blank.service
-7c6ae630f5da4638212256977a63a6234d7be4c4bb61676db66fee7d6354568a0f3ace1d986d30866e70555bfa0191b427ecc1b1ffa292bb8e095ab9d44bce1a  80-gts8pwifi.preset
+a612d13a9c5f41145593c5c1bc50b8616e9592ab1846774f185cf9a8d6c1b25410c39229a691ab6bb11e510d502c09ca10a9757c7d73a1d500c711c866930ffd  80-gts8pwifi.preset
 c0d1e42a030b33b6fe2fa033fc7ad625f247d030ec7e3a180ed08d874cebaa7db8b53ff0f1a7fed62a800e46a7e7dc8084fc3c41ae1f171209fce0f222823c90  50-gts8pwifi-logind.conf
+12a131eef0fec5e9d8c35cc6e0f11a2a462f98a7d5ca1d4fc092ac74ee9b098fae74cadd5f03628ce89f58ac696fae13ee9cc40f00fe90474474f1d5f1236a2c  usb-gadget.sh
+d416aeb470fca623c03764dc66e01d96c4c5732f83a53fa959a6c8763596a4eb510b92bc5e02a31f0026fc660a072cc2782da1c29c3d31c3de05f32331c8b002  usb-gadget.service
 "
