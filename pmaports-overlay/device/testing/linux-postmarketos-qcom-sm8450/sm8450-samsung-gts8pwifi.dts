@@ -1488,8 +1488,8 @@
 	/*
 	 * Upstream charger. At probe it enables buck + charge (mode 0x5),
 	 * sets the float voltage from the battery node, input thresholds
-	 * 4.5 V, OTG limit 900 mA, and turns the watchdog off; it leaves
-	 * the fast-charge current at the chip's 2.1 A. The OTG boost is its
+	 * 4.5 V, OTG limit 900 mA, and turns the watchdog off; the charge
+	 * voltage and current come from the battery node. The OTG boost is its
 	 * usb-otg-vbus regulator (max77705-charger-otg-regulator.patch):
 	 * boost bits ORed onto the mode, refused while CHGIN is present.
 	 */
