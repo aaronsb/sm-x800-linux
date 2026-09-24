@@ -1,0 +1,89 @@
+usb: dwc3: tell xhci-plat when a host-mode suspend lost the controller
+
+Issue #53. In host mode, a system suspend on a controller without wakeup
+ends in dwc3_core_exit(), and resume reinitialises the core. xhci-plat is
+never told: xhci_resume() takes the "state intact" path and sets CRS on a
+controller that was reset. On SM8450 the restore does not raise SRE; the
+controller DMAs from stale pointers instead, the SMMU faults on SID 0x0
+(thousands of context faults within 1.5 s of resume) and xHCI stops with
+a Host System Error. Attached devices are lost until dwc3-qcom is rebound.
+
+xhci_plat_priv already carries power_lost for this (cdns3 sets it). dwc3
+now sets it before dwc3_core_exit() and clears it on the paths that keep
+the controller powered, so xhci_resume() resets the host and the USB core
+re-enumerates the attached devices.
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index ceb49f2f8..d155b2dd8 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -2500,10 +2500,13 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
+ 	case DWC3_GCTL_PRTCAP_HOST:
+ 		if (!PMSG_IS_AUTO(msg) &&
+ 		    (!device_may_wakeup(dwc->dev) || dwc->needs_full_reinit)) {
++			dwc3_host_set_power_lost(dwc, true);
+ 			dwc3_core_exit(dwc);
+ 			break;
+ 		}
+ 
++		dwc3_host_set_power_lost(dwc, false);
++
+ 		/* Let controller to suspend HSPHY before PHY driver suspends */
+ 		if (dwc->dis_u2_susphy_quirk ||
+ 		    dwc->dis_enblslpm_quirk) {
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index e0dee9d28..428a51e35 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -1653,11 +1653,14 @@ static inline void dwc3_pre_run_stop(struct dwc3 *dwc, bool is_on)
+ #if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+ int dwc3_host_init(struct dwc3 *dwc);
+ void dwc3_host_exit(struct dwc3 *dwc);
++void dwc3_host_set_power_lost(struct dwc3 *dwc, bool power_lost);
+ #else
+ static inline int dwc3_host_init(struct dwc3 *dwc)
+ { return 0; }
+ static inline void dwc3_host_exit(struct dwc3 *dwc)
+ { }
++static inline void dwc3_host_set_power_lost(struct dwc3 *dwc, bool power_lost)
++{ }
+ #endif
+ 
+ #if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+diff --git a/drivers/usb/dwc3/host.c b/drivers/usb/dwc3/host.c
+index 96b588bd0..f2c2225d7 100644
+--- a/drivers/usb/dwc3/host.c
++++ b/drivers/usb/dwc3/host.c
+@@ -13,9 +13,7 @@
+ #include <linux/usb.h>
+ #include <linux/usb/hcd.h>
+ 
+-#include "../host/xhci-port.h"
+-#include "../host/xhci-ext-caps.h"
+-#include "../host/xhci-caps.h"
++#include "../host/xhci.h"
+ #include "../host/xhci-plat.h"
+ #include "core.h"
+ 
+@@ -232,3 +230,21 @@ void dwc3_host_exit(struct dwc3 *dwc)
+ 	dwc->xhci = NULL;
+ }
+ EXPORT_SYMBOL_GPL(dwc3_host_exit);
++
++/*
++ * A system suspend that ends in dwc3_core_exit() resets the controller, and
++ * the xHCI state saved by the suspend is gone. xhci-plat must reinitialise
++ * the host instead of running a Controller Restore on the reset controller,
++ * which DMAs from stale pointers.
++ */
++void dwc3_host_set_power_lost(struct dwc3 *dwc, bool power_lost)
++{
++	struct usb_hcd *hcd;
++
++	if (!dwc->xhci)
++		return;
++
++	hcd = platform_get_drvdata(dwc->xhci);
++	if (hcd)
++		hcd_to_xhci_priv(hcd)->power_lost = power_lost;
++}
