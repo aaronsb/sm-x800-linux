@@ -1,0 +1,52 @@
+power: supply: max77705_charger: bound the AICL loop, skip it in OTG mode
+
+max77705_aicl_irq() steps CHGIN_LIM down, 100 ms at a time, until
+CHG_INT_OK reports AICL_OK. Two ways it never ends:
+
+- With the OTG boost running, CHGIN sees the boost's own VBUS as valid
+  input and AICL never settles. On the Galaxy Tab S8+ this held the
+  MAX77705 interrupt thread (shared by the charger, gauge and Type-C
+  children) in the loop indefinitely: the input limit walked down from
+  1775 mA to 925 mA while the CCIC's detach interrupt sat undelivered,
+  the Type-C driver never saw the detach and VBUS stayed on.
+- Nothing stops the decrement at the field's minimum; regval-- from 0
+  wraps and the field write masks it to 3.2 A.
+
+Return at once while the boost and OTG bits are set, and stop at code
+3, the 100 mA floor.
+
+diff --git a/drivers/power/supply/max77705_charger.c b/drivers/power/supply/max77705_charger.c
+index 5d7e7e3d5..8c6615e95 100644
+--- a/drivers/power/supply/max77705_charger.c
++++ b/drivers/power/supply/max77705_charger.c
+@@ -44,9 +44,18 @@ static enum power_supply_property max77705_charger_props[] = {
+ static irqreturn_t max77705_aicl_irq(int irq, void *irq_drv_data)
+ {
+ 	struct max77705_charger_data *chg = irq_drv_data;
+-	unsigned int regval, irq_status;
++	unsigned int regval, irq_status, mode;
+ 	int err;
+ 
++	/*
++	 * With the OTG boost running, CHGIN sees the boost's own VBUS and
++	 * AICL never settles; stepping the limit down would never end and
++	 * would hold the shared MFD interrupt thread.
++	 */
++	err = regmap_field_read(chg->rfield[MAX77705_MODE], &mode);
++	if (err < 0 || (mode & MAX77705_OTG_CTRL) == MAX77705_OTG_CTRL)
++		return IRQ_HANDLED;
++
+ 	err = regmap_read(chg->regmap, MAX77705_CHG_REG_INT_OK, &irq_status);
+ 	if (err < 0)
+ 		return IRQ_HANDLED;
+@@ -58,6 +67,10 @@ static irqreturn_t max77705_aicl_irq(int irq, void *irq_drv_data)
+ 		if (err < 0)
+ 			return IRQ_HANDLED;
+ 
++		/* codes 0-3 are all the 100 mA minimum; stop there */
++		if (regval <= 3)
++			return IRQ_HANDLED;
++
+ 		regval--;
+ 
+ 		err = regmap_field_write(chg->rfield[MAX77705_CHG_CHGIN_LIM], regval);
