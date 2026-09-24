@@ -38,12 +38,13 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Book Cover Keyboard (pogo STM32 @ i2c 0x2a) | ✅ working — our `stm32-pogo` driver (keyboard, caps LED; touchpad supported but untested, the Slim cover has none) |
 | WiFi (WCN6855, ath11k on PCIe0) | ✅ working — NetworkManager autoconnects at boot; primary ssh path. Carries the upstream RX-corruption fix trilogy (bulk downloads used to wedge with `msdu_done` errors / silent drops) |
 | Bluetooth (WCN6855 on uart20) | ✅ controller up, address from efs, scan finds devices; pairing pending |
-| USB host (xhci) | ✅ working |
-| USB ethernet + DHCP + ssh | ✅ working (Realtek RTL8153 dongle) — now the fallback, not the lifeline |
+| USB-C port: Type-C, PD, roles (MAX77705 CCIC) | ✅ working — our `max77705-usbc` driver speaks to the CCIC's PD firmware through its mailbox (ADR-003): plug a device and the tablet becomes host and switches VBUS on, unplug and VBUS goes off; plug a PC or charger and it becomes device and sink; a PD-passthrough dongle can swap roles live. Safety rules live in the driver: an opcode and register allowlist, fixed PDOs only, at most 9 V and 15 W, input limit lowered before any voltage increase (kernel r40). Story: ADR-003, PR #59 |
+| USB host (xhci) | ✅ working — hot-plug with VBUS by attach: mice, keyboards, RTL8153 ethernet (firmware packaged), in either cable orientation |
+| USB gadget (to a PC) | ✅ working — plug into a computer and it enumerates as "Galaxy Tab S8+": NCM ethernet (the PC gets 172.16.42.2 by DHCP, ssh to 172.16.42.1), a serial login on `/dev/ttyACM*`, and MTP, so KDE's device notifier offers "Open with File Manager" on the tablet's home (dot-files hidden) (device r30) |
+| Charging and battery | ✅ working — upstream MAX77705 charger and gauge drivers (with our fixes): `/sys/class/power_supply/max170xx_battery` reports capacity, voltage, current, temperature and cycles; charging at 9 V PD from chargers and PC ports. Deliberately below stock (4.30 V float, 2.0 A) because mainline does not do stock's temperature-dependent charging; stock parity waits on a thermal guard (kernel r36). Story: ADR-003, PR #56 |
 | Power key, volume down (PMIC PON) | ✅ working |
 | Volume up (pm8350 gpio6, gpio-keys) | 🟡 mapped and working on most boots — `KEY_VOLUMEUP` from the pm8350 GPIO line, active low with pull-up, as stock wires it. On some boots the PMIC latches two edges per press while the level never changes, so no event fires until the next reboot (issue #18; `tools/volup-trap/` records the next occurrence) |
 | `reboot download` from Linux | 🟡 PON `mode-download` wired but ABL ignores it — likely cold reset clears the spare bits (downstream forces a warm reset first); under investigation |
-| USB gadget | ❌ needs Type-C/`pmic_glink` described |
 | Native panel driver (S6TUUM1 DDIC) | ✅ working — full native KMS: cold init (Anapass TCON-ready handshake), DSC @ 2800×1752, TE-synced 120 Hz, DPMS blank/unblank, brightness (11-bit DBV). Leaving the panel DPMS off hangs the tablet about a minute later with a silent reset, so idle blanking ships as `console-blank` (device r26): black frame after `BLANK_MIN` idle minutes with the panel powered, wake on any input; device r27 rescans `/dev/input` when the node count changes, so late and hot-plugged devices wake it too. Story: docs/08-native-display.md, device-facts/display-s6tuum1.md |
 | S Pen (Wacom WEZ01 EMR digitizer) | ✅ working — our `wacom-wez01` driver; position + pressure + tool. SE14's FIFO is silicon-disabled (forces broken GPI DMA), so we bit-bang i2c on its pins via `i2c-gpio`. Firmware `wez01_gts8p.bin` (harvested). Polish: query/calibration + axis verify. Story: device-facts/wacom-wez01.md |
 | GPU (Adreno 730) | ✅ working — freedreno/Mesa `FD730`, OpenGL ES 3.2; Samsung-signed zap from the `apnhlos` partition (`gts8pwifi-fw-extract`), firmware rides in the initramfs (a7xx loads SQE at bind time) |
@@ -69,7 +70,13 @@ half a watt of load average.*
 (NetworkManager profile) and a bring-up service prints interface/MAC/IP/gateway to
 the panel whenever they change — read the address off the screen and ssh to it.
 
-**Fallback:** a self-powered USB-C ethernet dongle still works the same way, and
+**USB cable:** plug the tablet into a computer. The computer gets 172.16.42.2 by
+DHCP; `ssh user@172.16.42.1`, or open the serial console on `/dev/ttyACM0`. The
+file manager sees the tablet over MTP:
+
+![Dolphin browsing the tablet's home over MTP](docs/media/usb-mtp-dolphin.png)
+
+**Fallback:** a USB-C ethernet dongle works the same way, and
 holding **volume-down from initial power-on** drops into the postmarketOS initramfs
 debug shell (on-screen keyboard via osk-sdl).
 
