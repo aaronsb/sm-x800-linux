@@ -1,0 +1,80 @@
+usb: typec: max77705: complete source attach and route D+/D- to USB
+
+Found on the tablet with a USB mouse (an Rd partner):
+
+- The firmware toggled CC and raised interrupts, but CCStat stayed 0:
+  it never completed a source attach. Stock sends SET_ALTERNATEMODE
+  (0x55) with 0x03, Source_Capabilities and VDM enabled, once userspace
+  is ready; sent by hand, the next plug gave CCStat SOURCE, the driver
+  registered the partner as host and turned VBUS on. Send it at the end
+  of hw_init, so a CCIC reset re-sends it.
+- With the partner attached and powered, xHCI saw no connect: the MUIC
+  switch (CTRL1) read 0x00, open. Writing COM_USB (0x09) with opcode
+  0x06 enumerated the mouse at once. Route D+/D- to USB whenever the
+  data role is set.
+
+Both opcodes join the allowlist with their single permitted payload.
+
+diff --git a/drivers/usb/typec/max77705.c b/drivers/usb/typec/max77705.c
+index e4fd961ec..c185f4bad 100644
+--- a/drivers/usb/typec/max77705.c
++++ b/drivers/usb/typec/max77705.c
+@@ -128,6 +128,13 @@ enum max77705_ccistat {
+ #define MAX77705_OP_SRCCAP_REQUEST	0x32
+ #define MAX77705_OP_FACTORY_TEST	0x54
+ #define MAX77705_OP_FW_AUTOIBUS		0x57
++#define MAX77705_OP_CTRL1_W		0x06
++#define MAX77705_OP_SET_ALTMODE		0x55
++
++/* MUIC CTRL1: COMN1SW and COMP2SW both 1, D+/D- routed to the USB PHY */
++#define MAX77705_MUIC_COM_USB		0x09
++/* SET_ALTERNATEMODE: send Source_Capabilities (bit 0) and VDMs (bit 1) */
++#define MAX77705_ALTMODE_SRC_VDM	0x03
+ 
+ /* FACTORY_TEST data: firmware-driven VBUS off, usbc.c:251-262 */
+ #define MAX77705_AUTO_VBUS_OFF		0x00
+@@ -261,6 +268,10 @@ static bool max77705_usbc_cmd_allowed(struct max77705_usbc *u, u8 op,
+ 		return len == 1 && data[0] == MAX77705_AUTO_VBUS_OFF;
+ 	case MAX77705_OP_FW_AUTOIBUS:
+ 		return len == 1 && data[0] == MAX77705_AUTOIBUS_AT_OFF;
++	case MAX77705_OP_CTRL1_W:
++		return len == 1 && data[0] == MAX77705_MUIC_COM_USB;
++	case MAX77705_OP_SET_ALTMODE:
++		return len == 1 && data[0] == MAX77705_ALTMODE_SRC_VDM;
+ 	case MAX77705_OP_SET_SNKCAP:
+ 		if (len < 1)
+ 			return false;
+@@ -480,6 +491,14 @@ static void max77705_usbc_vbus_work(struct work_struct *work)
+ static void max77705_usbc_set_data_role(struct max77705_usbc *u,
+ 					enum typec_data_role role)
+ {
++	/*
++	 * The firmware leaves the MUIC switch open across an attach; D+/D-
++	 * reach the PHY only with COM_USB selected (stock's MUIC driver does
++	 * the same on USB attach).
++	 */
++	if (max77705_usbc_cmd_byte(u, MAX77705_OP_CTRL1_W, MAX77705_MUIC_COM_USB))
++		dev_warn(u->dev, "cannot route D+/D- to USB\n");
++
+ 	usb_role_switch_set_role(u->role_sw, role == TYPEC_HOST ?
+ 				 USB_ROLE_HOST : USB_ROLE_DEVICE);
+ 	typec_set_data_role(u->port, role);
+@@ -961,7 +980,17 @@ static int max77705_usbc_hw_init(struct max77705_usbc *u)
+ 	if (ret)
+ 		return ret;
+ 
+-	return max77705_usbc_set_snkcap(u);
++	ret = max77705_usbc_set_snkcap(u);
++	if (ret)
++		return ret;
++
++	/*
++	 * Without this the firmware never completes a source attach for an
++	 * Rd partner: CC toggles, CCStat stays 0. Stock sends it once
++	 * userspace is ready (max77705_alternate.c:1213-1218).
++	 */
++	return max77705_usbc_cmd_byte(u, MAX77705_OP_SET_ALTMODE,
++				      MAX77705_ALTMODE_SRC_VDM);
+ }
+ 
+ static void max77705_usbc_sysmsg(struct max77705_usbc *u)
