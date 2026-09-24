@@ -209,6 +209,31 @@ bring-up or to change the base.
 - **Conveniences in the base image.** Every image carries them and the
   base test plans grow. Rejected in favour of profiles.
 
+## Amendment, 2026-09-24
+
+Changes to the base since the draft, and what they mean for this
+decision:
+
+- **The USB gadget is in the base image.** The device package (#60)
+  now carries a configfs gadget with NCM ethernet, ACM serial and MTP
+  of `~/Shared` through umtprd. It is base, not a profile, on both
+  targets. umtprd is not in the ALARM repositories, so it joins
+  hexagonrpcd, libssc and iio-sensor-proxy-ssc among the packages
+  `make alarm-pkgs` builds.
+- **console-blank is console-only.** It blanks by drawing a black
+  frame and handles the power key and lid itself. Under Plasma, KWin
+  and powerdevil own all three. The device package must stand
+  console-blank down whenever a display manager or graphical session
+  is enabled, on both targets. The `plasma` profile depends on that
+  change.
+- **On-device composition is exercised.** `apk add
+  postmarketos-ui-plasma-desktop` on a running tablet is the first real
+  use of the on-device path, and the evidence for question 4.
+- **Sequencing, proposed.** The 7.3 kernel bump (#11) rebases the whole patch
+  stack; the neutral-core refactor moves it. The bump lands first, so
+  the refactor's byte-identical `make image` test runs against a
+  settled kernel.
+
 ## Open questions
 
 1. Where do snapshots live: GitHub release assets, a local cache, or
@@ -221,6 +246,13 @@ bring-up or to change the base.
 5. Does pmOS stay long term once ALARM boots, or retire?
 6. Does `mlterm-fb` (AUR) gain `aarch64`, and dotfiles-cli an aarch64
    release asset?
+7. Is the USB gadget with MTP part of the ALARM base, which means
+   packaging umtprd? (Recommended: yes, for parity with pmOS.)
+8. How does console-blank detect a graphical setup: an enabled display
+   manager, `graphical.target` as the default, or a flag the profile
+   sets?
+9. Is build-only CI (kernel, device packages, image) part of this
+   decision or a separate issue?
 
 ## Follow-ups
 
@@ -229,3 +261,5 @@ bring-up or to change the base.
 - The neutral-core refactor with the byte-identical `make image` test.
 - Check whether Arch Linux Ports keeps dated snapshots, as a second
   source for the lock.
+- Test Plasma on the pmOS image: display, rotation, touch and pen,
+  the folio keyboard, VT switching, suspend and lid under logind.
