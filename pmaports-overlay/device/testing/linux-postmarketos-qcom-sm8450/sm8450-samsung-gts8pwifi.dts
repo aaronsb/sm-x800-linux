@@ -1473,8 +1473,8 @@
 	/*
 	 * Upstream charger. At probe it enables buck + charge (mode 0x5),
 	 * sets the float voltage from the battery node, input thresholds
-	 * 4.5 V, OTG limit 900 mA, and turns the watchdog off; it leaves
-	 * the fast-charge current at the chip's 2.1 A. The OTG boost is its
+	 * 4.5 V, OTG limit 900 mA, and turns the watchdog off; the charge
+	 * voltage and current come from the battery node. The OTG boost is its
 	 * usb-otg-vbus regulator (max77705-charger-otg-regulator.patch):
 	 * boost bits ORed onto the mode, refused while CHGIN is present.
 	 */
@@ -1539,11 +1539,14 @@
 	};
 
 	/*
-	 * MAX77705 fuel gauge, a MAX17047-class gauge. Stock loads its model
-	 * (fuelgauge,fg_resistor = 5, Samsung units of 0.4 mOhm: current LSB
-	 * 0.78125 mA, capacity LSB 2.5 mAh, so a 2 mOhm sense resistor) and
-	 * the gauge keeps it across a reboot into mainline: Status POR is
-	 * clear, so max17042 loads nothing and only reads. Its alert
+	 * MAX77705 fuel gauge, a MAX17047-class gauge. The sense resistor is
+	 * 10 mOhm / fuelgauge,fg_resistor; stock's 5 gives 2 mOhm (current
+	 * LSB 0.78125 mA, capacity LSB 2.5 mAh). Unverified against an
+	 * independent meter: the 8800 mAh design capacity it implies is low
+	 * for a 10090 mAh pack. Stock loads the gauge model and the gauge
+	 * keeps it across a reboot into mainline; max17042 never loads one
+	 * from DT, so after a full drain or cold power-on without stock
+	 * booting first it runs on the chip's default model. Its alert
 	 * cascades through the top (FG, 2).
 	 */
 	fuel-gauge@36 {

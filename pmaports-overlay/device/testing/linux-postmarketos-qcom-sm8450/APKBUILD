@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=39
+pkgrel=40
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -56,6 +56,7 @@ source="
 	max77705-charger-otg-shutdown.patch
 	max77705-charger-aicl-bounded.patch
 	max77705-charger-aicl-notify.patch
+	max77705-charger-review-fixes.patch
 	max77705-typec.patch
 	max77705-typec-source-attach.patch
 	max77705-typec-prefer-voltage.patch

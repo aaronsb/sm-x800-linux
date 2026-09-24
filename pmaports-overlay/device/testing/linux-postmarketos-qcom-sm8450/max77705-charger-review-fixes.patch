@@ -1,0 +1,171 @@
+power: supply: max77705_charger: review fixes for the OTG regulator and limits
+
+From review of the Galaxy Tab S8+ charger bring-up:
+
+- The CONSTANT_CHARGE_CURRENT property clamped to 3.2 A, past both the
+  battery node's constant-charge-current-max and the 6-bit CHG_CC field
+  (3.2 A is code 64, which the field masks to 0). Clamp writes, and the
+  probe-time setting, to the battery's maximum and 63 x 50 mA.
+- Input voltage regulation is left to the hardware; clear DIS_AICL
+  (CNFG_06 bit 4) at probe, as stock does, in case a factory flow set it.
+- The OTG regulator's enable and disable, and the shutdown hook, did a
+  read-modify-write of the mode nibble; use regmap_field_update_bits()
+  so another writer of the field cannot interleave.
+- Unbinding the charger left a running boost with no owner; clear the
+  OTG bits in the devm disable action as well.
+- A failed float-voltage write was ignored and probe succeeded with the
+  float wherever it was; fail probe instead.
+
+diff --git a/drivers/power/supply/max77705_charger.c b/drivers/power/supply/max77705_charger.c
+index 89e954262..42f1ded64 100644
+--- a/drivers/power/supply/max77705_charger.c
++++ b/drivers/power/supply/max77705_charger.c
+@@ -96,7 +96,7 @@ static const struct regmap_irq_chip max77705_charger_irq_chip = {
+ static int max77705_otg_enable(struct regulator_dev *rdev)
+ {
+ 	struct max77705_charger_data *chg = rdev_get_drvdata(rdev);
+-	unsigned int val, mode;
++	unsigned int val;
+ 	int err;
+ 
+ 	err = regmap_read(chg->regmap, MAX77705_CHG_REG_INT_OK, &val);
+@@ -106,24 +106,16 @@ static int max77705_otg_enable(struct regulator_dev *rdev)
+ 	if (val & MAX77705_CHGIN_OK)
+ 		return -EBUSY;
+ 
+-	err = regmap_field_read(chg->rfield[MAX77705_MODE], &mode);
+-	if (err)
+-		return err;
+-
+-	return regmap_field_write(chg->rfield[MAX77705_MODE], mode | MAX77705_OTG_CTRL);
++	return regmap_field_update_bits(chg->rfield[MAX77705_MODE],
++					MAX77705_OTG_CTRL, MAX77705_OTG_CTRL);
+ }
+ 
+ static int max77705_otg_disable(struct regulator_dev *rdev)
+ {
+ 	struct max77705_charger_data *chg = rdev_get_drvdata(rdev);
+-	unsigned int mode;
+-	int err;
+-
+-	err = regmap_field_read(chg->rfield[MAX77705_MODE], &mode);
+-	if (err)
+-		return err;
+ 
+-	return regmap_field_write(chg->rfield[MAX77705_MODE], mode & ~MAX77705_OTG_CTRL);
++	return regmap_field_update_bits(chg->rfield[MAX77705_MODE],
++					MAX77705_OTG_CTRL, 0);
+ }
+ 
+ static int max77705_otg_is_enabled(struct regulator_dev *rdev)
+@@ -171,6 +163,9 @@ static void max77705_charger_disable(void *data)
+ 	struct max77705_charger_data *chg = data;
+ 	int rv;
+ 
++	/* no boost without an owner once the regulator is gone */
++	regmap_field_update_bits(chg->rfield[MAX77705_MODE], MAX77705_OTG_CTRL, 0);
++
+ 	rv = regmap_field_write(chg->rfield[MAX77705_CHG_EN], MAX77705_CHG_DISABLE);
+ 	if (rv)
+ 		dev_err(chg->dev, "unable to disable the charger: %d\n", rv);
+@@ -400,6 +395,20 @@ static int max77705_get_input_current(struct max77705_charger_data *chg,
+ 	return 0;
+ }
+ 
++/*
++ * The fast-charge ceiling: the battery's constant-charge-current-max when
++ * it gives one, and never past the 6-bit CHG_CC field (63 x 50 mA).
++ */
++static int max77705_charge_current_max(struct max77705_charger_data *chg)
++{
++	int max = 63 * MAX77705_CURRENT_CHG_STEP;
++
++	if (chg->bat_info && chg->bat_info->constant_charge_current_max_ua > 0)
++		max = min(max, chg->bat_info->constant_charge_current_max_ua);
++
++	return max;
++}
++
+ static int max77705_set_input_current(struct max77705_charger_data *chg, int val)
+ {
+ 	unsigned int regval;
+@@ -502,7 +511,7 @@ static int max77705_set_property(struct power_supply *psy,
+ 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+ 		err = max77705_set_integer(chg, MAX77705_CHG_CC_LIM,
+ 					   MAX77705_CURRENT_CHGIN_MIN,
+-					   MAX77705_CURRENT_CHGIN_MAX,
++					   max77705_charge_current_max(chg),
+ 					   MAX77705_CURRENT_CHG_STEP,
+ 					   val->intval);
+ 		break;
+@@ -568,6 +577,15 @@ static int max77705_charger_initialize(struct max77705_charger_data *chg)
+ 	if (err)
+ 		goto err;
+ 
++	/*
++	 * Input voltage regulation (AICL) is the hardware's; a factory flow
++	 * can leave it disabled (CNFG_06 DIS_AICL), stock clears it too.
++	 */
++	err = regmap_update_bits(regmap, MAX77705_CHG_REG_CNFG_06,
++				 MAX77705_DIS_AICL_MASK, 0);
++	if (err)
++		goto err;
++
+ 	/* fast charge timer disable */
+ 	/* restart threshold disable */
+ 	/* pre-qual charge disable */
+@@ -618,13 +636,15 @@ static int max77705_charger_initialize(struct max77705_charger_data *chg)
+ 	 * design maximum, else 4.2V. MINVSYS 3.6V(default)
+ 	 */
+ 	if (info->constant_charge_voltage_max_uv > 0) {
+-		max77705_set_float_voltage(chg, info->constant_charge_voltage_max_uv);
++		err = max77705_set_float_voltage(chg, info->constant_charge_voltage_max_uv);
+ 	} else if (info->voltage_max_design_uv > 0) {
+-		max77705_set_float_voltage(chg, info->voltage_max_design_uv);
++		err = max77705_set_float_voltage(chg, info->voltage_max_design_uv);
+ 	} else {
+ 		dev_warn(chg->dev, "missing battery:voltage-max-design-microvolt\n");
+-		max77705_set_float_voltage(chg, 4200000);
++		err = max77705_set_float_voltage(chg, 4200000);
+ 	}
++	if (err)
++		goto err;
+ 
+ 	/*
+ 	 * fast-charge current from the battery, else left as found; the
+@@ -633,7 +653,7 @@ static int max77705_charger_initialize(struct max77705_charger_data *chg)
+ 	if (info->constant_charge_current_max_ua > 0) {
+ 		err = max77705_set_integer(chg, MAX77705_CHG_CC_LIM,
+ 					   MAX77705_CURRENT_CHGIN_MIN,
+-					   63 * MAX77705_CURRENT_CHG_STEP,
++					   max77705_charge_current_max(chg),
+ 					   MAX77705_CURRENT_CHG_STEP,
+ 					   info->constant_charge_current_max_ua);
+ 		if (err)
+@@ -778,13 +798,8 @@ MODULE_DEVICE_TABLE(of, max77705_charger_of_match);
+ static void max77705_charger_shutdown(struct i2c_client *i2c)
+ {
+ 	struct max77705_charger_data *chg = i2c_get_clientdata(i2c);
+-	unsigned int mode;
+-
+-	if (regmap_field_read(chg->rfield[MAX77705_MODE], &mode))
+-		return;
+ 
+-	if (mode & MAX77705_OTG_CTRL)
+-		regmap_field_write(chg->rfield[MAX77705_MODE], mode & ~MAX77705_OTG_CTRL);
++	regmap_field_update_bits(chg->rfield[MAX77705_MODE], MAX77705_OTG_CTRL, 0);
+ }
+ 
+ static struct i2c_driver max77705_charger_driver = {
+diff --git a/include/linux/power/max77705_charger.h b/include/linux/power/max77705_charger.h
+index b3950ce06..eb87e2dc2 100644
+--- a/include/linux/power/max77705_charger.h
++++ b/include/linux/power/max77705_charger.h
+@@ -94,6 +94,7 @@
+ #define MAX77705_B2SOVRC_5_0A		9
+ 
+ /* MAX77705_CHG_CNFG_06 */
++#define MAX77705_DIS_AICL_MASK		BIT(4)
+ #define MAX77705_WDTCLR_SHIFT		0
+ #define MAX77705_WDTCLR_MASK		GENMASK(1, 0)
+ #define MAX77705_WDTCLR			1
