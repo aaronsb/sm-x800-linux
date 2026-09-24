@@ -293,16 +293,21 @@
 	};
 
 	/*
-	 * The 2S-parallel pack as the charger programs it (ADR-003). The
-	 * float voltage is stock's battery,chg_float_voltage (4380 mV); the
-	 * upstream charger would fall back to 4.2 V without this node.
-	 * Design capacity is the gauge's DesignCap (3520 x 2.5 mAh); stock's
-	 * battery_full_capacity policy value is 9800 mAh. The minimum is the
-	 * gauge's V_empty.
+	 * The single-cell pack as the charger programs it (ADR-003).
+	 * voltage-max-design is stock's battery,chg_float_voltage (4380 mV,
+	 * no conversion factor), which stock holds only between 15 and 42 C:
+	 * it drops the float to 4150 mV at 42-50 C and stops charging below
+	 * 0 C and above 50 C. Mainline implements none of that, so the
+	 * charge voltage and current stay conservative (4.30 V, 2.0 A,
+	 * against stock's 4.38 V and 3.15 A) until a thermal guard exists.
+	 * Design capacity is the gauge model's DesignCap (3520 x 2.5 mAh);
+	 * the label rates 9800 mAh. The minimum is the gauge's V_empty.
 	 */
 	battery: battery {
 		compatible = "simple-battery";
-		constant-charge-voltage-max-microvolt = <4380000>;
+		voltage-max-design-microvolt = <4380000>;
+		constant-charge-voltage-max-microvolt = <4300000>;
+		constant-charge-current-max-microamp = <2000000>;
 		charge-full-design-microamp-hours = <8800000>;
 		voltage-min-design-microvolt = <3350000>;
 	};
