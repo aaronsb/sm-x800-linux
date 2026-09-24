@@ -258,6 +258,7 @@ run() {
 			# folio closed: dark, and nothing typed or pressed brings it
 			# back; foliod is told there was input so it re-checks the lid
 			poll_inputs
+			pwr_quiet=0
 			console_on && blank
 			[ "$ACTIVITY" -eq 0 ] || [ "$POWER" -eq 0 ] && kick_foliod
 			idle=0
@@ -266,6 +267,7 @@ run() {
 		if [ "$prev" = closed ]; then
 			# folio opened: light up, discard what arrived while closed
 			poll_inputs
+			pwr_quiet=0
 			console_on || unblank
 			idle=0
 			continue

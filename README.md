@@ -40,7 +40,7 @@ DPU/DSI/DSC pipeline, with the pogo Book Cover Keyboard doing the driving.*
 | Bluetooth (WCN6855 on uart20) | ✅ controller up, address from efs, scan finds devices; pairing pending |
 | USB-C port: Type-C, PD, roles (MAX77705 CCIC) | ✅ working — our `max77705-usbc` driver speaks to the CCIC's PD firmware through its mailbox (ADR-003): plug a device and the tablet becomes host and switches VBUS on, unplug and VBUS goes off; plug a PC or charger and it becomes device and sink; a PD-passthrough dongle can swap roles live. Safety rules live in the driver: an opcode and register allowlist, fixed PDOs only, at most 9 V and 15 W, input limit lowered before any voltage increase (kernel r40). Story: ADR-003, PR #59 |
 | USB host (xhci) | ✅ working — hot-plug with VBUS by attach: mice, keyboards, RTL8153 ethernet (firmware packaged), in either cable orientation |
-| USB gadget (to a PC) | ✅ working — plug into a computer and it enumerates as "Galaxy Tab S8+": NCM ethernet (the PC gets 172.16.42.2 by DHCP, ssh to 172.16.42.1), a serial login on `/dev/ttyACM*`, and MTP, so KDE's device notifier offers "Open with File Manager" on the tablet's home (dot-files hidden) (device r30) |
+| USB gadget (to a PC) | ✅ working — plug into a computer and it enumerates as "Galaxy Tab S8+": NCM ethernet (the PC gets 172.16.42.2 by DHCP, ssh to 172.16.42.1), a serial login on `/dev/ttyACM*`, and MTP, so KDE's device notifier offers "Open with File Manager" on the tablet's `~/Shared` folder (a dedicated folder: MTP has no authentication, so the home directory with its dot-files stays off the cable) (device r30) |
 | Charging and battery | ✅ working — upstream MAX77705 charger and gauge drivers (with our fixes): `/sys/class/power_supply/max170xx_battery` reports capacity, voltage, current, temperature and cycles; charging at 9 V PD from chargers and PC ports. Deliberately below stock (4.30 V float, 2.0 A) because mainline does not do stock's temperature-dependent charging; stock parity waits on a thermal guard (kernel r36). Story: ADR-003, PR #56 |
 | Power key, volume down (PMIC PON) | ✅ working |
 | Volume up (pm8350 gpio6, gpio-keys) | 🟡 mapped and working on most boots — `KEY_VOLUMEUP` from the pm8350 GPIO line, active low with pull-up, as stock wires it. On some boots the PMIC latches two edges per press while the level never changes, so no event fires until the next reboot (issue #18; `tools/volup-trap/` records the next occurrence) |
@@ -72,9 +72,10 @@ the panel whenever they change — read the address off the screen and ssh to it
 
 **USB cable:** plug the tablet into a computer. The computer gets 172.16.42.2 by
 DHCP; `ssh user@172.16.42.1`, or open the serial console on `/dev/ttyACM0`. The
-file manager sees the tablet over MTP:
+file manager sees the tablet over MTP (this capture predates the switch from the
+home directory to `~/Shared`):
 
-![Dolphin browsing the tablet's home over MTP](docs/media/usb-mtp-dolphin.png)
+![Dolphin browsing the tablet over MTP](docs/media/usb-mtp-dolphin.png)
 
 **Fallback:** a USB-C ethernet dongle works the same way, and
 holding **volume-down from initial power-on** drops into the postmarketOS initramfs

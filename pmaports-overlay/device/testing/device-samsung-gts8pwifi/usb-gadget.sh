@@ -4,8 +4,8 @@
 # One configfs gadget with three functions: NCM ethernet (usb0; the host
 # sees a cdc_ncm interface), ACM serial (/dev/ttyGS0; the host sees
 # /dev/ttyACM*) and MTP (FunctionFS served by umtprd; the host's file
-# manager sees a media device, /etc/umtprd/umtprd.conf lists what it
-# shows). The USB IDs are postmarketOS's (18d1:d001), so hosts that
+# manager sees a media device showing ~/Shared, see
+# /etc/umtprd/umtprd.conf for why not the whole home). The USB IDs are postmarketOS's (18d1:d001), so hosts that
 # know pmOS devices treat it as one.
 #
 # The gadget is bound to the UDC once and stays bound. The Type-C driver
@@ -22,6 +22,7 @@ GADGETS=/sys/kernel/config/usb_gadget
 G=$GADGETS/gts8pwifi
 ADDR=172.16.42.1/24
 FFS=/dev/mtp
+SHARED=/home/user/Shared
 
 # Unbind a gadget and remove it: config links, configs, functions, strings.
 remove() {
@@ -54,11 +55,11 @@ start() {
 		remove "$g"
 	done
 
+	# a gadget left half-built by an earlier failure is rebuilt whole
+	if [ -d "$G" ] && [ -z "$(cat "$G/UDC")" ]; then
+		remove "$G" || { echo "gts8pwifi-usb-gadget: cannot remove stale gadget" >&2; exit 1; }
+	fi
 	if [ -d "$G" ]; then
-		if [ -z "$(cat "$G/UDC")" ]; then
-			mtp_up
-			echo "$udc" > "$G/UDC"
-		fi
 		net_up
 		return 0
 	fi
@@ -83,7 +84,11 @@ start() {
 	ln -s "$G/functions/ffs.mtp" "$G/configs/c.1/"
 
 	mtp_up
-	echo "$udc" > "$G/UDC"
+	if ! echo "$udc" > "$G/UDC"; then
+		echo "gts8pwifi-usb-gadget: cannot bind $udc" >&2
+		stop
+		exit 1
+	fi
 	net_up
 }
 
@@ -91,6 +96,10 @@ start() {
 # descriptors, which makes the endpoint files appear. Without MTP the
 # gadget still comes up with NCM and ACM.
 mtp_up() {
+	if [ ! -d "$SHARED" ]; then
+		mkdir -p "$SHARED"
+		chown 10000:10000 "$SHARED"
+	fi
 	mkdir -p "$FFS"
 	mountpoint -q "$FFS" || mount -t functionfs mtp "$FFS"
 	systemctl --no-block restart umtprd.service
@@ -117,7 +126,10 @@ stop() {
 	[ -d "$G" ] || return 0
 	echo "" > "$G/UDC" 2>/dev/null || true
 	systemctl stop umtprd.service
-	mountpoint -q "$FFS" && umount "$FFS"
+	if mountpoint -q "$FFS" && ! umount "$FFS"; then
+		echo "gts8pwifi-usb-gadget: $FFS busy, gadget left in place" >&2
+		return 1
+	fi
 	remove "$G"
 }
 
