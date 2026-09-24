@@ -1,0 +1,48 @@
+power: supply: max77705_charger: stop the OTG boost at shutdown
+
+On the Galaxy Tab S8+ a reboot with the OTG boost running (mode 0xf, a
+bus-powered USB device attached) leaves the tablet dark: userspace
+shuts down cleanly, then the system does not come back, a short power
+press does nothing, and it recovers only with a charger plugged in and
+a forced restart. Reboots with the boost off come back every time.
+Reproduced on purpose on 2026-09-24.
+
+Nothing turns the boost off on the way down: regulator consumers such
+as regulator-output are not torn down at reboot. Clear the boost and
+OTG bits from the mode in the charger's shutdown hook, leaving the
+buck and charge bits as they are.
+
+diff --git a/drivers/power/supply/max77705_charger.c b/drivers/power/supply/max77705_charger.c
+index 67da4d9ea..5d7e7e3d5 100644
+--- a/drivers/power/supply/max77705_charger.c
++++ b/drivers/power/supply/max77705_charger.c
+@@ -787,12 +787,29 @@ static const struct of_device_id max77705_charger_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, max77705_charger_of_match);
+ 
++/*
++ * A reset with the OTG boost running leaves the system unable to come
++ * back up: the boost keeps VBUS alive through the reset. Stop it first.
++ */
++static void max77705_charger_shutdown(struct i2c_client *i2c)
++{
++	struct max77705_charger_data *chg = i2c_get_clientdata(i2c);
++	unsigned int mode;
++
++	if (regmap_field_read(chg->rfield[MAX77705_MODE], &mode))
++		return;
++
++	if (mode & MAX77705_OTG_CTRL)
++		regmap_field_write(chg->rfield[MAX77705_MODE], mode & ~MAX77705_OTG_CTRL);
++}
++
+ static struct i2c_driver max77705_charger_driver = {
+ 	.driver = {
+ 		.name = "max77705-charger",
+ 		.of_match_table = max77705_charger_of_match,
+ 	},
+ 	.probe = max77705_charger_probe,
++	.shutdown = max77705_charger_shutdown,
+ };
+ module_i2c_driver(max77705_charger_driver);
+ 
