@@ -1,0 +1,74 @@
+power: supply: max77705_charger: report AICL, do not step the input limit
+
+The charger regulates its input voltage in hardware. The AICL handler
+additionally stepped CHGIN_LIM down until AICL_OK was set. On the Galaxy
+Tab S8+ under a 5 V 3 A PD contract, with the CCIC setting the input
+current itself (AUTOIBUS), AICL_OK stayed clear and the handler walked
+CHGIN_LIM from 3000 mA to its 100 mA floor within ten seconds while the
+battery kept taking 1.4-1.6 A: the register was not what limited the
+input, and the stepping only fought the CCIC. With the OTG boost on it
+never settled at all (see max77705-charger-aicl-bounded). Report the
+event and leave the limit to the hardware and to whoever set it.
+
+diff --git a/drivers/power/supply/max77705_charger.c b/drivers/power/supply/max77705_charger.c
+index 8c6615e95..89e954262 100644
+--- a/drivers/power/supply/max77705_charger.c
++++ b/drivers/power/supply/max77705_charger.c
+@@ -41,48 +41,19 @@ static enum power_supply_property max77705_charger_props[] = {
+ 	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
+ };
+ 
++/*
++ * The charger regulates its input voltage in hardware (VCHGIN_REG); this
++ * only reports it. Stepping CHGIN_LIM down from here fights the CCIC,
++ * which sets the input current itself under a PD contract (AUTOIBUS):
++ * AICL_OK then stays clear and the limit was walked to its floor while
++ * the input current was unchanged. With the OTG boost running, AICL is
++ * the boost's own VBUS on CHGIN and never settles at all.
++ */
+ static irqreturn_t max77705_aicl_irq(int irq, void *irq_drv_data)
+ {
+ 	struct max77705_charger_data *chg = irq_drv_data;
+-	unsigned int regval, irq_status, mode;
+-	int err;
+-
+-	/*
+-	 * With the OTG boost running, CHGIN sees the boost's own VBUS and
+-	 * AICL never settles; stepping the limit down would never end and
+-	 * would hold the shared MFD interrupt thread.
+-	 */
+-	err = regmap_field_read(chg->rfield[MAX77705_MODE], &mode);
+-	if (err < 0 || (mode & MAX77705_OTG_CTRL) == MAX77705_OTG_CTRL)
+-		return IRQ_HANDLED;
+-
+-	err = regmap_read(chg->regmap, MAX77705_CHG_REG_INT_OK, &irq_status);
+-	if (err < 0)
+-		return IRQ_HANDLED;
+ 
+-	// irq is fiered at the end of current decrease sequence too
+-	// early check AICL_I bit to guard against that excess irq call
+-	while (!(irq_status & BIT(MAX77705_AICL_I))) {
+-		err = regmap_field_read(chg->rfield[MAX77705_CHG_CHGIN_LIM], &regval);
+-		if (err < 0)
+-			return IRQ_HANDLED;
+-
+-		/* codes 0-3 are all the 100 mA minimum; stop there */
+-		if (regval <= 3)
+-			return IRQ_HANDLED;
+-
+-		regval--;
+-
+-		err = regmap_field_write(chg->rfield[MAX77705_CHG_CHGIN_LIM], regval);
+-		if (err < 0)
+-			return IRQ_HANDLED;
+-
+-		msleep(AICL_WORK_DELAY_MS);
+-
+-		err = regmap_read(chg->regmap, MAX77705_CHG_REG_INT_OK, &irq_status);
+-		if (err < 0)
+-			return IRQ_HANDLED;
+-	}
++	power_supply_changed(chg->psy_chg);
+ 
+ 	return IRQ_HANDLED;
+ }

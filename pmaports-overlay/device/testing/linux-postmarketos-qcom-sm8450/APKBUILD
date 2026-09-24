@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=37
+pkgrel=38
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -57,6 +57,8 @@ source="
 	max77705-typec.patch
 	max77705-typec-source-attach.patch
 	max77705-charger-aicl-bounded.patch
+	max77705-typec-prefer-voltage.patch
+	max77705-charger-aicl-notify.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -164,4 +166,6 @@ e0be1bf60e87ebf3c33dc14a7fbaa89a8dd0377660db0125b25d220bc39926cc3d2a13ad01f77d44
 f860bb02d354053aa1f82b2f845d0f1c5745afca211a03230312175a4faee66551de09a01ae498f6b9b13be626309537de28037e6309fb346eeda1e77279be6d  max77705-typec.patch
 3ac3628cab5d02e39ac4130fec2bdf9449b4be31f5d053292a7c3ea582ac1debf520e3172b16aa545c069f5f2db60cc68fbd81127a6db079cb01931a0da46b4e  max77705-typec-source-attach.patch
 f9a7082b45c9ffba4c2dab65b91967dafe7fd3c3654c5a59142e9100634a12c01b2e67808bd7b58c5814a3d8690862302e6b71005b508c21cd9ef845cc3d2664  max77705-charger-aicl-bounded.patch
+05b279bafd7b066b80f41c44b73dc767e6770d8d1ce4fbaf3c28e30a5bb937fd94e8fb5359beb290e5042441ccce789ce13c4c69fd07b6616662788027d80033  max77705-typec-prefer-voltage.patch
+a9284dc8804801ab21b68ef591d3d516579648f7ca4680102cd4131d13bce90aa32d625c86a93d0422436476e8b81a78fffcab7c34e9d17e81656b2b7a18862b  max77705-charger-aicl-notify.patch
 "
