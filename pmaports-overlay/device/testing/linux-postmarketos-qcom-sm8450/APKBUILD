@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=40
+pkgrel=41
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -61,6 +61,7 @@ source="
 	max77705-typec-source-attach.patch
 	max77705-typec-prefer-voltage.patch
 	max77705-typec-review-fixes.patch
+	q6v5-handover-dbg.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -172,4 +173,5 @@ f860bb02d354053aa1f82b2f845d0f1c5745afca211a03230312175a4faee66551de09a01ae498f6
 3ac3628cab5d02e39ac4130fec2bdf9449b4be31f5d053292a7c3ea582ac1debf520e3172b16aa545c069f5f2db60cc68fbd81127a6db079cb01931a0da46b4e  max77705-typec-source-attach.patch
 05b279bafd7b066b80f41c44b73dc767e6770d8d1ce4fbaf3c28e30a5bb937fd94e8fb5359beb290e5042441ccce789ce13c4c69fd07b6616662788027d80033  max77705-typec-prefer-voltage.patch
 c0eadb1a176925772e9c557ffbdefedfbc30cdfcf378bcf93dfc3416cf46e7269c6389c6f9d2682f640a752f01650f3cbe765d76c040fe6178989beebdc9a1af  max77705-typec-review-fixes.patch
+7fea5578e1525af65d99db451bba8bd3b2244068239f57d62a596462642ec32bb28b1f752cb60f62438abb3e431e1d254dc2f8211555feda6d9e6a9608703d7f  q6v5-handover-dbg.patch
 "

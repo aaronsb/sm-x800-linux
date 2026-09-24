@@ -1,0 +1,22 @@
+remoteproc: qcom_q6v5: repeated handover is a debug message
+
+Follow-up to q6v5-handover-ratelimit. On SM8450 the SLPI toggles its
+handover bit on every sensor sample (issue #46); the folio-state daemon
+samples three magnetometer readings per heartbeat, so the message still
+reached the console three times a minute, under the ratelimit's burst.
+The condition is harmless by design and the handler returns early.
+Report it at debug level.
+
+diff --git a/drivers/remoteproc/qcom_q6v5.c b/drivers/remoteproc/qcom_q6v5.c
+index ec5a374ac..c9eb8b027 100644
+--- a/drivers/remoteproc/qcom_q6v5.c
++++ b/drivers/remoteproc/qcom_q6v5.c
+@@ -165,7 +165,7 @@ static irqreturn_t q6v5_handover_interrupt(int irq, void *data)
+ 	struct qcom_q6v5 *q6v5 = data;
+ 
+ 	if (q6v5->handover_issued) {
+-		dev_err_ratelimited(q6v5->dev, "Handover signaled, but it already happened\n");
++		dev_dbg(q6v5->dev, "Handover signaled, but it already happened\n");
+ 		return IRQ_HANDLED;
+ 	}
+ 
