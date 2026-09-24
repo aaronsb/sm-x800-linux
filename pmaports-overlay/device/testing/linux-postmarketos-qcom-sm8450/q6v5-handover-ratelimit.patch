@@ -1,0 +1,28 @@
+remoteproc: qcom_q6v5: ratelimit the repeated-handover message
+
+On SM8450 the SLPI toggles its SMP2P ready and handover bits at the
+sensor sample rate while a sensor session is open (issue #46). Every
+edge after the first lands in q6v5_handover_interrupt with
+handover_issued set and prints "Handover signaled, but it already
+happened" at error level. With the folio-state daemon sampling the
+magnetometer and light sensor this fills the console and wraps the
+kernel ring buffer within minutes, which has already cost resume traces
+(#51). The condition is harmless and the handler returns early; the
+message stays, rate limited.
+
+Upstream shape: the same one-line change, or a dev_dbg, in
+drivers/remoteproc/qcom_q6v5.c.
+
+diff --git a/drivers/remoteproc/qcom_q6v5.c b/drivers/remoteproc/qcom_q6v5.c
+index 58d5b85e5..ec5a374ac 100644
+--- a/drivers/remoteproc/qcom_q6v5.c
++++ b/drivers/remoteproc/qcom_q6v5.c
+@@ -165,7 +165,7 @@ static irqreturn_t q6v5_handover_interrupt(int irq, void *data)
+ 	struct qcom_q6v5 *q6v5 = data;
+ 
+ 	if (q6v5->handover_issued) {
+-		dev_err(q6v5->dev, "Handover signaled, but it already happened\n");
++		dev_err_ratelimited(q6v5->dev, "Handover signaled, but it already happened\n");
+ 		return IRQ_HANDLED;
+ 	}
+ 

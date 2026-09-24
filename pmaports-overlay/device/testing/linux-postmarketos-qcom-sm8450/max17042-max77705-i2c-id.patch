@@ -1,0 +1,27 @@
+power: supply: max17042: bind "maxim,max77705-battery" as an I2C client
+
+The MAX77705 fuel gauge is a MAX17047-class gauge on its own I2C address
+(0x36). Upstream only reaches it as a platform child of the max77705 MFD:
+"max77705-battery" sits in max17042_platform_id and in the OF table, but
+not in max17042_id. Described directly on the bus, the client is named
+"max77705-battery", i2c_client_get_device_id() returns NULL, and
+max17042_i2c_probe() falls through to the ACPI lookup and returns
+-ENODEV, silently.
+
+On the Galaxy Tab S8+ the MAX77705 top (0x66) is not described (its
+revision, PASS2, is rejected by drivers/mfd/max77705.c), so the gauge is
+described as a plain I2C client. Add the name to the I2C ID table with
+the same chip type the platform table uses.
+
+diff --git a/drivers/power/supply/max17042_battery.c b/drivers/power/supply/max17042_battery.c
+index d409d2f0d..f4433c60f 100644
+--- a/drivers/power/supply/max17042_battery.c
++++ b/drivers/power/supply/max17042_battery.c
+@@ -1373,6 +1373,7 @@ static const struct i2c_device_id max17042_id[] = {
+ 	{ .name = "max17050", .driver_data = MAXIM_DEVICE_TYPE_MAX17050 },
+ 	{ .name = "max17055", .driver_data = MAXIM_DEVICE_TYPE_MAX17055 },
+ 	{ .name = "max77759-fg", .driver_data = MAXIM_DEVICE_TYPE_MAX77759 },
++	{ .name = "max77705-battery", .driver_data = MAXIM_DEVICE_TYPE_MAX17047 },
+ 	{ .name = "max77849-battery", .driver_data = MAXIM_DEVICE_TYPE_MAX17047 },
+ 	{ }
+ };

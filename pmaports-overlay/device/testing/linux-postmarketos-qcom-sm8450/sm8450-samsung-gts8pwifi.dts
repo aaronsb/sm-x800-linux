@@ -1453,8 +1453,9 @@
 	 * Minimal OTG-boost-only driver at the charger client address (see
 	 * max77705-otg.c). Verified live before the driver existed: writing
 	 * the CHG_CNFG_00 mode nibble 0x05 -> 0x0F sourced VBUS and a
-	 * bus-powered HID keyboard enumerated. The full MFD (charging
-	 * policy, fuel gauge, MUIC, PD) is deliberately NOT described.
+	 * bus-powered HID keyboard enumerated. The MFD top (charging
+	 * policy, MUIC, PD) is deliberately NOT described; the chip charges
+	 * on its power-on defaults (4.35 V float, 2.1 A, 1.8 A input).
 	 */
 	charger@69 {
 		compatible = "samsung,max77705-otg";
@@ -1463,6 +1464,24 @@
 		max77705_otg_vbus: otg-vbus {
 			regulator-name = "usb_otg_vbus";
 		};
+	};
+
+	/*
+	 * MAX77705 fuel gauge, a MAX17047-class gauge. The sense resistor is
+	 * 10 mOhm / fuelgauge,fg_resistor; stock's 5 gives 2 mOhm (current
+	 * LSB 0.78125 mA, capacity LSB 2.5 mAh). Unverified against an
+	 * independent meter: the 8800 mAh design capacity it implies is low
+	 * for a 10090 mAh pack. Stock loads the gauge model and the gauge
+	 * keeps it across a reboot into mainline; max17042 never loads one
+	 * from DT, so after a full drain or cold power-on without stock
+	 * booting first it runs on the chip's default model. No interrupt: the
+	 * gauge's alert cascades through the MFD top at 0x66, which is not
+	 * described, and the driver then parks the SOC alert threshold.
+	 */
+	fuel-gauge@36 {
+		compatible = "maxim,max77705-battery";
+		reg = <0x36>;
+		shunt-resistor-micro-ohms = <2000>;
 	};
 };
 
