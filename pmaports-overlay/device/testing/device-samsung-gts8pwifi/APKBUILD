@@ -3,7 +3,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 pkgname=device-samsung-gts8pwifi
 pkgdesc="Samsung Galaxy Tab S8+ (Wi-Fi) - mainline (SM8450)"
 pkgver=0.1
-pkgrel=28
+pkgrel=31
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -18,6 +18,7 @@ depends="
 	linux-firmware-qcom
 	linux-firmware-ath11k
 	linux-firmware-qca
+	linux-firmware-rtl_nic
 	bluez-btmgmt
 	hexagonrpcd
 	hexagonrpcd-udev
@@ -27,10 +28,11 @@ depends="
 	evtest
 	make-dynpart-mappings
 	device-mapper
+	umtprd
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service 80-gts8pwifi.preset 50-gts8pwifi-logind.conf"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service 80-gts8pwifi.preset 50-gts8pwifi-logind.conf usb-gadget.sh usb-gadget.service umtprd.conf"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -92,15 +94,13 @@ package() {
 	install -Dm644 "$srcdir"/console-blank.conf \
 		"$pkgdir"/etc/conf.d/console-blank
 
-	# Manual USB VBUS sourcing (MAX77705 OTG boost) — powers bus-powered
-	# USB peripherals in host mode. See the script header.
-	install -Dm755 "$srcdir"/vbus-otg.sh \
-		"$pkgdir"/usr/bin/vbus-otg
-
-	# Root hubs must not runtime-suspend or hot-plugged devices on
-	# tablet-sourced VBUS are never detected. See the script header.
-	install -Dm755 "$srcdir"/usb-host-wake.start \
-		"$pkgdir"/etc/local.d/usb-host-wake.start
+	# The tablet as a USB device to a PC: NCM ethernet and ACM serial on
+	# one configfs gadget. The unit and the usb0 address are in -systemd.
+	install -Dm755 "$srcdir"/usb-gadget.sh \
+		"$pkgdir"/usr/bin/gts8pwifi-usb-gadget
+	# MTP function of the gadget: what the PC's file manager may browse.
+	install -Dm644 "$srcdir"/umtprd.conf \
+		"$pkgdir"/etc/umtprd/umtprd.conf
 
 	# Sensors: accelerometer mount matrix for iio-sensor-proxy's libssc
 	# backend, keyed on the FastRPC node as device-fairphone-fp4 does.
@@ -164,7 +164,8 @@ tools() {
 
 systemd() {
 	install_if="$pkgname=$pkgver-r$pkgrel systemd"
-	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd folio-state-systemd"
+	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd folio-state-systemd
+		unudhcpd-systemd umtprd-systemd"
 	install -Dm644 "$srcdir"/netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/netinfo-console.service
 	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
@@ -199,6 +200,14 @@ systemd() {
 	install -Dm644 "$srcdir"/90-gts8pwifi-bt-addr.rules \
 		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8pwifi-bt-addr.rules
 
+	# USB gadget: built when the UDC appears (usb-gadget.target), with
+	# unudhcpd@usb0 and a serial getty on ttyGS0 pulled in by the unit.
+	install -Dm644 "$srcdir"/usb-gadget.service \
+		"$subpkgdir"/usr/lib/systemd/system/gts8pwifi-usb-gadget.service
+	install -d "$subpkgdir"/usr/lib/systemd/system/usb-gadget.target.wants
+	ln -sf ../gts8pwifi-usb-gadget.service \
+		"$subpkgdir"/usr/lib/systemd/system/usb-gadget.target.wants/gts8pwifi-usb-gadget.service
+
 	# Sensor hub: start hexagonrpcd-sdsp when /dev/fastrpc-sdsp appears
 	# (the unit's path condition is evaluated before the SLPI boots).
 	install -Dm644 "$srcdir"/90-gts8pwifi-hexagonrpcd-sdsp.rules \
@@ -214,8 +223,6 @@ a2301018497417bdb5a9cbd5591010e5887745225801db43cba6eb81e1ca8fae562f52e7a680c898
 c1e9c670c7b5c8b671c1595f55a44ce1c71a3c812dbdb3700c9719c92cdc283a2d97a378e68432adc4e3820ca82706e956b2e026fcce8db5e9dec1affb831a95  getty-issue.conf
 8e79ad12fcb48104daf52470385f83415768c93d66480b44febd8b08cccc662fb97e8466ec1b96abb930de38272966b2ba4f6773695382d518bc9382ac738259  profile-locale.sh
 0bc62189e9d57f90f637075f8aa614690c8664cacceee95df47f02f407f66b4af83e9e1d5ca62279c5d7ba2bfa967d311004af935e36c10405f77b42ced26739  panel-blank.sh
-7eecc1c87d336a23b1b1d94b94aae6402e8dd1463e37316a1e80343c1774ede3790d1a68e25dad2887833ff37593947ad80ff5e4cf177a75c74d3558dfdbb510  vbus-otg.sh
-eb3023d0d26a5b4a5a1069d1544503f5c9335c0c41678b3bbfd34fede7d717739809381af03a44c895dd6c9ee9276881c83ea05c316dd9e2e5bb8bf86655fabb  usb-host-wake.start
 7ce585068b8d90bb3c4dc61b2cbf1b77207e3558c89d62967c334dbb0162eda348594e7aa18721bd134e4ba7d584fcd198527b27b5f60272cd64922166eefb67  fw-extract.sh
 54121dac7724777b079574f5d99d7caae33c0c8ffb30c47039ac6bf7a4737f68ceccd098f410e5eb8d57bd8f60e77edbccdb02ea2c89be63f78355ce0434ad93  therm.sh
 1dea2de386da72966de61a6c7cb43c98467a26e72e9e290fdd279177de5c3c712efac48c8c0c3dc86799740c00e4c8cb130a0c7baa719700bc6859ff96cbd0c0  setup.sh
@@ -229,9 +236,12 @@ bdff32b583aba5f9dea8505978ca8b29aaec938526c5e925edac7dcd44e608bcf5721917ad1346cf
 697f6e0b288a485792cdcb40f0ebff33fe405758d83310988c5dc0e3f07d01bb468e0e91936ea06fb42783e94b299500dac1fd8ce05200d650c341b2f77278ed  Samsung-Galaxy-Tab-S8-Plus-tplg.bin
 7d2f86f39aa4e95d2301b1870290066cdf947ad2c8b9b860b774f345c4294455ead6c279344f4753b92db3d10a97c8992a0469287e3c3db2a8252117d642f533  81-libssc-samsung-gts8pwifi.rules
 d33f880ef076fffbad053f33b190cde4768ed3f95e2b749349446e4693ac3c76249f661c5ef9c42fd665b8de06c37394482d0e3733e105f6ee4ab82557a9a254  90-gts8pwifi-hexagonrpcd-sdsp.rules
-0213fb75fcb149b59e7df804b81e386d44969f4197eff3820ad0b611a5c2455a95911c3c6f2106fbe1c8cacbc0cc53ce88b72ab31451cb7866223e70a68dd14d  console-blank.sh
+52a3e0b807a3feeb41ab93f5411efa6c030e80745f4cb3f90c91a195c7054c67fd86c2bdde5de09115d189e9928262e04091ac60e8bf839752fb1338670538e6  console-blank.sh
 0b6e024f5e69b99d45a5b570c5655922c0653cf2aad141de31d5c3133a277ebf666c6e1ff2f0bcf259869044796fe54fe38e7e40b421cf589144be663d303964  console-blank.conf
 e87c2aa23a9d58bcc38ede1259588aec91f3bf266eaa2d11182dfba2210a587b292ffc1937c1e3e4c7a075d390ea9c789f2a1b9d6ef35ad12e92fb915207ce07  console-blank.service
-7c6ae630f5da4638212256977a63a6234d7be4c4bb61676db66fee7d6354568a0f3ace1d986d30866e70555bfa0191b427ecc1b1ffa292bb8e095ab9d44bce1a  80-gts8pwifi.preset
+6ab40ef7d9136999b90a92b507048fc2351cb40ff68861d7acba51fd19fca94bf423779cebf365b6029db6a8f974a1f1b68dce565fcdeaaab54781d3be743e15  80-gts8pwifi.preset
 c0d1e42a030b33b6fe2fa033fc7ad625f247d030ec7e3a180ed08d874cebaa7db8b53ff0f1a7fed62a800e46a7e7dc8084fc3c41ae1f171209fce0f222823c90  50-gts8pwifi-logind.conf
+6ea2747fef5bb4b37fc8988c707d06bd15020eb47a39cdac518fa39c9e43c0135668629256c69bca686a52e7882196f6880bd1e1e68b2a6d815e7393d4b539de  usb-gadget.sh
+bdeba874eb6b9866a58340c3617b523c4346ce4753ccc205bbf7613e3fc17208d333afdd9e0f7bd291ef4a0d478957530d8a342d18d24aac1280ff90c601c553  usb-gadget.service
+7d1622035fb824d977db5bdcec9c2e9ce4c396d6895ae8d5eb7a1bd669f1ba8b99cc1d48d63c5e9b7a6cdafcc98077a6bc4a28f505a1a9629868325f3519c66d  umtprd.conf
 "

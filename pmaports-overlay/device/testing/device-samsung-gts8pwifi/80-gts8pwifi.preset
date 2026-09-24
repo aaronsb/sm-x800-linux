@@ -3,3 +3,6 @@
 # disabled although they start (issue #41).
 enable console-blank.service
 enable netinfo-console.service
+enable gts8pwifi-usb-gadget.service
+# started by gts8pwifi-usb-gadget once FunctionFS is mounted
+disable umtprd.service

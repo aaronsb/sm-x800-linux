@@ -1,0 +1,19 @@
+[Unit]
+Description=USB gadget: NCM ethernet, ACM serial and MTP to a PC (gts8pwifi)
+Documentation=file:///usr/bin/gts8pwifi-usb-gadget
+ConditionPathExistsGlob=/sys/class/udc/*
+Requires=sys-kernel-config.mount
+After=sys-kernel-config.mount
+Wants=unudhcpd@usb0.service serial-getty@ttyGS0.service
+Before=unudhcpd@usb0.service serial-getty@ttyGS0.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/gts8pwifi-usb-gadget start
+# a new gadget is a new usb0: the DHCP server must bind to it
+ExecStartPost=-/usr/bin/systemctl --no-block try-restart unudhcpd@usb0.service
+ExecStop=/usr/bin/gts8pwifi-usb-gadget stop
+
+[Install]
+WantedBy=usb-gadget.target
