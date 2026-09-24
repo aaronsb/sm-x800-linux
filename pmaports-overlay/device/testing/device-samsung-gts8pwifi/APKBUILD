@@ -27,10 +27,11 @@ depends="
 	evtest
 	make-dynpart-mappings
 	device-mapper
+	umtprd
 "
 subpackages="$pkgname-systemd $pkgname-tools $pkgname-devsudo"
 makedepends="devicepkg-dev"
-source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service 80-gts8pwifi.preset 50-gts8pwifi-logind.conf usb-gadget.sh usb-gadget.service"
+source="deviceinfo mkinitfs-mdev.files mkinitfs-gpu-fw.files netinfo-console.sh netinfo-console.service getty-issue.conf profile-locale.sh panel-blank.sh vbus-otg.sh usb-host-wake.start fw-extract.sh therm.sh setup.sh 90-gts8pwifi-cs35l45-no-hibernate.rules bt-addr.sh bt-addr.service 90-gts8pwifi-bt-addr.rules ucm2/Samsung-Galaxy-Tab-S8-Plus.conf ucm2/HiFi.conf devsudo-sudoers Samsung-Galaxy-Tab-S8-Plus-tplg.bin 81-libssc-samsung-gts8pwifi.rules 90-gts8pwifi-hexagonrpcd-sdsp.rules console-blank.sh console-blank.conf console-blank.service 80-gts8pwifi.preset 50-gts8pwifi-logind.conf usb-gadget.sh usb-gadget.service umtprd.conf"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -106,6 +107,9 @@ package() {
 	# one configfs gadget. The unit and the usb0 address are in -systemd.
 	install -Dm755 "$srcdir"/usb-gadget.sh \
 		"$pkgdir"/usr/bin/gts8pwifi-usb-gadget
+	# MTP function of the gadget: what the PC's file manager may browse.
+	install -Dm644 "$srcdir"/umtprd.conf \
+		"$pkgdir"/etc/umtprd/umtprd.conf
 
 	# Sensors: accelerometer mount matrix for iio-sensor-proxy's libssc
 	# backend, keyed on the FastRPC node as device-fairphone-fp4 does.
@@ -170,7 +174,7 @@ tools() {
 systemd() {
 	install_if="$pkgname=$pkgver-r$pkgrel systemd"
 	depends="hexagonrpcd-systemd iio-sensor-proxy-systemd folio-state-systemd
-		unudhcpd-systemd"
+		unudhcpd-systemd umtprd-systemd"
 	install -Dm644 "$srcdir"/netinfo-console.service \
 		"$subpkgdir"/usr/lib/systemd/system/netinfo-console.service
 	install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
@@ -246,8 +250,9 @@ d33f880ef076fffbad053f33b190cde4768ed3f95e2b749349446e4693ac3c76249f661c5ef9c42f
 0213fb75fcb149b59e7df804b81e386d44969f4197eff3820ad0b611a5c2455a95911c3c6f2106fbe1c8cacbc0cc53ce88b72ab31451cb7866223e70a68dd14d  console-blank.sh
 0b6e024f5e69b99d45a5b570c5655922c0653cf2aad141de31d5c3133a277ebf666c6e1ff2f0bcf259869044796fe54fe38e7e40b421cf589144be663d303964  console-blank.conf
 e87c2aa23a9d58bcc38ede1259588aec91f3bf266eaa2d11182dfba2210a587b292ffc1937c1e3e4c7a075d390ea9c789f2a1b9d6ef35ad12e92fb915207ce07  console-blank.service
-a612d13a9c5f41145593c5c1bc50b8616e9592ab1846774f185cf9a8d6c1b25410c39229a691ab6bb11e510d502c09ca10a9757c7d73a1d500c711c866930ffd  80-gts8pwifi.preset
+6ab40ef7d9136999b90a92b507048fc2351cb40ff68861d7acba51fd19fca94bf423779cebf365b6029db6a8f974a1f1b68dce565fcdeaaab54781d3be743e15  80-gts8pwifi.preset
 c0d1e42a030b33b6fe2fa033fc7ad625f247d030ec7e3a180ed08d874cebaa7db8b53ff0f1a7fed62a800e46a7e7dc8084fc3c41ae1f171209fce0f222823c90  50-gts8pwifi-logind.conf
-12a131eef0fec5e9d8c35cc6e0f11a2a462f98a7d5ca1d4fc092ac74ee9b098fae74cadd5f03628ce89f58ac696fae13ee9cc40f00fe90474474f1d5f1236a2c  usb-gadget.sh
-d416aeb470fca623c03764dc66e01d96c4c5732f83a53fa959a6c8763596a4eb510b92bc5e02a31f0026fc660a072cc2782da1c29c3d31c3de05f32331c8b002  usb-gadget.service
+259341a8229a6bbe599851dd905cde084e48132076738caa7d4f30f4f72e445dbd7d79efcd28d569550a4d9828c331f0dae66afe02718ee56431f6fbca8ad773  usb-gadget.sh
+bdeba874eb6b9866a58340c3617b523c4346ce4753ccc205bbf7613e3fc17208d333afdd9e0f7bd291ef4a0d478957530d8a342d18d24aac1280ff90c601c553  usb-gadget.service
+601a2fa32fcb1608adb8bc4b4262ae376d68f8ad57de53966153a34e9a39999dc5117f05b7d74b3c0e85a4453e30fafbee6a7b1df9202a1dc6e252982be03311  umtprd.conf
 "

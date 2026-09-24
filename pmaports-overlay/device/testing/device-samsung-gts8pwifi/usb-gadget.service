@@ -1,5 +1,5 @@
 [Unit]
-Description=USB gadget: NCM ethernet and ACM serial to a PC (gts8pwifi)
+Description=USB gadget: NCM ethernet, ACM serial and MTP to a PC (gts8pwifi)
 Documentation=file:///usr/bin/gts8pwifi-usb-gadget
 ConditionPathExistsGlob=/sys/class/udc/*
 Requires=sys-kernel-config.mount
