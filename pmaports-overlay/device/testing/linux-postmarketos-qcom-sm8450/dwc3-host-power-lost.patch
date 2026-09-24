@@ -3,21 +3,29 @@ usb: dwc3: tell xhci-plat when a host-mode suspend lost the controller
 Issue #53. In host mode, a system suspend on a controller without wakeup
 ends in dwc3_core_exit(), and resume reinitialises the core. xhci-plat is
 never told: xhci_resume() takes the "state intact" path and sets CRS on a
-controller that was reset. On SM8450 the restore does not raise SRE; the
-controller DMAs from stale pointers instead, the SMMU faults on SID 0x0
-(thousands of context faults within 1.5 s of resume) and xHCI stops with
-a Host System Error. Attached devices are lost until dwc3-qcom is rebound.
+controller that was reset. On SM8450 the restore raises no SRE; the SMMU
+logs thousands of context faults on the USB stream (SID 0x0) within 1.5 s
+of resume and xHCI stops with a Host System Error. Attached devices are
+lost until dwc3-qcom is rebound.
 
 xhci_plat_priv already carries power_lost for this (cdns3 sets it). dwc3
-now sets it before dwc3_core_exit() and clears it on the paths that keep
-the controller powered, so xhci_resume() resets the host and the USB core
-re-enumerates the attached devices.
+clears it in prepare, at the start of every suspend cycle, and sets it
+before dwc3_core_exit() in a host-mode system suspend, so xhci_resume()
+resets the host and the USB core re-enumerates the attached devices. A
+cycle that keeps the controller powered, or is aborted before dwc3
+suspends, leaves it clear.
+
+The OTG case of dwc3_suspend_common() also resets the core and is not
+covered; SM8450 switches roles through a role switch and never runs in it.
+
+dwc3_host_init() now clears dwc->xhci on its error path, which the new
+helper (like dwc3_host_exit()) would otherwise dereference after free.
 
 diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
-index ceb49f2f8..d155b2dd8 100644
+index ceb49f2f8..6a680da67 100644
 --- a/drivers/usb/dwc3/core.c
 +++ b/drivers/usb/dwc3/core.c
-@@ -2500,10 +2500,13 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
+@@ -2500,6 +2500,7 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
  	case DWC3_GCTL_PRTCAP_HOST:
  		if (!PMSG_IS_AUTO(msg) &&
  		    (!device_may_wakeup(dwc->dev) || dwc->needs_full_reinit)) {
@@ -25,12 +33,16 @@ index ceb49f2f8..d155b2dd8 100644
  			dwc3_core_exit(dwc);
  			break;
  		}
+@@ -2772,6 +2773,9 @@ int dwc3_pm_prepare(struct dwc3 *dwc)
+ {
+ 	struct device *dev = dwc->dev;
  
-+		dwc3_host_set_power_lost(dwc, false);
++	/* set again by this cycle's suspend if it resets the controller */
++	dwc3_host_set_power_lost(dwc, false);
 +
- 		/* Let controller to suspend HSPHY before PHY driver suspends */
- 		if (dwc->dis_u2_susphy_quirk ||
- 		    dwc->dis_enblslpm_quirk) {
+ 	/*
+ 	 * Indicate to the PM core that it may safely leave the device in
+ 	 * runtime suspend if runtime-suspended already in device mode.
 diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
 index e0dee9d28..428a51e35 100644
 --- a/drivers/usb/dwc3/core.h
@@ -51,7 +63,7 @@ index e0dee9d28..428a51e35 100644
  
  #if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 diff --git a/drivers/usb/dwc3/host.c b/drivers/usb/dwc3/host.c
-index 96b588bd0..f2c2225d7 100644
+index 96b588bd0..9c848dcb7 100644
 --- a/drivers/usb/dwc3/host.c
 +++ b/drivers/usb/dwc3/host.c
 @@ -13,9 +13,7 @@
@@ -65,7 +77,15 @@ index 96b588bd0..f2c2225d7 100644
  #include "../host/xhci-plat.h"
  #include "core.h"
  
-@@ -232,3 +230,21 @@ void dwc3_host_exit(struct dwc3 *dwc)
+@@ -218,6 +216,7 @@ int dwc3_host_init(struct dwc3 *dwc)
+ 	return 0;
+ err:
+ 	platform_device_put(xhci);
++	dwc->xhci = NULL;
+ 	return ret;
+ }
+ EXPORT_SYMBOL_GPL(dwc3_host_init);
+@@ -232,3 +231,21 @@ void dwc3_host_exit(struct dwc3 *dwc)
  	dwc->xhci = NULL;
  }
  EXPORT_SYMBOL_GPL(dwc3_host_exit);

@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=42
+pkgrel=43
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -175,5 +175,5 @@ f860bb02d354053aa1f82b2f845d0f1c5745afca211a03230312175a4faee66551de09a01ae498f6
 05b279bafd7b066b80f41c44b73dc767e6770d8d1ce4fbaf3c28e30a5bb937fd94e8fb5359beb290e5042441ccce789ce13c4c69fd07b6616662788027d80033  max77705-typec-prefer-voltage.patch
 c0eadb1a176925772e9c557ffbdefedfbc30cdfcf378bcf93dfc3416cf46e7269c6389c6f9d2682f640a752f01650f3cbe765d76c040fe6178989beebdc9a1af  max77705-typec-review-fixes.patch
 7fea5578e1525af65d99db451bba8bd3b2244068239f57d62a596462642ec32bb28b1f752cb60f62438abb3e431e1d254dc2f8211555feda6d9e6a9608703d7f  q6v5-handover-dbg.patch
-9bc290a379466b16dc55da394b488460cd1f197845a3d2616b374a49a67b15829d33984d9c737005785ae311a34ca4a299e75627f4e323925e67cc99ebcb7527  dwc3-host-power-lost.patch
+6f01de0a329e8fe8c4b54d4f20b50e89c2e5e6a7c2061ad05247abc82ab1aeba560b72578b400e8319b0afb501d7293d4bfa43dcffcb4a4be22ee226b57dccbd  dwc3-host-power-lost.patch
 "
