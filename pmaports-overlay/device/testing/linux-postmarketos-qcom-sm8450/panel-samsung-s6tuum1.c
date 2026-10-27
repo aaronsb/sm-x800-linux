@@ -144,8 +144,14 @@ static int s6tuum1_on(struct s6tuum1 *priv)
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x00, 0x08, 0x5d);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x5d, 0x00);
 
-	/* TE on, dimming control (stock gamma_mode2 companion write) */
-	mipi_dsi_dcs_set_tear_on_multi(&ctx, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
+	/*
+	 * The Anapass TCON provides TE after its vendor initialization.
+	 * DCS SET_TEAR_ON (0x35) is absent from Samsung's sequence and
+	 * suppresses GPIO86 TE on this panel, forcing unsynchronized
+	 * fallback kickoffs and causing moving horizontal bands.
+	 */
+
+	/* Dimming control (stock gamma_mode2 companion write). */
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x53, 0x20);
 
 	return ctx.accum_err;
