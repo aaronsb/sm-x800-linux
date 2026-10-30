@@ -115,6 +115,60 @@ it mounts the `efs` partition read-only, reads the first address from
 machine-id-derived locally administered address if efs is unusable. Scanning
 finds devices; pairing is stock bluez userspace and still to be exercised.
 
+### Local RX corrections
+
+The kernel package carries two temporary patches for the pinned 7.2 base:
+
+- `ath11k-rx-cleanup-locking.patch` backports Nicolas Escande's upstream
+  [`c7555d47b1d0`](https://git.kernel.org/linus/c7555d47b1d051e0406474349deccf74b491ae01).
+  Move expired entries to a private list before releasing the lock, so another
+  caller cannot invalidate the iterator. Drop it when the base includes that commit.
+- `ath11k-rx-buffer-alignment.patch` carries Mark Ruvald Pedersen's
+  [alignment correction](https://lore.kernel.org/ath11k/20260719215817.2468580-2-wabsie@gmail.com/).
+  `skb_pull()` cannot move an empty skb; `skb_reserve()` uses the allocated
+  headroom to align both RX paths. Drop it when that correction reaches the base.
+
+### Temporary firmware RX cache correction
+
+`tools/ath11k-rx-cache-clean.py` provides an **experimental, opt-in** correction
+for `WLAN.HSP.1.1-03125-QCAHSPSWPL_V1_V2_SILICONZ_LITE-3.6510.41`.
+RX refill clears attention words at descriptor offsets 0x50–0x5c, but cleans
+only 12 bytes from descriptor minus 8 before handing the buffer to hardware.
+Extending that range to 104 bytes covers all cleared words, preventing later
+dirty writeback from overwriting hardware-updated status.
+
+The tool accepts only the exact original SHA-256, checks the instruction packet
+and unsigned ELF integrity table, and changes one immediate plus its segment
+checksum. It neither installs a driver nor changes firmware authentication.
+No firmware images are distributed in this repository. This workaround does
+not establish a fix for every cause of `msdu_done` or a whole-system freeze.
+
+Run on the tablet with Python 3 installed, from this repository. For Alpine's
+compressed firmware, first decompress a copy with `zstd -d -c` and use that
+uncompressed file as the first argument. The original stays untouched:
+
+```sh
+sudo mkdir -p /lib/firmware/updates/ath11k/WCN6855/hw2.1
+sudo python3 tools/ath11k-rx-cache-clean.py \
+  /lib/firmware/ath11k/WCN6855/hw2.1/amss.bin \
+  /lib/firmware/updates/ath11k/WCN6855/hw2.1/amss.bin
+```
+
+The output SHA-256 must be
+`2f5fc9b391ec02dbced58a8d93d3e455213b74b8adf2d0c3aac28e956604fd66`.
+The output is published atomically and an existing override is never replaced.
+The kernel's `updates` search directory takes precedence over the distribution
+image on the next boot. A custom `firmware_class.path` takes precedence over
+`updates`; check for an existing override there first. This path targets the
+WCN6855 hw2.1 firmware used by this port. Board files and other firmware remain
+provided by `linux-firmware-ath11k`.
+
+To roll back, remove only the generated `updates/ath11k/WCN6855/hw2.1/amss.bin`
+and reboot. Remove that override **before updating `linux-firmware-ath11k`**
+so it cannot mask a newer vendor image. Retire the tool when the vendor firmware
+incorporates the equivalent cache-range correction; never relax its build guard
+to patch a different release.
+
 ## Open threads
 
 - `reboot-mode download` (PON `mode-download = 0x15`, wired in the DTS) is
