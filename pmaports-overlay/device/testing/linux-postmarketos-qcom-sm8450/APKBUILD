@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=44
+pkgrel=45
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -64,6 +64,7 @@ source="
 	q6v5-handover-dbg.patch
 	dwc3-host-power-lost.patch
 	ath11k-rx-cleanup-locking.patch
+	ath11k-rx-buffer-alignment.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -178,4 +179,5 @@ c0eadb1a176925772e9c557ffbdefedfbc30cdfcf378bcf93dfc3416cf46e7269c6389c6f9d2682f
 7fea5578e1525af65d99db451bba8bd3b2244068239f57d62a596462642ec32bb28b1f752cb60f62438abb3e431e1d254dc2f8211555feda6d9e6a9608703d7f  q6v5-handover-dbg.patch
 6f01de0a329e8fe8c4b54d4f20b50e89c2e5e6a7c2061ad05247abc82ab1aeba560b72578b400e8319b0afb501d7293d4bfa43dcffcb4a4be22ee226b57dccbd  dwc3-host-power-lost.patch
 d4f276a205120762470ace0c269fffde703965acb59fabaa1cf479819bf0e43552f05aca258db91bce30dcdd9fe4b4115b568fe9e7cc300c10e5749597ca03d7  ath11k-rx-cleanup-locking.patch
+d4bbb034885ce9399917ca79a4d10d65ca46db5f8eb3c5eb6fb36ec821fb8ab88855b8ea844dc49a09ca77d124869e27e30e37b43451aaf06319466091dfc302  ath11k-rx-buffer-alignment.patch
 "
